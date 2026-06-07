@@ -1,0 +1,24 @@
+# Dependencies / build
+node_modules/
+dist/
+build/
+coverage/
+.convex/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+*.log
+
+# === Cardinal: never commit (see docs/adr/0006-ip-branding-and-data-sourcing.md) ===
+# The reverse-engineered source calculator / engine spec (IP — keep private/local):
+bbtn-engine-spec.md
+**/*engine-spec*
+# Real MLB player data (licensing — fetched at runtime/build into ignored storage):
+**/mlb-data/
+**/*.mlb.json
+*.player-data.json

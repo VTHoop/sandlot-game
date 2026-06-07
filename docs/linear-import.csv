@@ -1,0 +1,39 @@
+Title,Description,Priority,Labels,Estimate
+"Create public GitHub repo and push docs","Initialize the public repo, push AGENTS.md/CLAUDE.md/docs.",2,"Foundation,P0",1
+"Scaffold pnpm + TypeScript + Vite + React, Convex, Clerk","Base app scaffold, Convex project, Clerk auth wiring.",2,"Foundation,P0",3
+"Wire toolchain: Biome, tsc, Vitest, Playwright","Lint/format, typecheck, Vitest v8 coverage (new-code gate), Playwright smoke lane.",2,"Foundation,P0",3
+"CI + pre-commit/pre-push quality gates","lint, typecheck, test, coverage, Codacy, CodeScene; add .codescene-thresholds ratchet.",2,"Foundation,P0",3
+"TDD enforcement hook","Run checks after edits; block weakening/deleting tests to pass.",2,"Foundation,P0",2
+"Set up Linear workspace and import roadmap","Create workspace, import issues, optionally add Convex/Linear/Codacy/CodeScene MCP servers.",3,"Foundation,P1",1
+"Port RangeFinder front half (HR->BB) with unit tests","Pure-TS cumulative outcome bands; unit-test against the sheet's computed values.",2,"Engine,P0",5
+"Transcribe Percentages + HandSwitcher tables","Typed TS constants for the width tables and handedness (same/opposite) tables.",2,"Engine,P0",3
+"Implement elastic back half (FO/PO/GB/K)","Leftover-split resolution; verify by simulation, not by trusting the copy.",2,"Engine,P0",5
+"Monte Carlo harness","Simulate N at-bats/games; report AVG/OBP/SLG/HR%/K%/BB%/runs-per-game.",2,"Engine,P0",3
+"Tune tables vs real MLB rate baselines","Independent balance derivation (see ADR-0006); calibrate to believable baseball.",3,"Engine,P1",5
+"Ground-ball sub-resolution (FC/DP/TP)","Base-state + outs + speed aware subdivision of the GB band.",3,"Engine,P1",5
+"Steals, bunts, extra-base/deep-fly, park effects","Port remaining situational modules.",3,"Engine,P1",5
+"Derive attribute -> run-value -> price from the sim","Feed the salary-cap pricing from each attribute's measured run value.",4,"Engine,P2",3
+"Convex schema","games, teams, lineups, players, pitches (secret), at_bats (append-only log), rollups.",2,"Multiplayer,P0",3
+"Secret at-bat round-trip","pitch mutation (vault) -> swing mutation -> server resolution -> result; test that batter cannot read the pitch.",2,"Multiplayer,P0",5
+"Game state machine via mutations","innings/outs/bases/score updated by authoritative mutations.",2,"Multiplayer,P0",3
+"Realtime subscriptions for live at-bat","'pitch is in' -> swing -> shared result via reactive queries.",3,"Multiplayer,P1",3
+"Web push (VAPID) + scheduled turn reminders","'It's your turn' web push; scheduled-function reminders.",3,"Multiplayer,P1",3
+"Async turn handling + timeouts","Turn ownership, deadlines, and timeout behavior.",3,"Multiplayer,P1",2
+"MLB Stats API ingest","Hitting + pitching season snapshot (two calls).",3,"Data,P1",3
+"Stat -> 1-5 attribute normalization","Cut tables + small-sample regression per the normalization spec.",3,"Data,P1",3
+"Draft-pool qualification","Filter pool: hitters >=300 PA, pitchers >=50 IP.",3,"Data,P1",1
+"Weekly scheduled stat refresh","Convex cron re-ingest + re-normalize; enables the scouting edge.",4,"Data,P2",2
+"Statcast/pybaseball polish","Sprint speed (Speed) + whiff/barrel (pitcher Movement).",4,"Data,P2",3
+"Custom signature player creation","12-point off-cap avatar build.",3,"Roster,P1",3
+"Player-pool browser","Filter/sort/search by position/attribute/price.",3,"Roster,P1",3
+"Salary-cap roster build","Shared pool, positional requirements, $1 floor, all-elite busts the cap.",3,"Roster,P1",5
+"Deadline + greedy-knapsack autodraft","Auto-fill open slots under remaining cap at the deadline.",3,"Roster,P1",3
+"Six teams + schedule","Create teams and a season schedule.",3,"League,P1",2
+"Standings + box scores","Maintained rollups for W-L and per-game lines.",3,"League,P1",3
+"Season flow, playoffs, awards","End-to-end season lifecycle.",4,"League,P2",5
+"Career and head-to-head stat lines","The 'vs your nephew' splits.",4,"League,P2",5
+"PWA shell + Clerk auth screens","Installable mobile-first shell; sign-in.",3,"UX,P1",3
+"At-bat UI + field/bases + scoreboard","Secret-safe pitch/swing entry; field and score.",3,"UX,P1",5
+"Lineup management + odds preview","Lineup editing; client-side engine near-miss/odds preview.",3,"UX,P1",3
+"Replays + result sharing","Replays from the at-bat log; shareable, trash-talk-friendly results.",4,"UX,P2",3
+"Visual polish + brand pass","Lock the 'Sandlot ___' name; visual refinement.",4,"UX,P2",3
