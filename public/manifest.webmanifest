@@ -1,0 +1,10 @@
+{
+  "name": "Sandlot",
+  "short_name": "Sandlot",
+  "description": "A turn-based baseball strategy game",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a3a1a",
+  "icons": []
+}
