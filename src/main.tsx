@@ -1,8 +1,8 @@
+import { ClerkProvider, useAuth } from '@clerk/react'
+import { ConvexReactClient } from 'convex/react'
+import { ConvexProviderWithClerk } from 'convex/react-clerk'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ClerkProvider, useAuth } from '@clerk/react'
-import { ConvexProviderWithClerk } from 'convex/react-clerk'
-import { ConvexReactClient } from 'convex/react'
 import App from './App.tsx'
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string)
