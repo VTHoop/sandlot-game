@@ -1,13 +1,21 @@
+rc: .lefthook-rc.sh
+
 pre-commit:
   parallel: true
   jobs:
     - name: lint
-      run: pnpm lint
-
+      glob: "**/*.{js,ts,jsx,tsx,json,jsonc}"
+      run: pnpm exec biome check {staged_files}
     - name: typecheck
       run: pnpm typecheck
 
 pre-push:
   jobs:
+    - name: lint
+      run: pnpm lint
+    - name: typecheck
+      run: pnpm typecheck
     - name: test
       run: pnpm test
+    - name: coverage
+      run: pnpm test:coverage
