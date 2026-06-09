@@ -8,6 +8,7 @@ export default defineConfig({
     environment: 'jsdom',
     coverage: {
       provider: 'v8',
+      reporter: ['lcov', 'text'],
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/main.tsx', 'src/vite-env.d.ts'],
       thresholds: {

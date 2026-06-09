@@ -1,0 +1,5 @@
+{
+  "_note": "Scores deferred — CodeScene composite KPI requires hotspot history. Run a full scan and update after ~10+ commits exist across multiple files.",
+  "average_code_health": 0,
+  "hotspot_code_health": 0
+}
