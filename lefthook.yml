@@ -15,7 +15,6 @@ pre-push:
       run: pnpm lint
     - name: typecheck
       run: pnpm typecheck
-    - name: test
-      run: pnpm test
     - name: coverage
       run: pnpm test:coverage
+    # e2e:smoke is CI-only — requires VITE_CONVEX_URL + VITE_CLERK_PUBLISHABLE_KEY
