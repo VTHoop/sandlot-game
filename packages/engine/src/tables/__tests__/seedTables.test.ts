@@ -43,15 +43,17 @@ describe('monotonicity', () => {
     ['HAND_SAME', HAND_SAME],
     ['HAND_OPPOSITE', HAND_OPPOSITE],
   ] as [string, OutcomeTable][])('%s is non-decreasing across differentials -5..+5', (_, table) => {
-    for (let i = 0; i < table.length - 1; i++) {
-      expect(table[i]).toBeLessThanOrEqual(table[i + 1])
-    }
+    table.reduce((prev, curr) => {
+      expect(prev).toBeLessThanOrEqual(curr)
+      return curr
+    })
   })
 
   it('K is non-increasing across differentials -5..+5', () => {
-    for (let i = 0; i < K.length - 1; i++) {
-      expect(K[i]).toBeGreaterThanOrEqual(K[i + 1])
-    }
+    K.reduce((prev, curr) => {
+      expect(prev).toBeGreaterThanOrEqual(curr)
+      return curr
+    })
   })
 })
 
