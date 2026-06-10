@@ -88,6 +88,12 @@ describe('accessor clamping', () => {
     expect(getK(-99)).toBe(getK(-5))
     expect(getK(99)).toBe(getK(5))
   })
+
+  it('getSingle clamps to 0 when extra-base hits exceed hit-total', () => {
+    // contactMovDiff=-5 → HIT_TOTAL=72; powerVelDiff=+5 → HR=37;
+    // speedAwaDiff=+5 → TRIPLE=8, DOUBLE=50, IF1B=14 → XBH sum=109 > 72
+    expect(getSingle(-5, 5, 5)).toBe(0)
+  })
 })
 
 // ─── Accessor: league-average baseline (diff=0) ───────────────────────────────
