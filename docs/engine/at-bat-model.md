@@ -1,63 +1,56 @@
-# At-Bat Model — RangeFinder vocabulary
+# At-bat model — vocabulary & structure
 
-Orientation for any agent or developer working on the engine. The RangeFinder is the core at-bat resolution algorithm: given two submitted numbers and eight player attributes, it produces a single game outcome.
+The shared mental model for the at-bat resolution engine: what the recurring terms (**RangeFinder**, **outcome bands**, **front half**, **the sheet**) mean and how the pieces fit. This is **structure only** — the conceptual model, not the tuned numbers. Safe to commit: game *mechanics and structure* aren't copyrightable, and this doc contains **no** verbatim width tables from the source calculator (see [ADR-0006](../adr/0006-ip-branding-and-data-sourcing.md)). The actual tuned values are re-derived via our own simulation and live in code; the original decoded reference is kept **private, out of this repo**.
 
----
+## Glossary
 
-## The hidden-number duel
+- **Hidden-number duel** — the core mechanic ([CONTEXT.md](../CONTEXT.md)): pitcher submits a secret number `1–1000`, batter submits one, and the outcome is decided by *how close* they are.
+- **Difference** — the absolute distance between the two numbers, folded into `0–499` (closer guess → smaller difference → better outcome for the batter). This single value is what the bands partition.
+- **Outcome bands** — the `0–499` difference line is partitioned into an **ordered stack of outcomes, best → worst**. Whichever band the difference lands in is the result of the at-bat. A band's **width** comes from a table lookup keyed by the matchup (see *attribute differentials*); wider band = more likely outcome.
+- **RangeFinder** — the *assembler*: the logic that takes the attribute differentials, looks up each band's width, and lays the bands out end-to-end into the final partition. Named after the source workbook tab that does this.
+- **"The sheet"** — the reverse-engineered source calculator (a Google Sheets / Excel workbook). It is a **private reference for structure only**, deliberately **not committed** (ADR-0006). "Unit-test against the sheet's values" means: validate our port against values captured from that private reference, not that the sheet ships here.
+- **Front half / back half** — the two halves of the band stack, split by *how each band's width is computed* (see below).
 
-The pitcher secretly submits a number **1–1000**. The batter secretly submits a number **1–1000**. The server computes the absolute difference (`|pitcher − batter|`) — the **score** — and maps it onto the outcome partition. This score is server-only; neither player sees the other's number until resolution is complete.
+## The band stack
 
-**Practical range:** the maximum possible score is 999 (1 vs 1000). The difference space is always **0–999**, but the RangeFinder is calibrated on a **0–499** half-range (symmetry: `|p − b|` and `|b − p|` are the same, so a uniform random pair produces a mean score near 500; the half-range treats the game as if both players independently draw from 0–499).
+The difference line partitions into this fixed order, best → worst:
 
----
+```
+HR → 3B → 2B → 1B → IF1B → BB → FO → PO → GB/GO (→ FC/DP/TP family) → K
+```
 
-## Outcome bands
-
-The 0–499 range is partitioned into contiguous, non-overlapping bands, each representing one outcome. A score that falls inside a band resolves to that outcome. The bands are built from **width tables** indexed by attribute differentials; wider bands are more likely outcomes.
-
-### Band order — front half (power outcomes)
-
-The **front half** is stacked from the **low end** of the range. Each band is placed immediately after the previous one (cumulative layout):
-
-| # | Outcome | Driver differential |
-|---|---------|---------------------|
-| 1 | **HR** | Power − Velocity |
-| 2 | **3B** | Speed − Awareness |
-| 3 | **2B** | Speed − Awareness |
-| 4 | **1B** | Contact − Movement (derived: hit-total minus extra-base hits and IF1B) |
-| 5 | **IF1B** | Speed − Awareness |
-| 6 | **BB** | Eye − Command |
-
-### Back half (out outcomes) — separate ticket
-
-The remainder of the 0–499 range (after BB) is the **back half**: fly-outs (FO), pop-outs (PO), ground-balls (GB), and strikeouts (K). This is the **elastic** half — it absorbs whatever space the front half doesn't use, so the partition always covers 0–499 exactly.
-
----
+- **HR** = home run, **3B/2B/1B** = triple/double/single, **IF1B** = infield single, **BB** = walk, **FO/PO** = fly/pop out, **GB/GO** = ground ball/out (which sub-resolves into fielder's-choice / double-play / triple-play by base-state, outs, and speed), **K** = strikeout.
+- Order is fixed; only the **widths** move with the matchup.
 
 ## Attribute differentials
 
-Each width is a function of a single **differential** — the batter's attribute minus the pitcher's attribute, clamped to **[−5, +5]**. The width tables (`seedTables.ts`) have 11 entries indexed by `diff + 5` (so index 0 = diff −5, index 5 = diff 0, index 10 = diff +5).
+Each band's width is keyed by a `batter − pitcher` attribute differential, **clamped to `[−5, +5]`**. The pairings (which attribute matchup drives which outcomes):
 
-A positive differential means the batter has the edge on that matchup axis; a negative differential favors the pitcher.
+| Differential | Drives |
+|---|---|
+| **Power − Velocity** | HR, FO, PO |
+| **Contact − Movement** | hit-total & K |
+| **Speed − Awareness** | 2B, 3B, IF1B |
+| **Eye − Command** | BB |
 
----
+(Attribute definitions and how real stats map onto the `1–5` scale: [attribute-normalization.md](./attribute-normalization.md).)
 
-## RangeFinder — assembly
+## Front half vs. back half — why the split
 
-The **front-half assembler** (`assembleFrontHalf`) takes the four differentials and returns an object of named bands, each with `{lo, hi}` boundaries (inclusive). The assembler is:
+The two halves differ in **how each band's width is computed**, which is why they're built (and tested) separately:
+
+- **Front half — `HR → BB`.** A clean **cumulative sum** of independent table lookups: look up each band's width, lay them out one after another from `0`. Deterministic and self-contained, so it's **unit-tested directly** against captured reference values.
+- **Back half — `FO / PO / GB / K`.** An **elastic remainder**: K is anchored at the far end (`499`), GB stretches to fill the gap, and FO/PO split the leftover. Because it's interdependent rather than a simple sum, it's verified by **Monte Carlo simulation** against public MLB rate baselines rather than by exact-value unit tests.
+
+After the bands are assembled, later stages apply on top: **ground-ball sub-resolution**, **park effects**, then **steals / bunts / extra-base** (all separate roadmap items).
+
+## RangeFinder — assembly contract
+
+The **front-half assembler** (`assembleFrontHalf` in `rangeFinder/frontHalf.ts`) takes the four differentials and returns an object of named bands, each with `{lo, hi}` boundaries (inclusive, 0-indexed). The assembler is:
 
 - **Deterministic**: same inputs always produce the same bands.
 - **Self-contained**: no I/O, no randomness, no clock.
-- **Injectable**: the accessor functions are a parameter so unit tests can freeze the tables without touching `seedTables.ts`.
-
----
-
-## "The sheet"
-
-Informal term for the private BBTN workbook (`Copy of BBTN 3.12.9 TYGEN 2 Runners.xlsx`). It is the **reference for understanding structure**, not a source we copy. Our seed tables are independently derived from public MLB rate baselines (see `seedTables.ts` provenance header). The parity lane in `frontHalf.test.ts` (skipped in CI) optionally compares our assembler output against captured sheet values to confirm structural equivalence.
-
----
+- **Injectable**: the accessor functions are a parameter so unit tests can freeze the tables without touching `seedTables.ts` — SAN-15 retuning never breaks the structural test suite.
 
 ## Key files
 
@@ -69,3 +62,9 @@ Informal term for the private BBTN workbook (`Copy of BBTN 3.12.9 TYGEN 2 Runner
 | `packages/engine/reference/` | Gitignored local parity fixtures (never committed) |
 | `docs/engine/attribute-normalization.md` | How MLB stats → 1–5 attributes |
 | `docs/adr/0006-*` | IP & data-sourcing rules |
+
+## Where the details live
+
+- **Conceptual / structural (here):** this doc + [attribute-normalization.md](./attribute-normalization.md).
+- **Tuned numbers:** re-derived via our simulation harness and validated against public MLB baselines (ADR-0006) — they live in code, not prose.
+- **Decoded source reference (private, do *not* commit):** `/Users/hoop/dev/bbtn-engine-spec.md` and the source workbook on disk — see [CONTEXT.md → Build references](../CONTEXT.md).

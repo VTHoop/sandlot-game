@@ -12,6 +12,7 @@ Orientation for any human or agent opening this repo. **`AGENTS.md` is the worki
 - **Design narrative (outside the repo, in this machine's memory):** `/Users/hoop/.claude/projects/-Users-hoop-dev/memory/` — `bbtn-game-concept`, `bbtn-poc-plan`, `bbtn-attribute-normalization`, `bbtn-engine-extracted`, `sandlot-foundation` (indexed in `MEMORY.md`). These hold the product/design "why" that predates this repo.
 
 ## Build references
+- **At-bat model (vocabulary & structure):** `docs/engine/at-bat-model.md` — what *RangeFinder*, *outcome bands*, *front/back half*, and *"the sheet"* mean. Start here before reading any engine ticket. Structure only, IP-safe.
 - **Attribute system:** `docs/engine/attribute-normalization.md` (in-repo, safe to commit — derived from *public* MLB distributions).
 - **Decoded at-bat engine:** `/Users/hoop/dev/bbtn-engine-spec.md` — ⚠️ **PRIVATE, do NOT commit** (it contains the reverse-engineered source calculator's verbatim tables; see ADR-0006). Use it locally to understand the engine's *structure*, then **re-derive the numbers via simulation** for what ships.
 - **Source material (private, on disk):** `/Users/hoop/Downloads/Copy of BBTN 3.12.9 TYGEN 2 Runners.xlsx` (the calculator) and `…/Official Baseball by the Numbers Rules and Guidelines (Version 1).txt` (the rules).
@@ -21,4 +22,4 @@ Orientation for any human or agent opening this repo. **`AGENTS.md` is the worki
 - **IP & data (ADR-0006):** use the *mechanic*, not the original brand/text/tables. **Never commit MLB data** to this public repo. Re-derive balance; credit `r/baseballbythenumbers` as inspiration.
 
 ## Where to start building
-`docs/ROADMAP.md`, critical path: **Engine → secret at-bat round-trip → data pipeline → roster/cap → league → UX.** The first unblocked move (no external accounts) is the pure-TS at-bat engine: port the RangeFinder front half (HR→BB) with unit tests, then the elastic back half, then the Monte Carlo harness.
+`docs/ROADMAP.md`, critical path: **Engine → secret at-bat round-trip → data pipeline → roster/cap → league → UX.** The first unblocked move (no external accounts) is the pure-TS at-bat engine: port the RangeFinder front half (HR→BB) with unit tests, then the elastic back half, then the Monte Carlo harness. New to these terms? Read `docs/engine/at-bat-model.md` first.

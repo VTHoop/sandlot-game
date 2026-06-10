@@ -20,6 +20,7 @@ Prove the core loop is fun and that the async social dynamic creates pull, among
 - [P1] Set up Linear workspace; import this roadmap; optional Convex/Linear/Codacy/CodeScene MCP servers
 
 ### Project: At-Bat Engine & Simulation  *(P0 — the core)*
+> Terminology (*RangeFinder*, *outcome bands*, *front/back half*, *"the sheet"*): see `docs/engine/at-bat-model.md`.
 - [P0] Port RangeFinder **front half** (HR→BB cumulative bands) to pure TS; parity-test against local fixtures (skipped in CI); committed tests assert band-structure invariants
 - [P0] Reference tables: local gitignored parity fixtures + committed seed tables derived from public MLB rates
 - [P0] Implement the **elastic back half** (FO/PO/GB/K); verify by simulation
