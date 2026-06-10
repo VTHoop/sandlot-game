@@ -80,6 +80,42 @@ Before marking the issue done, post a comment covering:
 ### Working with multiple agents
 This workflow is multi-agent-ready: the writer agent and an independent reviewer/QA agent must not be the same context. Use `/code-review` (fresh subagent) for adversarial review against the issue spec — the author never grades its own work. Background loops (e.g. refactor/health bots) are assistants, **not** a substitute for fixing your own regressions before merge.
 
+### Automatic Code Review Protocol
+
+After completing code edits in a turn, you MUST run the following review cycle before presenting results to the user. This is not optional.
+
+**Skip this cycle only if:** the turn contained no code edits (reads, searches, planning, or conversation only).
+
+#### Step 1 — Spawn the Challenger
+Use the Agent tool with `subagent_type: "challenger"`. The agent definition lives at `.claude/agents/challenger.md`. Provide it:
+- The files you edited (paths)
+- A summary of what you changed
+- The **artifact type** (e.g. React component, Convex mutation/query/action, TypeScript engine module, Vitest test suite, Playwright spec, config file, markdown workflow spec)
+
+The challenger is read-only (no Edit/Write) and will return either `LGTM` or a single specific concern.
+
+#### Step 2 — Arbitrate yourself
+Evaluate the challenger's concern directly. You have full context the challenger does not. Rule on:
+1. Is the concern valid and worth addressing?
+2. If yes: what specifically should change and why?
+3. If no: why is the original approach correct?
+
+#### Step 3 — Act on the ruling, then output a findings summary
+- If you sided with the challenger: implement the fix immediately.
+- If you sided with your original approach: note why the concern was dismissed.
+
+Then present your work to the user followed by a **Review Findings** block in this format:
+
+```
+---
+**Review Findings**
+- **Challenger:** [one sentence — the concern raised]
+- **Ruling:** Upheld / Dismissed
+- **Reason:** [one sentence — why]
+- **Action:** [what was changed, or "none"]
+---
+```
+
 ---
 
 ## 2. Product Rules
@@ -108,7 +144,7 @@ This workflow is multi-agent-ready: the writer agent and an independent reviewer
 - **Notifications (beta):** **web push (VAPID)** via the PWA — acceptable at this scale (~half the family on Android, where web push is solid; iOS users guided through Add-to-Home-Screen manually). Email/SMS available as a fallback if needed.
 - **Future (if it grows):** Expo/React Native native app + real APNs/FCM push (Convex push component), when reliable cross-platform push matters at scale. Engine + Convex backend port over; only the UI shell is rebuilt.
 - **Data shape:** append-only at-bat log + authoritative current-state rows (**NOT full event sourcing**); stats via maintained rollups, aggregated in TS. Never aggregate raw events on the client.
-- **Quality:** Biome · tsc · Vitest (v8 coverage) · Playwright · Codacy · CodeScene
+- **Quality:** Biome · tsc · Vitest (v8 coverage) · Playwright · Codacy · CodeScene · Lefthook (git hooks)
 - **PM:** Linear (roadmap & issues). Package manager: pnpm.
 
 ### Key paths
