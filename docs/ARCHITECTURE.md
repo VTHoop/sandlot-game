@@ -4,7 +4,7 @@
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Client | React 18 + Vite 5 PWA | Mobile-first; hosted on Cloudflare Pages |
+| Client | React 18 + Vite 8 PWA | Mobile-first; hosted on Cloudflare Pages |
 | Backend / data / realtime | Convex | Mutations, queries, scheduled functions |
 | Auth | Clerk | JWT template → `ctx.auth` in server functions |
 | Package manager | pnpm 11 | Node 24; `pnpm-workspace.yaml` for build approvals |
