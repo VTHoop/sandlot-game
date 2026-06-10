@@ -20,8 +20,8 @@ Prove the core loop is fun and that the async social dynamic creates pull, among
 - [P1] Set up Linear workspace; import this roadmap; optional Convex/Linear/Codacy/CodeScene MCP servers
 
 ### Project: At-Bat Engine & Simulation  *(P0 — the core)*
-- [P0] Port RangeFinder **front half** (HR→BB cumulative bands) to pure TS; unit-test against sheet values
-- [P0] Transcribe Percentages + HandSwitcher tables as typed constants
+- [P0] Port RangeFinder **front half** (HR→BB cumulative bands) to pure TS; parity-test against local fixtures (skipped in CI); committed tests assert band-structure invariants
+- [P0] Reference tables: local gitignored parity fixtures + committed seed tables derived from public MLB rates
 - [P0] Implement the **elastic back half** (FO/PO/GB/K); verify by simulation
 - [P0] **Monte Carlo harness** — sim N at-bats/games; report AVG/OBP/SLG/HR%/K%/BB%/runs-per-game
 - [P1] Tune tables vs real MLB rate baselines (independent balance — see ADR-0006)
@@ -62,3 +62,10 @@ Prove the core loop is fun and that the async social dynamic creates pull, among
 - [P1] Lineup management; near-miss/odds preview (client-side engine read)
 - [P2] Replays from the at-bat log; trash-talk-friendly result sharing
 - [P2] Visual polish; brand pass (lock "Sandlot ___" name)
+
+---
+
+### Future expansion (post-beta — see [ADR-0008](./adr/0008-commercial-expansion-paths-deferred.md))
+Not scheduled; recorded so the architecture keeps them open. The only guard that costs anything now: keep the player-pool provider behind a clean interface (the engine sees only 1–5 attributes).
+- **Path B — fictional universe:** distribution-modeled player generation + simulated living season (hidden true talent, noisy weekly stats) to recreate the scouting metagame without real-world data.
+- **Path A2 — real names mode:** CBC-backed names + stats (no team marks) on a paid data feed, as a revenue-funded mode on top of Path B.

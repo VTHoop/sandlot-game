@@ -75,7 +75,7 @@ Before marking the issue done, post a comment covering:
 ### ADRs & docs
 - ADRs live in `docs/adr/`, created **in the same commit** as the code. **Never edit an existing ADR — supersede it** with a new one.
 - **When:** new dependency, storage/data strategy, platform target, core abstraction, cross-cutting pattern, IP/licensing call. **Not for:** bug fixes, styling, refactors.
-- After any new Supabase function/table, component/hook, data-model change, or integration: update `docs/ARCHITECTURE.md` / `docs/ABSTRACTIONS.md` in the same commit.
+- After any new Convex function/table, component/hook, data-model change, or integration: update `docs/ARCHITECTURE.md` / `docs/ABSTRACTIONS.md` in the same commit.
 
 ### Working with multiple agents
 This workflow is multi-agent-ready: the writer agent and an independent reviewer/QA agent must not be the same context. Use `/code-review` (fresh subagent) for adversarial review against the issue spec — the author never grades its own work. Background loops (e.g. refactor/health bots) are assistants, **not** a substitute for fixing your own regressions before merge.
