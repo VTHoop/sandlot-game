@@ -144,7 +144,7 @@ Then present your work to the user followed by a **Review Findings** block in th
 - **Notifications (beta):** **web push (VAPID)** via the PWA — acceptable at this scale (~half the family on Android, where web push is solid; iOS users guided through Add-to-Home-Screen manually). Email/SMS available as a fallback if needed.
 - **Future (if it grows):** Expo/React Native native app + real APNs/FCM push (Convex push component), when reliable cross-platform push matters at scale. Engine + Convex backend port over; only the UI shell is rebuilt.
 - **Data shape:** append-only at-bat log + authoritative current-state rows (**NOT full event sourcing**); stats via maintained rollups, aggregated in TS. Never aggregate raw events on the client.
-- **Quality:** Biome · tsc · Vitest (v8 coverage) · Playwright · Codacy · CodeScene
+- **Quality:** Biome · tsc · Vitest (v8 coverage) · Playwright · Codacy · CodeScene · Lefthook (git hooks)
 - **PM:** Linear (roadmap & issues). Package manager: pnpm.
 
 ### Key paths

@@ -37,10 +37,14 @@ if removed | grep -qE '^-\s*(it|test|describe)\s*\('; then
   exit 2
 fi
 
-# 3. Assertion removed
-if removed | grep -qE 'expect\s*\('; then
-  printf 'TDD guard: assertion (expect) removed from %s — restore or fix the assertion rather than removing it.\n' "$file_path"
-  exit 2
+# 3. Assertion removed (test files only; net-count gate so refactors don't false-trigger)
+if printf '%s\n' "$file_path" | grep -qE '\.(test|spec)\.(ts|tsx|js|jsx)$'; then
+  removed_expect=$(removed | grep -cE 'expect\s*\(' || true)
+  added_expect=$(added   | grep -cE 'expect\s*\(' || true)
+  if (( removed_expect > 0 && removed_expect > added_expect )); then
+    printf 'TDD guard: assertions (expect) net-removed from %s — restore or fix the assertions rather than removing them.\n' "$file_path"
+    exit 2
+  fi
 fi
 
 # 4. Coverage threshold lowered (vitest/jest config files only)
