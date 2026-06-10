@@ -19,6 +19,9 @@ playwright-report/
 .DS_Store
 *.log
 
+# Agent auto-memory (lives under ~/.claude; never commit if it leaks into the repo)
+memory/
+
 # === Cardinal: never commit (see docs/adr/0006-ip-branding-and-data-sourcing.md) ===
 # The reverse-engineered source calculator / engine spec (IP — keep private/local):
 bbtn-engine-spec.md
