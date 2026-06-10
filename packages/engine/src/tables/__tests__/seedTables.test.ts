@@ -90,9 +90,9 @@ describe('accessor clamping', () => {
   })
 
   it('getSingle clamps to 0 when extra-base hits exceed hit-total', () => {
-    // contactMovDiff=-5 → HIT_TOTAL=72; powerVelDiff=+5 → HR=37;
-    // speedAwaDiff=+5 → TRIPLE=8, DOUBLE=50, IF1B=14 → XBH sum=109 > 72
-    expect(getSingle(-5, 5, 5)).toBe(0)
+    // contactMov=-5 → HIT_TOTAL=72; powerVel=+5 → HR=37;
+    // speedAwa=+5 → TRIPLE=8, DOUBLE=50, IF1B=14 → XBH sum=109 > 72
+    expect(getSingle({ contactMov: -5, powerVel: 5, speedAwa: 5 })).toBe(0)
   })
 })
 
@@ -120,7 +120,7 @@ describe('accessor diff-0 baseline', () => {
   })
 
   it('getSingle(0,0,0) is positive', () => {
-    expect(getSingle(0, 0, 0)).toBeGreaterThan(0)
+    expect(getSingle({ contactMov: 0, powerVel: 0, speedAwa: 0 })).toBeGreaterThan(0)
   })
 
   it('getHandSwitcher opposite > same at diff=0 (platoon advantage for batter)', () => {

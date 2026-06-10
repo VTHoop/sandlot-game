@@ -39,19 +39,21 @@ export function getK(contactMovDiff: number): number {
   return lookup(K, contactMovDiff)
 }
 
+export interface SingleDiffs {
+  contactMov: number
+  powerVel: number
+  speedAwa: number
+}
+
 /** 1B is derived: hit-total minus the carved-out extra-base hits and IF1B. */
-export function getSingle(
-  contactMovDiff: number,
-  powerVelDiff: number,
-  speedAwaDiff: number,
-): number {
+export function getSingle({ contactMov, powerVel, speedAwa }: SingleDiffs): number {
   return Math.max(
     0,
-    getHitTotal(contactMovDiff) -
-      getHr(powerVelDiff) -
-      getTriple(speedAwaDiff) -
-      getDouble(speedAwaDiff) -
-      getIf1b(speedAwaDiff),
+    getHitTotal(contactMov) -
+      getHr(powerVel) -
+      getTriple(speedAwa) -
+      getDouble(speedAwa) -
+      getIf1b(speedAwa),
   )
 }
 
