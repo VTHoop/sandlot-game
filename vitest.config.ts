@@ -4,12 +4,12 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react()],
   test: {
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'packages/*/src/**/*.test.ts'],
     environment: 'jsdom',
     coverage: {
       provider: 'v8',
       reporter: ['lcov', 'text'],
-      include: ['src/**/*.{ts,tsx}'],
+      include: ['src/**/*.{ts,tsx}', 'packages/*/src/**/*.ts'],
       exclude: ['src/main.tsx', 'src/vite-env.d.ts'],
       thresholds: {
         lines: 80,

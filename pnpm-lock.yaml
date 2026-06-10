@@ -64,6 +64,8 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@types/node@25.9.2)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@8.0.16(@types/node@25.9.2)(esbuild@0.27.0)(terser@5.48.0))
 
+  packages/engine: {}
+
 packages:
 
   '@apideck/better-ajv-errors@0.3.7':

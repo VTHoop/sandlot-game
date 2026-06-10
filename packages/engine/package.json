@@ -1,0 +1,9 @@
+{
+  "name": "@sandlot/engine",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./tables": "./src/tables/accessor.ts"
+  }
+}
