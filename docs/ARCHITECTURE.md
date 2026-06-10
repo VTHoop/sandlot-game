@@ -40,7 +40,7 @@ Located at `packages/engine/`. A pure, framework-free TypeScript package — no 
 | `reference/` | **Gitignored.** Local parity fixtures captured from the private workbook via `scripts/captureParity.py`. Never committed (ADR-0006). |
 | `scripts/` | **Gitignored.** The openpyxl capture script. Never committed (ADR-0006). |
 
-**TypeScript compilation:** engine source is included in the root `tsconfig.app.json` (`packages/engine/src`) and scanned by the root Vitest config. A dedicated engine `tsconfig.json` enforcing `lib: ["ES2020"]` (no DOM) is tracked as tech debt (SAN-43).
+**TypeScript compilation:** `packages/engine/tsconfig.json` (composite, `lib: ["ES2020"]`) is a TypeScript project reference — `tsc -b` type-checks the engine under its own lib before building the app. DOM APIs and JSX fail at the engine boundary. The root Vitest config scans engine tests directly (bundler mode, no project references).
 
 ## Key files
 
