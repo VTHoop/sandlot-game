@@ -11,7 +11,7 @@ The full contract lives in `AGENTS.md`. Key points:
 - **TDD mandatory** — red → green → refactor, one cycle per commit, failing regression test first for bugs. **The human owns the assertions**; agents may not weaken or delete tests to pass; commit the failing test as a checkpoint.
 - **Light PR flow** — a PR per task (even solo), with the `/code-review` agent plus Codacy and CodeScene checks visible in PR history; squash-merge to `main`.
 - **Quality gates:** ratcheting **CodeScene** code-health + **Codacy Guardrails** security (free OSS tiers, since the repo is public), and **Vitest** new-code coverage. Never bypass (`--no-verify`) or lower a gate.
-- **Linear** for issues/roadmap; completion comment per issue. **Public repo.**
+- **Linear** for issues/roadmap; completion comment per issue. **Public repo.** *(Manual modifications; MCP disabled to reduce token usage.)*
 - **Proportionality:** we deliberately **defer** Codecov and SonarQube until team size / scale warrant them — documented here rather than adopted prematurely.
 
 ## Consequences
