@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import type { AttributeDiff } from '../../tables/accessor'
 import type { BackHalfAccessors, BackHalfBands } from '../backHalf'
 import { assembleBackHalf } from '../backHalf'
 import { assembleFrontHalf } from '../frontHalf'
@@ -18,9 +19,9 @@ function clampIdx(diff: number): number {
 }
 
 const frozenAccessors = {
-  getFo: (d: number) => FZ_FO[clampIdx(d)],
-  getPo: (d: number) => FZ_PO[clampIdx(d)],
-  getK: (d: number) => FZ_K[clampIdx(d)],
+  getFo: (d) => FZ_FO[clampIdx(d)],
+  getPo: (d) => FZ_PO[clampIdx(d)],
+  getK: (d) => FZ_K[clampIdx(d)],
 } satisfies BackHalfAccessors
 
 const FIXED_BB_HI_PLUS_ONE = 100
@@ -51,13 +52,13 @@ function expectedFrozenBands(powerVel: number, contactMov: number): BackHalfBand
 // Generated outside the test body to keep the test function flat (avoids the
 // Deep Nested Complexity CodeScene finding for 4-level for-loops inside it()).
 
-const DIFFS = Array.from({ length: 11 }, (_, i) => i - 5)
+const DIFFS = Array.from({ length: 11 }, (_, i) => (i - 5) as AttributeDiff)
 
 interface AllDiffs {
-  powerVel: number
-  speedAwa: number
-  eyeCmd: number
-  contactMov: number
+  powerVel: AttributeDiff
+  speedAwa: AttributeDiff
+  eyeCmd: AttributeDiff
+  contactMov: AttributeDiff
 }
 
 const ALL_DIFF_COMBINATIONS: AllDiffs[] = DIFFS.flatMap((powerVel) =>
@@ -86,8 +87,9 @@ describe('band order', () => {
 describe('K right-anchor', () => {
   for (let d = -5; d <= 5; d++) {
     it(`K.hi = 499 at differential ${d >= 0 ? `+${d}` : d}`, () => {
+      const diff = d as AttributeDiff
       const bands = assembleBackHalf(
-        { powerVel: d, contactMov: d },
+        { powerVel: diff, contactMov: diff },
         FIXED_BB_HI_PLUS_ONE,
         frozenAccessors,
       )
@@ -135,8 +137,9 @@ describe('partition coverage', () => {
 describe('GB non-negative (frozen tables)', () => {
   for (let d = -5; d <= 5; d++) {
     it(`GB.hi >= GB.lo at differential ${d >= 0 ? `+${d}` : d}`, () => {
+      const diff = d as AttributeDiff
       const bands = assembleBackHalf(
-        { powerVel: d, contactMov: d },
+        { powerVel: diff, contactMov: diff },
         FIXED_BB_HI_PLUS_ONE,
         frozenAccessors,
       )
@@ -150,9 +153,14 @@ describe('GB non-negative (frozen tables)', () => {
 describe('exact boundaries (frozen table, full [-5..+5] range)', () => {
   for (let d = -5; d <= 5; d++) {
     it(`differential ${d >= 0 ? `+${d}` : d}: bands match frozen table exactly`, () => {
+      const diff = d as AttributeDiff
       const expected = expectedFrozenBands(d, d)
       expect(
-        assembleBackHalf({ powerVel: d, contactMov: d }, FIXED_BB_HI_PLUS_ONE, frozenAccessors),
+        assembleBackHalf(
+          { powerVel: diff, contactMov: diff },
+          FIXED_BB_HI_PLUS_ONE,
+          frozenAccessors,
+        ),
       ).toEqual(expected)
     })
   }
@@ -163,9 +171,9 @@ describe('exact boundaries (frozen table, full [-5..+5] range)', () => {
 describe('error: GB negative', () => {
   it('throws RangeError when FO + PO + K widths exceed available back-half space', () => {
     const overflowAccessors = {
-      getFo: (_d: number) => 200,
-      getPo: (_d: number) => 200,
-      getK: (_d: number) => 200,
+      getFo: (_d) => 200,
+      getPo: (_d) => 200,
+      getK: (_d) => 200,
     } satisfies BackHalfAccessors
     expect(() => assembleBackHalf({ powerVel: 0, contactMov: 0 }, 200, overflowAccessors)).toThrow(
       RangeError,
@@ -197,7 +205,9 @@ describe('smoke test (live seed tables, full differential grid)', () => {
   it('K.hi = 499 at every differential combination (live tables)', () => {
     for (let powerVel = -5; powerVel <= 5; powerVel++) {
       for (let contactMov = -5; contactMov <= 5; contactMov++) {
-        const bands = assembleBackHalf({ powerVel, contactMov }, 170)
+        const pv = powerVel as AttributeDiff
+        const cm = contactMov as AttributeDiff
+        const bands = assembleBackHalf({ powerVel: pv, contactMov: cm }, 170)
         expect(bands.K.hi).toBe(499)
       }
     }
@@ -206,8 +216,10 @@ describe('smoke test (live seed tables, full differential grid)', () => {
   it('partition covers exactly bbHiPlusOne through 499 at every differential combination (live tables)', () => {
     for (let powerVel = -5; powerVel <= 5; powerVel++) {
       for (let contactMov = -5; contactMov <= 5; contactMov++) {
+        const pv = powerVel as AttributeDiff
+        const cm = contactMov as AttributeDiff
         const bbHiPlusOne = 170
-        const bands = assembleBackHalf({ powerVel, contactMov }, bbHiPlusOne)
+        const bands = assembleBackHalf({ powerVel: pv, contactMov: cm }, bbHiPlusOne)
         expect(bands.FO.lo).toBe(bbHiPlusOne)
         Object.values(bands).reduce((prev, curr) => {
           expect(curr.lo).toBe(prev.hi + 1)
@@ -230,7 +242,7 @@ describe.skipIf(!FIXTURE_EXISTS)('parity lane (local fixture)', () => {
   if (!FIXTURE_EXISTS) return
 
   interface ParityEntry {
-    diffs: { powerVel: number; contactMov: number }
+    diffs: { powerVel: AttributeDiff; contactMov: AttributeDiff }
     bbHiPlusOne: number
     bands: BackHalfBands
   }

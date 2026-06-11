@@ -1,3 +1,4 @@
+import type { AttributeDiff } from '../tables/accessor'
 import { getFo, getK, getPo } from '../tables/accessor'
 
 /** Inclusive {lo, hi} boundary on the 0–499 score range. */
@@ -8,9 +9,9 @@ export interface Band {
 
 export interface BackHalfDiffs {
   /** Power − Velocity: drives FO and PO band widths */
-  powerVel: number
+  powerVel: AttributeDiff
   /** Contact − Movement: drives K band width */
-  contactMov: number
+  contactMov: AttributeDiff
 }
 
 /** Cumulative band partition for the four back-half outcomes (FO → PO → GB → K). */
@@ -27,9 +28,9 @@ export interface BackHalfBands {
  * Tests inject a frozen stand-in so SAN-15 retuning never breaks this suite.
  */
 export interface BackHalfAccessors {
-  getFo(diff: number): number
-  getPo(diff: number): number
-  getK(diff: number): number
+  getFo(diff: AttributeDiff): number
+  getPo(diff: AttributeDiff): number
+  getK(diff: AttributeDiff): number
 }
 
 const liveAccessors: BackHalfAccessors = { getFo, getK, getPo }

@@ -14,6 +14,13 @@
  * Seed values — deliberately rough; tuned against real MLB rates by SAN-15.
  */
 
+/**
+ * Validated batter−pitcher attribute differential in [−5, +5].
+ * Use `toAttributeDiff` from `accessor.ts` to convert a raw number at the system
+ * boundary; all internal engine functions accept this type, not plain `number`.
+ */
+export type AttributeDiff = -5 | -4 | -3 | -2 | -1 | 0 | 1 | 2 | 3 | 4 | 5
+
 /** 11-element tuple indexed by attribute differential: [-5, -4, …, 0, …, +4, +5] */
 export type OutcomeTable = readonly [
   number,

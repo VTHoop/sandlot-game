@@ -8,6 +8,7 @@ import {
   getK,
   getPo,
   getSingle,
+  toAttributeDiff,
 } from '../accessor'
 import type { OutcomeTable } from '../seedTables'
 import {
@@ -109,23 +110,24 @@ describe('checksum', () => {
 
 // ─── Accessor: clamping ───────────────────────────────────────────────────────
 
+// Clamping is now a boundary concern in toAttributeDiff rather than inside each accessor.
 describe('accessor clamping', () => {
   it('getHr clamps inputs below -5 to -5', () => {
-    expect(getHr(-10)).toBe(getHr(-5))
+    expect(toAttributeDiff(-10)).toBe(-5)
   })
 
   it('getHr clamps inputs above +5 to +5', () => {
-    expect(getHr(10)).toBe(getHr(5))
+    expect(toAttributeDiff(10)).toBe(5)
   })
 
   it('getBb clamps at both ends', () => {
-    expect(getBb(-99)).toBe(getBb(-5))
-    expect(getBb(99)).toBe(getBb(5))
+    expect(toAttributeDiff(-99)).toBe(-5)
+    expect(toAttributeDiff(99)).toBe(5)
   })
 
   it('getK clamps at both ends', () => {
-    expect(getK(-99)).toBe(getK(-5))
-    expect(getK(99)).toBe(getK(5))
+    expect(toAttributeDiff(-99)).toBe(-5)
+    expect(toAttributeDiff(99)).toBe(5)
   })
 
   it('getSingle clamps to 0 when extra-base hits exceed hit-total', () => {

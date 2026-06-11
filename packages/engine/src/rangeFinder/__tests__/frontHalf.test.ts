@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { type AttributeDiff, toAttributeDiff } from '../../tables/accessor'
 import type { FrontHalfAccessors, FrontHalfBands } from '../frontHalf'
 import { assembleFrontHalf } from '../frontHalf'
 
@@ -137,7 +138,8 @@ describe('cumulative layout', () => {
 describe('exact boundaries (frozen table, full [-5..+5] range)', () => {
   for (let d = -5; d <= 5; d++) {
     it(`differential ${d >= 0 ? `+${d}` : d}: bands match frozen table exactly`, () => {
-      const diffs = { powerVel: d, speedAwa: d, eyeCmd: d, contactMov: d }
+      const diff = toAttributeDiff(d)
+      const diffs = { powerVel: diff, speedAwa: diff, eyeCmd: diff, contactMov: diff }
       const expected = expectedFrozenBands(d, d, d, d)
       expect(assembleFrontHalf(diffs, frozenAccessors)).toEqual(expected)
     })
@@ -149,7 +151,13 @@ describe('exact boundaries (frozen table, full [-5..+5] range)', () => {
 describe('smoke test (live seed tables)', () => {
   it('produces a well-formed partition at every differential', () => {
     for (let d = -5; d <= 5; d++) {
-      const bands = assembleFrontHalf({ powerVel: d, speedAwa: d, eyeCmd: d, contactMov: d })
+      const diff = toAttributeDiff(d)
+      const bands = assembleFrontHalf({
+        powerVel: diff,
+        speedAwa: diff,
+        eyeCmd: diff,
+        contactMov: diff,
+      })
       const entries = Object.values(bands)
       // Starts at 0
       expect(entries[0].lo).toBe(0)
@@ -193,21 +201,28 @@ describe('smoke test (live seed tables)', () => {
 
 describe('clamp behavior', () => {
   it('input +7 clamps to +5 (same bands as +5)', () => {
-    expect(assembleFrontHalf({ powerVel: 7, speedAwa: 7, eyeCmd: 7, contactMov: 7 })).toEqual(
+    const c = toAttributeDiff(7)
+    expect(assembleFrontHalf({ powerVel: c, speedAwa: c, eyeCmd: c, contactMov: c })).toEqual(
       assembleFrontHalf({ powerVel: 5, speedAwa: 5, eyeCmd: 5, contactMov: 5 }),
     )
   })
 
   it('input -7 clamps to -5 (same bands as -5)', () => {
-    expect(assembleFrontHalf({ powerVel: -7, speedAwa: -7, eyeCmd: -7, contactMov: -7 })).toEqual(
+    const c = toAttributeDiff(-7)
+    expect(assembleFrontHalf({ powerVel: c, speedAwa: c, eyeCmd: c, contactMov: c })).toEqual(
       assembleFrontHalf({ powerVel: -5, speedAwa: -5, eyeCmd: -5, contactMov: -5 }),
     )
   })
 
   it('each diff clamps independently', () => {
-    expect(assembleFrontHalf({ powerVel: 99, speedAwa: -99, eyeCmd: 99, contactMov: -99 })).toEqual(
-      assembleFrontHalf({ powerVel: 5, speedAwa: -5, eyeCmd: 5, contactMov: -5 }),
-    )
+    expect(
+      assembleFrontHalf({
+        powerVel: toAttributeDiff(99),
+        speedAwa: toAttributeDiff(-99),
+        eyeCmd: toAttributeDiff(99),
+        contactMov: toAttributeDiff(-99),
+      }),
+    ).toEqual(assembleFrontHalf({ powerVel: 5, speedAwa: -5, eyeCmd: 5, contactMov: -5 }))
   })
 })
 
@@ -222,7 +237,12 @@ describe.skipIf(!FIXTURE_EXISTS)('parity lane (local fixture)', () => {
   if (!FIXTURE_EXISTS) return
 
   interface ParityEntry {
-    diffs: { powerVel: number; speedAwa: number; eyeCmd: number; contactMov: number }
+    diffs: {
+      powerVel: AttributeDiff
+      speedAwa: AttributeDiff
+      eyeCmd: AttributeDiff
+      contactMov: AttributeDiff
+    }
     bands: FrontHalfBands
   }
   interface ParityFixture {
