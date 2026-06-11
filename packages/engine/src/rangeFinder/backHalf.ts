@@ -70,9 +70,11 @@ export function assembleBackHalf(
   const gbHi = kLo - 1
   const gbWidth = gbHi - gbLo + 1
 
-  if (gbWidth < 0) {
+  // GB width of 0 would produce a band with hi < lo (structurally invalid);
+  // guard <= 0 so the assembler never returns degenerate output.
+  if (gbWidth <= 0) {
     throw new RangeError(
-      `GB band width is negative (${gbWidth}): FO+PO+K widths exceed available back-half space`,
+      `GB band width is ${gbWidth}: FO+PO+K widths exceed available back-half space`,
     )
   }
 
