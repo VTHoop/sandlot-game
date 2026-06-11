@@ -1,5 +1,4 @@
 import * as fs from 'node:fs'
-import * as path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { FrontHalfAccessors, FrontHalfBands } from '../frontHalf'
 import { assembleFrontHalf } from '../frontHalf'
@@ -201,10 +200,8 @@ describe('clamp behavior', () => {
 
 // ─── Parity lane (local only — skips in CI) ───────────────────────────────────
 
-const PARITY_FIXTURE = path.resolve(
-  import.meta.dirname,
-  '../../../reference/front-half-parity.json',
-)
+// Literal path relative to project root (where Vitest always runs).
+const PARITY_FIXTURE = 'packages/engine/reference/front-half-parity.json'
 const FIXTURE_EXISTS = fs.existsSync(PARITY_FIXTURE)
 
 describe.skipIf(!FIXTURE_EXISTS)('parity lane (local fixture)', () => {
