@@ -26,6 +26,9 @@ memory/
 packages/engine/reference/
 packages/engine/scripts/
 
+# === SAN-14: generated balance artifact (regenerated on demand; consumed by SAN-18) ===
+packages/engine/artifacts/
+
 # === Cardinal: never commit (see docs/adr/0006-ip-branding-and-data-sourcing.md) ===
 # The reverse-engineered source calculator / engine spec (IP — keep private/local):
 bbtn-engine-spec.md
