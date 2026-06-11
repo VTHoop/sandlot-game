@@ -1,4 +1,4 @@
-import * as fs from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { FrontHalfAccessors, FrontHalfBands } from '../frontHalf'
 import { assembleFrontHalf } from '../frontHalf'
@@ -19,7 +19,7 @@ function clampIdx(diff: number): number {
   return Math.max(-5, Math.min(5, diff)) + 5
 }
 
-const frozenAccessors: FrontHalfAccessors = {
+const frozenAccessors = {
   getHr: (d) => FZ_HR[clampIdx(d)],
   getTriple: (d) => FZ_TRIPLE[clampIdx(d)],
   getDouble: (d) => FZ_DOUBLE[clampIdx(d)],
@@ -34,7 +34,7 @@ const frozenAccessors: FrontHalfAccessors = {
         FZ_DOUBLE[clampIdx(speedAwa)] -
         FZ_IF1B[clampIdx(speedAwa)],
     ),
-}
+} satisfies FrontHalfAccessors
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -116,6 +116,19 @@ describe('cumulative layout', () => {
     for (const band of Object.values(bands)) {
       expect(band.hi).toBeGreaterThanOrEqual(band.lo)
     }
+  })
+
+  it('throws RangeError when a band width is zero (e.g. getSingle residual exhausted)', () => {
+    const zeroSingleAccessors = {
+      ...frozenAccessors,
+      getSingle: () => 0,
+    } satisfies FrontHalfAccessors
+    expect(() =>
+      assembleFrontHalf(
+        { powerVel: 0, speedAwa: 0, eyeCmd: 0, contactMov: 0 },
+        zeroSingleAccessors,
+      ),
+    ).toThrow(RangeError)
   })
 })
 
@@ -202,7 +215,7 @@ describe('clamp behavior', () => {
 
 // Literal path relative to project root (where Vitest always runs).
 const PARITY_FIXTURE = 'packages/engine/reference/front-half-parity.json'
-const FIXTURE_EXISTS = fs.existsSync(PARITY_FIXTURE)
+const FIXTURE_EXISTS = existsSync(PARITY_FIXTURE)
 
 describe.skipIf(!FIXTURE_EXISTS)('parity lane (local fixture)', () => {
   // Guard: skipIf still runs the describe body for collection; bail before any file I/O.
@@ -216,7 +229,10 @@ describe.skipIf(!FIXTURE_EXISTS)('parity lane (local fixture)', () => {
     entries: ParityEntry[]
   }
 
-  const fixture: ParityFixture = JSON.parse(fs.readFileSync(PARITY_FIXTURE, 'utf-8'))
+  const fixture: ParityFixture = JSON.parse(readFileSync(PARITY_FIXTURE, 'utf-8'))
+
+  // AC requires full [-5..+5] range (11 diffs) + at least 1 golden e2e matchup
+  expect(fixture.entries.length).toBeGreaterThanOrEqual(12)
 
   for (const entry of fixture.entries) {
     it(`parity match: diffs ${JSON.stringify(entry.diffs)}`, () => {

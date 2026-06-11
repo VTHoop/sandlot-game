@@ -74,20 +74,23 @@ export function assembleFrontHalf(
   const if1bWidth = accessors.getIf1b(speedAwa)
   const bbWidth = accessors.getBb(eyeCmd)
 
-  let cursor = 0
-  function nextBand(width: number): Band {
-    const lo = cursor
-    const hi = cursor + width - 1
-    cursor = hi + 1
-    return { lo, hi }
-  }
+  const widths: [keyof FrontHalfBands, number][] = [
+    ['HR', hrWidth],
+    ['3B', tripleWidth],
+    ['2B', doubleWidth],
+    ['1B', singleWidth],
+    ['IF1B', if1bWidth],
+    ['BB', bbWidth],
+  ]
 
-  return {
-    HR: nextBand(hrWidth),
-    '3B': nextBand(tripleWidth),
-    '2B': nextBand(doubleWidth),
-    '1B': nextBand(singleWidth),
-    IF1B: nextBand(if1bWidth),
-    BB: nextBand(bbWidth),
-  }
+  return widths.reduce<{ bands: Partial<FrontHalfBands>; cursor: number }>(
+    ({ bands, cursor }, [name, width]) => {
+      if (width <= 0) throw new RangeError(`band width must be positive, got ${width}`)
+      return {
+        bands: { ...bands, [name]: { lo: cursor, hi: cursor + width - 1 } },
+        cursor: cursor + width,
+      }
+    },
+    { bands: {}, cursor: 0 },
+  ).bands as FrontHalfBands
 }
