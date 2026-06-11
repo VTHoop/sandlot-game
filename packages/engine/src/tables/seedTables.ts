@@ -79,6 +79,20 @@ export const HIT_TOTAL: OutcomeTable = [72, 83, 94, 106, 115, 125, 136, 148, 161
 export const K: OutcomeTable = [165, 155, 145, 136, 124, 113, 103, 93, 84, 75, 67]
 
 /**
+ * FO band width keyed by Power − Velocity differential.
+ * Non-INCREASING: batter Power advantage reduces fly-out rate (more HRs instead).
+ * Baseline diff=0: 85 ≈ 17% × 500
+ */
+export const FO: OutcomeTable = [100, 96, 92, 89, 87, 85, 79, 74, 69, 64, 59]
+
+/**
+ * PO band width keyed by Power − Velocity differential.
+ * Non-INCREASING: batter Power advantage reduces pop-out rate (more hard contact).
+ * Baseline diff=0: 35 ≈ 7% × 500
+ */
+export const PO: OutcomeTable = [40, 38, 36, 36, 35, 35, 33, 30, 28, 25, 23]
+
+/**
  * HandSwitcher hit-total width for same-handed matchup (platoon disadvantage).
  * Narrower than OPPOSITE: same-handed slightly favors the pitcher.
  * Baseline diff=0: 120

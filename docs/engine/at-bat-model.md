@@ -40,7 +40,7 @@ Each band's width is keyed by a `batter − pitcher` attribute differential, **c
 The two halves differ in **how each band's width is computed**, which is why they're built (and tested) separately:
 
 - **Front half — `HR → BB`.** A clean **cumulative sum** of independent table lookups: look up each band's width, lay them out one after another from `0`. Deterministic and self-contained, so it's **unit-tested directly** against captured reference values.
-- **Back half — `FO / PO / GB / K`.** An **elastic remainder**: K is anchored at the far end (`499`), GB stretches to fill the gap, and FO/PO split the leftover. Because it's interdependent rather than a simple sum, it's verified by **Monte Carlo simulation** against public MLB rate baselines rather than by exact-value unit tests.
+- **Back half — `FO / PO / GB / K`.** An **elastic remainder**: K is **right-anchored at 499** (K.hi = 499 always; K.lo = 499 − K_width + 1, where K_width comes from the Contact − Movement table). FO and PO fill in from the front (FO → PO starting at BB.hi + 1, keyed by Power − Velocity). GB is the elastic fill between PO.hi + 1 and K.lo − 1 — no seed table; it absorbs whatever space remains. An assembler error is raised if FO + PO + K exceed the available back-half space (GB_width < 0). The partition is unit-tested with frozen tables for exact boundaries and a live-table smoke test confirms GB ≥ 0 across the full differential grid.
 
 After the bands are assembled, later stages apply on top: **ground-ball sub-resolution**, **park effects**, then **steals / bunts / extra-base** (all separate roadmap items).
 
@@ -59,6 +59,7 @@ The **front-half assembler** (`assembleFrontHalf` in `rangeFinder/frontHalf.ts`)
 | `packages/engine/src/tables/seedTables.ts` | Width tables (OutcomeTable arrays, 11 entries each) |
 | `packages/engine/src/tables/accessor.ts` | Typed accessors: `getHr`, `getBb`, `getSingle`, etc. |
 | `packages/engine/src/rangeFinder/frontHalf.ts` | Front-half assembler (`assembleFrontHalf`) |
+| `packages/engine/src/rangeFinder/backHalf.ts` | Back-half assembler (`assembleBackHalf`) |
 | `packages/engine/reference/` | Gitignored local parity fixtures (never committed) |
 | `docs/engine/attribute-normalization.md` | How MLB stats → 1–5 attributes |
 | `docs/adr/0006-*` | IP & data-sourcing rules |

@@ -1,5 +1,17 @@
 import type { OutcomeTable } from './seedTables'
-import { BB, DOUBLE, HAND_OPPOSITE, HAND_SAME, HIT_TOTAL, HR, IF1B, K, TRIPLE } from './seedTables'
+import {
+  BB,
+  DOUBLE,
+  FO,
+  HAND_OPPOSITE,
+  HAND_SAME,
+  HIT_TOTAL,
+  HR,
+  IF1B,
+  K,
+  PO,
+  TRIPLE,
+} from './seedTables'
 
 export type Handedness = 'same' | 'opposite'
 
@@ -37,6 +49,14 @@ export function getHitTotal(contactMovDiff: number): number {
 
 export function getK(contactMovDiff: number): number {
   return lookup(K, contactMovDiff)
+}
+
+export function getFo(powerVelDiff: number): number {
+  return lookup(FO, powerVelDiff)
+}
+
+export function getPo(powerVelDiff: number): number {
+  return lookup(PO, powerVelDiff)
 }
 
 export interface SingleDiffs {

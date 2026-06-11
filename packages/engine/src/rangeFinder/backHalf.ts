@@ -1,3 +1,5 @@
+import { getFo, getK, getPo } from '../tables/accessor'
+
 /** Inclusive {lo, hi} boundary on the 0–499 score range. */
 export interface Band {
   lo: number
@@ -30,10 +32,54 @@ export interface BackHalfAccessors {
   getK(diff: number): number
 }
 
+const liveAccessors: BackHalfAccessors = { getFo, getK, getPo }
+
+/**
+ * Assembles the back-half cumulative band partition.
+ *
+ * Given the two relevant attribute differentials and the front half's ending
+ * cursor (BB.hi + 1), produces the cumulative band-boundary partition for
+ * FO → PO → GB → K covering exactly BB.hi + 1 through 499.
+ *
+ * - K is right-anchored at 499: K.hi = 499 always; K.lo = 499 − K_width + 1.
+ * - GB is elastic: GB.lo = PO.hi + 1, GB.hi = K.lo − 1.
+ * - Throws RangeError if GB_width < 0 (FO + PO + K widths exceed available space).
+ * - Deterministic and self-contained: no I/O, clock, or randomness.
+ * - Out-of-range diffs are clamped to [−5, +5] by the accessor layer.
+ */
 export function assembleBackHalf(
-  _diffs: BackHalfDiffs,
-  _bbHiPlusOne: number,
-  _accessors?: BackHalfAccessors,
+  diffs: BackHalfDiffs,
+  bbHiPlusOne: number,
+  accessors: BackHalfAccessors = liveAccessors,
 ): BackHalfBands {
-  throw new Error('not implemented')
+  const { powerVel, contactMov } = diffs
+
+  const foWidth = accessors.getFo(powerVel)
+  const poWidth = accessors.getPo(powerVel)
+  const kWidth = accessors.getK(contactMov)
+
+  const foLo = bbHiPlusOne
+  const foHi = foLo + foWidth - 1
+  const poLo = foHi + 1
+  const poHi = poLo + poWidth - 1
+
+  const kLo = 500 - kWidth
+  const kHi = 499
+
+  const gbLo = poHi + 1
+  const gbHi = kLo - 1
+  const gbWidth = gbHi - gbLo + 1
+
+  if (gbWidth < 0) {
+    throw new RangeError(
+      `GB band width is negative (${gbWidth}): FO+PO+K widths exceed available back-half space`,
+    )
+  }
+
+  return {
+    FO: { lo: foLo, hi: foHi },
+    PO: { lo: poLo, hi: poHi },
+    GB: { lo: gbLo, hi: gbHi },
+    K: { lo: kLo, hi: kHi },
+  }
 }

@@ -1,7 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { getBb, getHandSwitcher, getHitTotal, getHr, getK, getSingle } from '../accessor'
+import {
+  getBb,
+  getFo,
+  getHandSwitcher,
+  getHitTotal,
+  getHr,
+  getK,
+  getPo,
+  getSingle,
+} from '../accessor'
 import type { OutcomeTable } from '../seedTables'
-import { BB, DOUBLE, HAND_OPPOSITE, HAND_SAME, HIT_TOTAL, HR, IF1B, K, TRIPLE } from '../seedTables'
+import {
+  BB,
+  DOUBLE,
+  FO,
+  HAND_OPPOSITE,
+  HAND_SAME,
+  HIT_TOTAL,
+  HR,
+  IF1B,
+  K,
+  PO,
+  TRIPLE,
+} from '../seedTables'
 
 const ALL_TABLES: Record<string, OutcomeTable> = {
   HR,
@@ -11,6 +32,8 @@ const ALL_TABLES: Record<string, OutcomeTable> = {
   BB,
   HIT_TOTAL,
   K,
+  FO,
+  PO,
   HAND_SAME,
   HAND_OPPOSITE,
 }
@@ -55,6 +78,20 @@ describe('monotonicity', () => {
       return curr
     })
   })
+
+  it('FO is non-increasing across differentials -5..+5 (Power advantage → fewer fly-outs)', () => {
+    FO.reduce((prev, curr) => {
+      expect(prev).toBeGreaterThanOrEqual(curr)
+      return curr
+    })
+  })
+
+  it('PO is non-increasing across differentials -5..+5 (Power advantage → fewer pop-outs)', () => {
+    PO.reduce((prev, curr) => {
+      expect(prev).toBeGreaterThanOrEqual(curr)
+      return curr
+    })
+  })
 })
 
 // ─── Checksum — guards against accidental edits ───────────────────────────────
@@ -66,7 +103,7 @@ describe('checksum', () => {
       .reduce((acc, v) => acc + v, 0)
     // Derived from public MLB 2024 rates; see seedTables.ts provenance header.
     // If this fails, a table value was accidentally changed — re-derive, don't adjust this number.
-    expect(total).toBe(6625)
+    expect(total).toBe(7878)
   })
 })
 
@@ -127,5 +164,23 @@ describe('accessor diff-0 baseline', () => {
 
   it('getHandSwitcher opposite > same at diff=0 (platoon advantage for batter)', () => {
     expect(getHandSwitcher('opposite', 0)).toBeGreaterThan(getHandSwitcher('same', 0))
+  })
+
+  it('getFo(0) reflects MLB fly-out rate ≈ 17% × 500 ≈ 85 ±15', () => {
+    expect(getFo(0)).toBeGreaterThanOrEqual(70)
+    expect(getFo(0)).toBeLessThanOrEqual(100)
+  })
+
+  it('getPo(0) reflects MLB pop-out rate ≈ 7% × 500 ≈ 35 ±10', () => {
+    expect(getPo(0)).toBeGreaterThanOrEqual(25)
+    expect(getPo(0)).toBeLessThanOrEqual(45)
+  })
+
+  it('getFo narrows as powerVel diff increases (Power advantage → fewer fly-outs)', () => {
+    expect(getFo(5)).toBeLessThan(getFo(-5))
+  })
+
+  it('getPo narrows as powerVel diff increases (Power advantage → fewer pop-outs)', () => {
+    expect(getPo(5)).toBeLessThan(getPo(-5))
   })
 })
