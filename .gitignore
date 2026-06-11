@@ -19,7 +19,7 @@ playwright-report/
 .DS_Store
 *.log
 
-# Claude Code session memory
+# Agent auto-memory (lives under ~/.claude; never commit if it leaks into the repo)
 memory/
 
 # === SAN-12: local parity reference and capture script (gitignored per ADR-0006) ===

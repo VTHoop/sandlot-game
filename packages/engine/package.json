@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    "./tables": "./src/tables/accessor.ts"
+    "./tables": "./src/tables/accessor.ts",
+    "./rangeFinder": "./src/rangeFinder/frontHalf.ts"
   }
 }
