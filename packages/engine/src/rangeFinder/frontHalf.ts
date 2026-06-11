@@ -1,14 +1,15 @@
+import type { AttributeDiff } from '../tables/accessor'
 import { getBb, getDouble, getHr, getIf1b, getSingle, getTriple } from '../tables/accessor'
 
 export interface FrontHalfDiffs {
   /** Power − Velocity: drives HR band width */
-  powerVel: number
+  powerVel: AttributeDiff
   /** Speed − Awareness: drives 3B, 2B, and IF1B band widths */
-  speedAwa: number
+  speedAwa: AttributeDiff
   /** Eye − Command: drives BB band width */
-  eyeCmd: number
+  eyeCmd: AttributeDiff
   /** Contact − Movement: drives 1B width via hit-total residual */
-  contactMov: number
+  contactMov: AttributeDiff
 }
 
 export interface Band {
@@ -34,12 +35,16 @@ export interface FrontHalfBands {
  * Tests inject a frozen stand-in so SAN-15 retuning never breaks this suite.
  */
 export interface FrontHalfAccessors {
-  getHr(diff: number): number
-  getTriple(diff: number): number
-  getDouble(diff: number): number
-  getSingle(diffs: { contactMov: number; powerVel: number; speedAwa: number }): number
-  getIf1b(diff: number): number
-  getBb(diff: number): number
+  getHr(diff: AttributeDiff): number
+  getTriple(diff: AttributeDiff): number
+  getDouble(diff: AttributeDiff): number
+  getSingle(diffs: {
+    contactMov: AttributeDiff
+    powerVel: AttributeDiff
+    speedAwa: AttributeDiff
+  }): number
+  getIf1b(diff: AttributeDiff): number
+  getBb(diff: AttributeDiff): number
 }
 
 const liveAccessors: FrontHalfAccessors = {
