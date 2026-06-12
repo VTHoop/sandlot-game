@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "scripts": {
+    "emit-grid": "tsx bin/emit-grid.ts"
+  },
   "exports": {
     "./tables": "./src/tables/accessor.ts",
     "./rangeFinder": "./src/rangeFinder/frontHalf.ts",

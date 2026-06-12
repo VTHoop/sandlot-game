@@ -146,6 +146,26 @@ describe('runsPerGame', () => {
     ).runsPerGame
     expect(weak).toBeLessThan(base)
   })
+
+  it('exact hand-computed value at all-zero diffs', () => {
+    // From seed tables at diff=0: HR=17, 3B=2, 2B=27, 1B=73, IF1B=6, BB=44, K=113, FO=85, PO=35, GB=98
+    // outRate = (85+35+98+113)/500 = 331/500
+    // runsPerPA = Σ(rate_i × weight_i); runsPerGame = (runsPerPA / outRate) × 27
+    const expected =
+      ((17 * 1.4 +
+        2 * 1.04 +
+        27 * 0.77 +
+        73 * 0.47 +
+        6 * 0.47 +
+        44 * 0.31 +
+        85 * -0.26 +
+        35 * -0.26 +
+        98 * -0.26 +
+        113 * -0.3) /
+        331) *
+      27
+    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).runsPerGame).toBeCloseTo(expected, 10)
+  })
 })
 
 // ─── Full grid enumeration ────────────────────────────────────────────────────

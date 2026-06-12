@@ -1,9 +1,7 @@
-# ADR-0010: Balance harness — exact enumeration + linear-weights run valuation
+# 10. Balance harness — exact enumeration + linear-weights run valuation
 
-**Date:** 2026-06-11
-**Status:** Accepted
-**Supersedes:** nothing
-**Affects:** `packages/engine/src/harness/`
+- Status: Accepted
+- Date: 2026-06-11
 
 ---
 

@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { aggregateGrid } from './grid'
 import { DEFAULT_LINEAR_WEIGHTS } from './linearWeights'
 import type { CellResult, GridArtifact, RunValues } from './types'
@@ -8,8 +9,8 @@ export const ARTIFACT_PATH = 'packages/engine/artifacts/san14-grid.json'
 
 /** Serialize the artifact to ARTIFACT_PATH. */
 export function emitArtifact(artifact: GridArtifact): void {
-  mkdirSync('packages/engine/artifacts', { recursive: true })
-  writeFileSync('packages/engine/artifacts/san14-grid.json', JSON.stringify(artifact, null, 2))
+  mkdirSync(dirname(ARTIFACT_PATH), { recursive: true })
+  writeFileSync(ARTIFACT_PATH, JSON.stringify(artifact, null, 2))
 }
 
 /** Print a human-readable aggregate slash line summary to stdout. */
