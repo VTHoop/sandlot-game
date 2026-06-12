@@ -36,13 +36,13 @@ describe('DesignShowcase', () => {
   })
 
   it("NEVER renders the opponent's number anywhere on the batter seat", () => {
-    const secret = new RegExp(String(SHOWCASE_SCENARIO.them))
+    const secretText = String(SHOWCASE_SCENARIO.them)
     fireEvent.click(button('BATTER'))
     screen.getByText(/LOCKED/)
-    expect(screen.queryByText(secret)).toBeNull()
+    expect(document.body.textContent).not.toContain(secretText)
 
     lockNumber('472')
-    expect(screen.queryByText(secret)).toBeNull()
+    expect(document.body.textContent).not.toContain(secretText)
   })
 
   it('shows the player matchup with attributes and due-up hitters on both seats', () => {

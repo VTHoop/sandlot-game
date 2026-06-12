@@ -36,7 +36,9 @@ export default function DesignShowcase() {
             variant={tab === id ? 'consequence' : 'surface'}
             aria-pressed={tab === id}
             className="px-4 py-2 text-xs"
-            onClick={() => setTab(id)}
+            onClick={() => {
+              setTab(id)
+            }}
           >
             {label}
           </Button>
@@ -51,14 +53,18 @@ export default function DesignShowcase() {
             seat="batter"
             opponentLocked
             opponentOnline
-            onReveal={() => setTab('reveal')}
+            onReveal={() => {
+              setTab('reveal')
+            }}
           />
         )}
         {tab === 'reveal' && (
           <RevealMotion
             key={replayKey}
             scenario={SHOWCASE_SCENARIO}
-            onReplay={() => setReplayKey((k) => k + 1)}
+            onReplay={() => {
+              setReplayKey((k) => k + 1)
+            }}
           />
         )}
         {tab === 'waiting' && <WaitingTurn />}

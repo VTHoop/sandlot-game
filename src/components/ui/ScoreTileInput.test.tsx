@@ -39,6 +39,6 @@ describe('ScoreTileInput', () => {
 
   it('disables while locked', () => {
     render(<ScoreTileInput label="your number" value="472" onChange={() => {}} disabled />)
-    expect((screen.getByLabelText(/your number/i) as HTMLInputElement).disabled).toBe(true)
+    expect(screen.getByLabelText<HTMLInputElement>(/your number/i).disabled).toBe(true)
   })
 })

@@ -5,7 +5,7 @@ export type OutcomeKey = (typeof OUTCOME_LADDER)[number]
 
 const HIT_OUTCOMES: ReadonlySet<OutcomeKey> = new Set(['HR', '3B', '2B', '1B', 'IF1B'])
 
-const SHORT_LABELS: Partial<Record<OutcomeKey, string>> = { IF1B: 'IF' }
+const SHORT_LABELS = new Map<OutcomeKey, string>([['IF1B', 'IF']])
 
 interface OutcomeLadderProps {
   highlight?: OutcomeKey | null
@@ -27,7 +27,7 @@ export function OutcomeLadder({ highlight = null }: OutcomeLadderProps) {
             aria-current={outcome === highlight ? 'true' : undefined}
             className={`flex-1 rounded-xs border py-1 text-center ${emphasis}`}
           >
-            {SHORT_LABELS[outcome] ?? outcome}
+            {SHORT_LABELS.get(outcome) ?? outcome}
           </li>
         )
       })}

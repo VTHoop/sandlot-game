@@ -23,7 +23,9 @@ export function ScoreTileInput({ value, onChange, label, disabled = false }: Sco
         placeholder="· · ·"
         disabled={disabled}
         value={value}
-        onChange={(event) => onChange(sanitize(event.target.value))}
+        onChange={(event) => {
+          onChange(sanitize(event.target.value))
+        }}
         className="w-36 appearance-none rounded-(--radius-tile) border border-edge bg-surface px-3 py-1 text-center font-display text-4xl tracking-wider text-chalk transition-colors placeholder:text-muted focus:border-chalk focus:outline-none disabled:opacity-40"
       />
     </label>

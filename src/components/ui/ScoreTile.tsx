@@ -1,12 +1,9 @@
-const sizes = {
-  md: 'px-3 py-1 text-4xl',
-  lg: 'px-5 py-1.5 text-6xl',
-} as const
+type ScoreTileSize = 'md' | 'lg'
 
 interface ScoreTileProps {
   value: string
   label?: string
-  size?: keyof typeof sizes
+  size?: ScoreTileSize
   className?: string
 }
 
@@ -23,7 +20,7 @@ export function ScoreTile({ value, label, size = 'lg', className = '' }: ScoreTi
         </span>
       ) : null}
       <span
-        className={`inline-block rounded-(--radius-tile) border border-edge bg-surface text-center font-display tracking-wider text-chalk ${sizes[size]} ${className}`}
+        className={`inline-block rounded-(--radius-tile) border border-edge bg-surface text-center font-display tracking-wider text-chalk ${size === 'lg' ? 'px-5 py-1.5 text-6xl' : 'px-3 py-1 text-4xl'} ${className}`}
       >
         {value}
       </span>

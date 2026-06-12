@@ -99,7 +99,9 @@ export function DuelCommit({ seat, opponentLocked, opponentOnline, onReveal }: D
             variant="consequence"
             className="py-3.5 text-lg"
             disabled={!isValidDuelNumber(number)}
-            onClick={() => setLocked(true)}
+            onClick={() => {
+              setLocked(true)
+            }}
           >
             LOCK IT IN
           </Button>

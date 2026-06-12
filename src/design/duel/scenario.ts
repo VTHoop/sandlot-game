@@ -34,18 +34,18 @@ const HIT_OUTCOMES: ReadonlySet<OutcomeKey> = new Set(['HR', '3B', '2B', '1B', '
 export const isHit = (outcome: OutcomeKey): boolean => HIT_OUTCOMES.has(outcome)
 
 /** Base held breath (seconds) between the second flap and the outcome. */
-const OUTCOME_HOLD: Record<OutcomeKey, number> = {
-  HR: 1.5,
-  '3B': 1.2,
-  '2B': 1.0,
-  '1B': 0.8,
-  IF1B: 0.8,
-  BB: 0.6,
-  FO: 0.6,
-  PO: 0.6,
-  GB: 0.6,
-  K: 1.2,
-}
+const OUTCOME_HOLD = new Map<OutcomeKey, number>([
+  ['HR', 1.5],
+  ['3B', 1.2],
+  ['2B', 1.0],
+  ['1B', 0.8],
+  ['IF1B', 0.8],
+  ['BB', 0.6],
+  ['FO', 0.6],
+  ['PO', 0.6],
+  ['GB', 0.6],
+  ['K', 1.2],
+])
 
 /** Cap on situational boost so stacked drama can't make the beat drag. */
 const MAX_SITUATION_BOOST = 1.2
@@ -66,45 +66,52 @@ export interface Drama {
   hold: number
 }
 
-/**
- * Situational drama: leverage scales the reveal's pacing and names the
- * headline. Priority: walk-off > lead change > new tie > RBI.
- */
-export function deriveDrama(scenario: RevealScenario): Drama {
+function computeTags(scenario: RevealScenario, after: number): DramaTags {
   const { outcome, runsScored, scoreBefore, inning, half } = scenario
-  const after = scoreBefore.you + runsScored
-
-  const tags: DramaTags = {
+  return {
     rbi: runsScored > 0 && isHit(outcome),
     leadChange: scoreBefore.you <= scoreBefore.opp && after > scoreBefore.opp,
     newTie: runsScored > 0 && after === scoreBefore.opp,
     walkOff: half === 'BOTTOM' && inning >= 9 && after > scoreBefore.opp,
     lateAndClose: inning >= 7 && Math.abs(scoreBefore.you - scoreBefore.opp) <= 1,
   }
+}
 
-  const callout = tags.walkOff
-    ? 'WALK-OFF WIN!'
-    : tags.leadChange
-      ? `LEAD CHANGE — YOU LEAD ${after}–${scoreBefore.opp}`
-      : tags.newTie
-        ? `ALL TIED AT ${after}`
-        : tags.rbi
-          ? runsScored === 1
-            ? 'RBI'
-            : `${runsScored} RBI`
-          : null
+function computeCallout(
+  tags: DramaTags,
+  after: number,
+  opp: number,
+  runsScored: number,
+): string | null {
+  if (tags.walkOff) return 'WALK-OFF WIN!'
+  if (tags.leadChange) return `LEAD CHANGE — YOU LEAD ${after}–${opp}`
+  if (tags.newTie) return `ALL TIED AT ${after}`
+  if (tags.rbi) return runsScored === 1 ? 'RBI' : `${runsScored} RBI`
+  return null
+}
 
-  const boost =
+function computeBoost(tags: DramaTags): number {
+  return (
     (tags.walkOff ? 0.9 : 0) +
     (tags.leadChange ? 0.5 : 0) +
     (tags.newTie ? 0.3 : 0) +
     (tags.lateAndClose ? 0.4 : 0) +
     (tags.rbi ? 0.2 : 0)
+  )
+}
 
+/**
+ * Situational drama: leverage scales the reveal's pacing and names the
+ * headline. Priority: walk-off > lead change > new tie > RBI.
+ */
+export function deriveDrama(scenario: RevealScenario): Drama {
+  const after = scenario.scoreBefore.you + scenario.runsScored
+  const tags = computeTags(scenario, after)
   return {
     tags,
-    callout,
-    hold: OUTCOME_HOLD[outcome] + Math.min(boost, MAX_SITUATION_BOOST),
+    callout: computeCallout(tags, after, scenario.scoreBefore.opp, scenario.runsScored),
+    hold:
+      (OUTCOME_HOLD.get(scenario.outcome) ?? 0) + Math.min(computeBoost(tags), MAX_SITUATION_BOOST),
   }
 }
 
