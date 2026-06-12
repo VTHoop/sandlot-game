@@ -14,6 +14,7 @@ Orientation for any human or agent opening this repo. **`AGENTS.md` is the worki
 ## Build references
 - **At-bat model (vocabulary & structure):** `docs/engine/at-bat-model.md` — what *RangeFinder*, *outcome bands*, *front/back half*, and *"the sheet"* mean. Start here before reading any engine ticket. Structure only, IP-safe.
 - **Attribute system:** `docs/engine/attribute-normalization.md` (in-repo, safe to commit — derived from *public* MLB distributions).
+- **Design spike brief:** `docs/design/spike-prompt.md` — self-contained prompt for handing the at-bat-duel UI/UX design to a high-capability model in its own session. Two research-backed sign-off gates (styling substrate, then visual direction), each ADR'd; outputs a design-principles doc + parked `/design` route. Not yet executed.
 - **Decoded at-bat engine:** `/Users/hoop/dev/bbtn-engine-spec.md` — ⚠️ **PRIVATE, do NOT commit** (it contains the reverse-engineered source calculator's verbatim tables; see ADR-0006). Use it locally to understand the engine's *structure*, then **re-derive the numbers via simulation** for what ships.
 - **Source material (private, on disk):** `/Users/hoop/Downloads/Copy of BBTN 3.12.9 TYGEN 2 Runners.xlsx` (the calculator) and `…/Official Baseball by the Numbers Rules and Guidelines (Version 1).txt` (the rules).
 

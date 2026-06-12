@@ -46,8 +46,11 @@ Located at `packages/engine/`. A pure, framework-free TypeScript package — no 
 
 | Path | Purpose |
 |---|---|
-| `src/main.tsx` | Entry point — wires ClerkProvider + ConvexProviderWithClerk |
-| `src/App.tsx` | Root component |
+| `src/main.tsx` | Entry point — wires ClerkProvider + ConvexProviderWithClerk; imports `src/styles/app.css` |
+| `src/App.tsx` | Root component; also gates the parked, code-split `/design` showcase route (URL-only, never in nav) |
+| `src/styles/app.css` | Tailwind v4 entry: semantic `@theme` design tokens (Night Game, ADR-0012) + base styles |
+| `src/components/ui/` | Foundation components extracted from the duel (Button, ScoreTile, NumberPad, OutcomeLadder, Card) — see `docs/design/design-principles.md` |
+| `src/design/` | Design-spike showcase: duel screens for all four states + `duel.css` reveal choreography |
 | `convex/schema.ts` | Convex data model stub (tables added per Multiplayer tickets) |
 | `convex/auth.config.ts` | Clerk OIDC provider so Convex validates Clerk JWTs |
 | `public/manifest.webmanifest` | PWA manifest (served as-is; `vite-plugin-pwa` handles SW) |

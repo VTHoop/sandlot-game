@@ -1,0 +1,86 @@
+/*
+ * Duel showcase ambience + token-sourced glow. Reveal choreography lives in
+ * RevealMotion.tsx (Motion springs, ADR-0013); scoreboard ticks in app.css.
+ */
+
+/* token-sourced glow for the reveal outcome; delay is set inline */
+.duel-glow {
+  animation: duel-glow 0.9s both;
+}
+
+@keyframes duel-glow {
+  0% {
+    text-shadow: none;
+  }
+  45% {
+    text-shadow: var(--shadow-consequence-bloom);
+  }
+  100% {
+    text-shadow: var(--shadow-consequence);
+  }
+}
+
+.duel-waiting-pulse {
+  animation: duel-waiting-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes duel-waiting-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* night ambience — calm screens only (design-principles: busy-ness budget) */
+.duel-firefly {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-consequence);
+  box-shadow: var(--shadow-runner);
+  opacity: 0;
+  animation: duel-firefly 9s ease-in-out infinite;
+}
+
+@keyframes duel-firefly {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  25% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.2;
+    transform: translate(26px, -32px);
+  }
+  75% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(46px, -10px);
+  }
+}
+
+/* Reduced motion: glow snaps to its final frame; ambience goes still. */
+@media (prefers-reduced-motion: reduce) {
+  .duel-glow {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+  }
+
+  .duel-waiting-pulse {
+    animation: none;
+    opacity: 1;
+  }
+
+  .duel-firefly {
+    animation: none;
+    opacity: 0.3;
+  }
+}

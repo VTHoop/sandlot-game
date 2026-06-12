@@ -4,6 +4,7 @@ import { ConvexProviderWithClerk } from 'convex/react-clerk'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
+import './styles/app.css'
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string)
 

@@ -1,0 +1,113 @@
+import { useState } from 'react'
+import { Button } from '../../components/ui/Button'
+import { Card } from '../../components/ui/Card'
+import { OutcomeLadder } from '../../components/ui/OutcomeLadder'
+import { Scoreboard } from '../../components/ui/Scoreboard'
+import { ScoreTileInput } from '../../components/ui/ScoreTileInput'
+import { DuelChrome } from './DuelChrome'
+import { isValidDuelNumber } from './duelNumber'
+import { FieldDiagram } from './FieldDiagram'
+import { SHOWCASE_MATCHUP, SHOWCASE_SCENARIO } from './fixture'
+import { MatchupCard } from './MatchupCard'
+import { formatInning } from './scenario'
+
+interface DuelCommitProps {
+  /** Which seat the viewer holds; the screen is otherwise identical. */
+  seat: 'pitcher' | 'batter'
+  /**
+   * SECRET-STATE LAW: this component may only ever know THAT the opponent has
+   * committed — never the number. Do not add a prop carrying it; the status
+   * chip is static text either way. Commits are order-independent (ADR-0014).
+   */
+  opponentLocked: boolean
+  opponentOnline: boolean
+  onReveal?: () => void
+}
+
+/** The single commit screen: situation, matchup, and the blind number. */
+export function DuelCommit({ seat, opponentLocked, opponentOnline, onReveal }: DuelCommitProps) {
+  const [number, setNumber] = useState('')
+  const [locked, setLocked] = useState(false)
+
+  const scenario = SHOWCASE_SCENARIO
+  const opponent = scenario.opponent
+  // The fixture casts the viewer as the home team: they bat in the bottom
+  // half and pitch in the top, so the two seats depict different half-innings.
+  const half = seat === 'batter' ? scenario.half : 'TOP'
+  const bothLocked = locked && opponentLocked
+
+  const matchup =
+    seat === 'batter'
+      ? {
+          pitcher: SHOWCASE_MATCHUP.opponent.pitcher,
+          batter: SHOWCASE_MATCHUP.you.batter,
+          dueUp: SHOWCASE_MATCHUP.you.dueUp,
+        }
+      : {
+          pitcher: SHOWCASE_MATCHUP.you.pitcher,
+          batter: SHOWCASE_MATCHUP.opponent.batter,
+          dueUp: SHOWCASE_MATCHUP.opponent.dueUp,
+        }
+
+  return (
+    <DuelChrome opponent={opponent} opponentOnline={opponentOnline}>
+      <div className="flex flex-1 flex-col gap-3 px-5 pb-4">
+        <Scoreboard
+          away={{
+            label: opponent.slice(0, 3).toUpperCase(),
+            runs: scenario.scoreBefore.opp,
+            hits: scenario.hitsBefore.opp,
+          }}
+          home={{ label: 'YOU', runs: scenario.scoreBefore.you, hits: scenario.hitsBefore.you }}
+          inning={formatInning({ inning: scenario.inning, half })}
+          outs={scenario.outs}
+        />
+        <div className="flex items-stretch gap-3">
+          <FieldDiagram className="h-36 w-36 shrink-0 self-center" />
+          <MatchupCard {...matchup} />
+        </div>
+        <Card className="flex items-center justify-between px-4 py-2">
+          <span className="font-body text-[11px] tracking-[0.22em] text-muted uppercase">
+            {opponent}&rsquo;s number
+          </span>
+          <span className="font-display text-sm tracking-wider text-chalk">
+            {opponentLocked ? '🔒 LOCKED' : 'NOT YET ENTERED'}
+          </span>
+        </Card>
+        <div className="text-center">
+          <ScoreTileInput
+            label={locked ? 'your number · locked' : 'your number'}
+            value={number}
+            onChange={setNumber}
+            disabled={locked}
+          />
+        </div>
+        {locked ? (
+          <div className="flex flex-col items-center gap-1.5">
+            <p role="status" className="text-center font-body text-sm text-muted">
+              <span className="text-consequence">NUMBER LOCKED</span>
+              {bothLocked ? ' — both numbers are in' : ` — waiting on ${opponent}`}
+            </p>
+            {bothLocked && (
+              <Button variant="ghost" className="px-4 py-1.5 text-sm" onClick={onReveal}>
+                PLAY THE REVEAL →
+              </Button>
+            )}
+          </div>
+        ) : (
+          <Button
+            variant="consequence"
+            className="py-3.5 text-lg"
+            disabled={!isValidDuelNumber(number)}
+            onClick={() => setLocked(true)}
+          >
+            LOCK IT IN
+          </Button>
+        )}
+        <div className="mt-auto">
+          <OutcomeLadder />
+        </div>
+      </div>
+    </DuelChrome>
+  )
+}
