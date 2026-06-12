@@ -71,15 +71,15 @@ P(diff = d) = (5 − |d|) / 25   for d ∈ {−4,…,+4}
 P(diff = ±5) = 0               (unreachable: attrs are 1–5, so max |diff| = 4)
 ```
 
-This is the convolution of two independent Uniform{1,5} random variables, which matches the attribute-bucket normalization design (attribute-normalization.md).
+This is the **uniform-over-buckets approximation**: it assumes each attribute is drawn from Uniform{1,5}, which is the simplest distribution consistent with the 1–5 bucket design. The real bucket frequencies follow a roughly bell-shaped distribution anchored at league-average = 3 (attribute-normalization.md), so the true differential distribution is more concentrated around 0 than the triangular approximation here. The real-pool, PA-weighted bucket frequencies are the natural fidelity upgrade — reserved for the post-data-pipeline pass (P1 deferred).
 
-The distribution is an **injected parameter** on `aggregateGrid`. SAN-15 retuning and the future real-pool weighting (P1 deferred) require no code surgery.
+The distribution is an **injected parameter** on `aggregateGrid`. SAN-15 retuning and the future real-pool weighting require no code surgery.
 
 ---
 
 ## Consequences
 
 - The harness is pure TypeScript with no I/O in the core path — fully unit-testable and importable into Convex server functions.
-- `enumerateGrid` silently skips degenerate cells (1B ≤ 0 or GB ≤ 0): these are unreachable from valid attribute matchups and are not valid system inputs.
+- `enumerateGrid` returns `{ cells, degenerate }` so dropped cells are never invisible. `validateEnumeration` asserts every degenerate cell has zero weight — a regression guard for SAN-15 retuning. With current (pre-SAN-15) seed tables, 45 reachable cells are degenerate (1B ≤ 0 at five extreme powerVel/speedAwa/contactMov triples); SAN-15 owns tuning this to 0.
 - `validateGridInvariants` provides the partition-completeness and GB ≥ 0 assertions as a first-class API for SAN-15's CI gate.
 - The artifact JSON (`packages/engine/artifacts/san14-grid.json`) is gitignored as a generated output; SAN-18 regenerates it on demand.
