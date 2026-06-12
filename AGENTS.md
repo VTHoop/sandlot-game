@@ -11,7 +11,7 @@ A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) r
 ## 1. Development Process
 
 ### Starting a task
-- Read the **Linear** issue and all comments fully. The issue is the source of truth for scope.
+- Read the **Linear** issue and all comments fully. The issue is the source of truth for scope. *(Linear MCP disabled; manual modifications made as needed.)*
 - Check `docs/adr/` for relevant architecture decisions before any structural choice.
 - Check `docs/ARCHITECTURE.md` and `docs/ABSTRACTIONS.md` for existing structure and patterns.
 - For engine/balance work: consult the private engine reference (see Product Rules — it is **not** in this repo).
@@ -24,7 +24,7 @@ A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) r
 - Open a **PR** for every change, even solo. Keep PRs small and single-purpose — the PR is the visible record of review discipline.
 - The PR must show: passing check suite, `/code-review` agent pass, and green Codacy + CodeScene checks.
 - Squash-merge to `main`. Delete the branch.
-- **A task is not done until the PR is merged and the issue's completion comment is posted.**
+- **A task is not done until the PR is merged and the issue's completion comment is posted.** *(Completion comments posted manually since Linear MCP is disabled.)*
 - **⛔ NEVER `--no-verify`.** If a hook blocks you, read the error and fix the code — never bypass, never lower a gate.
 
 ### TDD (mandatory)

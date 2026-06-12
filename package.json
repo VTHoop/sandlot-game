@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "e2e:smoke": "playwright test --project=smoke"
+    "e2e:smoke": "playwright test --project=smoke",
+    "emit-grid": "tsx packages/engine/bin/emit-grid.ts"
   },
   "dependencies": {
     "@clerk/react": "^6.0.0",
@@ -41,6 +42,7 @@
     "typescript": "^5.5.0",
     "vite": "^8.0.16",
     "vite-plugin-pwa": "^1.3.0",
+    "tsx": "^4.22.4",
     "vitest": "^4.1.8"
   }
 }

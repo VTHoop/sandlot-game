@@ -1,6 +1,6 @@
 # Sandlot — Roadmap (Linear import draft)
 
-Mirror of the Linear plan. Structure: **Initiative → Projects → Issues**. Priorities: **P0** = critical path to a playable slice · **P1** = needed for the beta · **P2** = polish / later.
+Mirror of the Linear plan. Structure: **Initiative → Projects → Issues**. Priorities: **P0** = critical path to a playable slice · **P1** = needed for the beta · **P2** = polish / later. *(Linear updates managed manually; MCP disabled.)*
 
 > Suggested build order follows the critical path: **Engine → Multiplayer loop (secret at-bat round-trip) → Data pipeline → Roster/cap → League → UX polish.** Foundation (P0) underpins all of it.
 
