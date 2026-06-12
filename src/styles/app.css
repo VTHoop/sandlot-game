@@ -1,0 +1,96 @@
+/* Sandlot global stylesheet — tokens + base. See docs/design/design-principles.md */
+@import "@fontsource/graduate";
+@import "@fontsource/archivo/400.css";
+@import "@fontsource/archivo/600.css";
+@import "@fontsource/archivo/700.css";
+@import "tailwindcss";
+
+/*
+ * Night Game theme (ADR-0012). Tokens are SEMANTIC — components must never
+ * reference raw hues. A future Day Game theme (docs/design/day-game-theme.md)
+ * reassigns these values; it must not require component changes.
+ *
+ * Color logic: dusk navy = the world · chalk = information ·
+ * amber = consequence (committed pick, lock, reveal, scoring — nothing else) ·
+ * clay = baseball-material accent.
+ */
+@theme {
+  --font-display: "Graduate", "Archivo", serif;
+  --font-body: "Archivo", system-ui, sans-serif;
+
+  /* the world */
+  --color-canvas: #0c0f20;
+  --color-canvas-high: #131736;
+  --color-surface: #1c2230;
+  --color-edge: #343c66;
+  --color-edge-dim: #2a3154;
+
+  /* information */
+  --color-chalk: #f5f1e6;
+  --color-muted: #8d94b8;
+
+  /* consequence */
+  --color-consequence: #ffb454;
+  --color-consequence-deep: #c98a3a;
+
+  /* material accent */
+  --color-clay: #c2502a;
+  --color-clay-bright: #e8744a;
+  --color-clay-deep: #8f3a1e;
+
+  /* presence (dots only — exempt from the four-role system) */
+  --color-online: #74b06a;
+  --color-offline: #cf5345;
+
+  /* glow is a token so a daylight theme can zero it out */
+  --shadow-consequence: 0 0 26px rgb(255 180 84 / 0.3);
+  --shadow-consequence-bloom: 0 0 50px rgb(255 180 84 / 0.95);
+  --shadow-runner: 0 0 14px 3px rgb(255 180 84 / 0.8);
+  --shadow-runner-clay: 0 0 14px 3px rgb(232 116 74 / 0.7);
+
+  --radius-tile: 0.5rem;
+  --radius-control: 0.75rem;
+}
+
+@layer components {
+  /* scoreboard digit tick: split-flap remount + amber consequence fading to chalk */
+  .motif-tick {
+    display: inline-block;
+    transform-origin: top;
+    animation: motif-tick 0.7s both;
+  }
+}
+
+@keyframes motif-tick {
+  0% {
+    transform: rotateX(-92deg);
+    color: var(--color-consequence);
+    text-shadow: var(--shadow-consequence);
+  }
+  55% {
+    transform: rotateX(12deg);
+    color: var(--color-consequence);
+    text-shadow: var(--shadow-consequence);
+  }
+  100% {
+    transform: rotateX(0);
+    color: var(--color-chalk);
+    text-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motif-tick {
+    animation-duration: 0.01s;
+  }
+}
+
+@layer base {
+  body {
+    background: linear-gradient(180deg, var(--color-canvas-high) 0%, var(--color-canvas) 100%);
+    min-height: 100dvh;
+    color: var(--color-chalk);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+}
