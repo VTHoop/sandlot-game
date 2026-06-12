@@ -350,11 +350,19 @@ describe('assertAggregate', () => {
       bbPct: 0.1,
     }
     const result = assertAggregate(AGGREGATE, baseline, tol)
-    for (const key of ['avg', 'obp', 'slg', 'hrPct', 'kPct', 'bbPct'] as const) {
-      expect(result.perStatDeltas[key]).toHaveProperty('actual')
-      expect(result.perStatDeltas[key]).toHaveProperty('baseline')
-      expect(result.perStatDeltas[key]).toHaveProperty('delta')
-      expect(result.perStatDeltas[key]).toHaveProperty('pass')
+    const allDeltas = [
+      result.perStatDeltas.avg,
+      result.perStatDeltas.obp,
+      result.perStatDeltas.slg,
+      result.perStatDeltas.hrPct,
+      result.perStatDeltas.kPct,
+      result.perStatDeltas.bbPct,
+    ]
+    for (const d of allDeltas) {
+      expect(d).toHaveProperty('actual')
+      expect(d).toHaveProperty('baseline')
+      expect(d).toHaveProperty('delta')
+      expect(d).toHaveProperty('pass')
     }
   })
 

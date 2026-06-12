@@ -1,19 +1,15 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
 import { aggregateGrid } from './grid'
 import { DEFAULT_LINEAR_WEIGHTS } from './linearWeights'
 import type { CellResult, GridArtifact, RunValues } from './types'
 
-/**
- * Artifact output path consumed by SAN-18.
- * Shape: { cells: CellResult[], linearWeights: RunValues }
- */
+/** Path of the machine-readable SAN-18 artifact (gitignored generated output). */
 export const ARTIFACT_PATH = 'packages/engine/artifacts/san14-grid.json'
 
-/** Serialize the artifact to JSON at ARTIFACT_PATH. */
-export function emitArtifact(artifact: GridArtifact, path = ARTIFACT_PATH): void {
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(artifact, null, 2))
+/** Serialize the artifact to ARTIFACT_PATH. */
+export function emitArtifact(artifact: GridArtifact): void {
+  mkdirSync('packages/engine/artifacts', { recursive: true })
+  writeFileSync('packages/engine/artifacts/san14-grid.json', JSON.stringify(artifact, null, 2))
 }
 
 /** Print a human-readable aggregate slash line summary to stdout. */

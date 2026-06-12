@@ -11,7 +11,7 @@ import type {
   GridArtifact,
   RunValues,
   SlashLine,
-  StatKey,
+  StatDelta,
   ToleranceConfig,
 } from './types'
 
@@ -106,6 +106,11 @@ export function aggregateGrid(
   }
 }
 
+function toStatDelta(actual: number, baseline: number, tolerance: number): StatDelta {
+  const delta = actual - baseline
+  return { actual, baseline, delta, pass: Math.abs(delta) <= tolerance }
+}
+
 /**
  * Assert the aggregate slash line against configurable MLB baselines.
  * Baselines and tolerances are inputs — never hardcoded here (SAN-15 owns tuning).
@@ -115,20 +120,16 @@ export function assertAggregate(
   baselines: BaselineConfig,
   tolerances: ToleranceConfig,
 ): AssertionResult {
-  const keys: StatKey[] = ['avg', 'obp', 'slg', 'hrPct', 'kPct', 'bbPct']
-  let allPass = true
-  const perStatDeltas = {} as AssertionResult['perStatDeltas']
-
-  for (const key of keys) {
-    const actual = aggregate[key]
-    const baseline = baselines[key]
-    const delta = actual - baseline
-    const pass = Math.abs(delta) <= tolerances[key]
-    if (!pass) allPass = false
-    perStatDeltas[key] = { actual, baseline, delta, pass }
+  const avg = toStatDelta(aggregate.avg, baselines.avg, tolerances.avg)
+  const obp = toStatDelta(aggregate.obp, baselines.obp, tolerances.obp)
+  const slg = toStatDelta(aggregate.slg, baselines.slg, tolerances.slg)
+  const hrPct = toStatDelta(aggregate.hrPct, baselines.hrPct, tolerances.hrPct)
+  const kPct = toStatDelta(aggregate.kPct, baselines.kPct, tolerances.kPct)
+  const bbPct = toStatDelta(aggregate.bbPct, baselines.bbPct, tolerances.bbPct)
+  return {
+    pass: avg.pass && obp.pass && slg.pass && hrPct.pass && kPct.pass && bbPct.pass,
+    perStatDeltas: { avg, obp, slg, hrPct, kPct, bbPct },
   }
-
-  return { pass: allPass, perStatDeltas }
 }
 
 /**
