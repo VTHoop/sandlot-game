@@ -5,6 +5,7 @@ import {
   assertAggregate,
   buildArtifact,
   enumerateGrid,
+  validateEnumeration,
   validateGridInvariants,
 } from '../grid'
 import { DEFAULT_LINEAR_WEIGHTS } from '../linearWeights'
@@ -16,7 +17,7 @@ const ALL_ZERO: CellDiffs = { powerVel: 0, speedAwa: 0, eyeCmd: 0, contactMov: 0
 
 // Pre-compute the full grid once at module level — avoids repeating 14 641
 // cell assemblies per test and keeps individual tests fast.
-const GRID = enumerateGrid()
+const { cells: GRID, degenerate: DEGENERATE_CELLS } = enumerateGrid()
 const AGGREGATE = aggregateGrid(GRID)
 
 // ─── Width/500 rate identity ───────────────────────────────────────────────────
@@ -154,7 +155,11 @@ describe('enumerateGrid', () => {
     expect(GRID.length).toBeLessThanOrEqual(14641)
   })
 
-  it('returns at least 10000 valid cells (degenerate extremes skipped)', () => {
+  it('cells + degenerate = 14641 (full grid accounted for)', () => {
+    expect(GRID.length + DEGENERATE_CELLS.length).toBe(14641)
+  })
+
+  it('returns at least 10000 valid cells (degenerate extremes excluded)', () => {
     expect(GRID.length).toBeGreaterThanOrEqual(10000)
   })
 
@@ -174,6 +179,49 @@ describe('enumerateGrid', () => {
         expect(d).toBeLessThanOrEqual(5)
       }
     }
+  })
+})
+
+// ─── validateEnumeration — no positive-weight cell was silently dropped ───────
+//
+// If SAN-15 retunes seed tables and a reachable matchup starts throwing,
+// that cell would vanish from the aggregate with no signal. validateEnumeration
+// catches this by asserting every degenerate cell has zero weight.
+
+describe('validateEnumeration', () => {
+  // Pre-SAN-15 state: 5 (powerVel, speedAwa, contactMov) triples where
+  // 1B = HIT_TOTAL(cm) − HR(pv) − TRIPLE/DOUBLE/IF1B(sa) ≤ 0, each paired
+  // with 9 eye-cmd values → 45 reachable (|diff|≤4) degenerate cells.
+  // SAN-15 owns tuning the tables so this count reaches 0.
+  it('leaked-positive-weight count is stable at 45 (pre-SAN-15 ratchet)', () => {
+    const { leakedPositiveWeight } = validateEnumeration(DEGENERATE_CELLS)
+    // Must not increase (regression guard); SAN-15 will decrease it to 0.
+    expect(leakedPositiveWeight.length).toBe(45)
+  })
+
+  it('detects when a degenerate cell has positive weight (simulates seed-table regression)', () => {
+    // ALL_ZERO has positive default weight — treat it as "accidentally degenerate"
+    const result = validateEnumeration([ALL_ZERO])
+    expect(result.pass).toBe(false)
+    expect(result.leakedPositiveWeight).toHaveLength(1)
+    expect(result.leakedPositiveWeight[0]).toEqual(ALL_ZERO)
+  })
+
+  it('passes when all supplied cells have zero weight', () => {
+    // Cells where every diff is ±5 have zero default weight (unreachable from [1,5] attrs)
+    const zeroWeightCells: CellDiffs[] = [
+      { powerVel: 5, speedAwa: 5, eyeCmd: 5, contactMov: 5 },
+      { powerVel: -5, speedAwa: -5, eyeCmd: -5, contactMov: -5 },
+    ]
+    const result = validateEnumeration(zeroWeightCells)
+    expect(result.pass).toBe(true)
+    expect(result.leakedPositiveWeight).toHaveLength(0)
+  })
+
+  it('accepts an injectable weight function', () => {
+    // Weight function that returns 0 for everything → no leaks regardless of input
+    const zeroFn = (_d: CellDiffs) => 0
+    expect(validateEnumeration(DEGENERATE_CELLS, zeroFn).pass).toBe(true)
   })
 })
 

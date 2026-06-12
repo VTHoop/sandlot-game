@@ -27,21 +27,42 @@ const ALL_DIFFS: CellDiffs[] = DIFFS.flatMap((powerVel) =>
   ),
 )
 
+export interface EnumerationResult {
+  cells: CellResult[]
+  /** Cells that threw during assembly (1B ≤ 0 or GB ≤ 0). */
+  degenerate: CellDiffs[]
+}
+
 /**
  * Enumerate every cell in the 4-D differential grid and compute exact stats.
- * Degenerate cells (1B width ≤ 0 or GB width ≤ 0) are skipped; they are not
- * reachable from valid attribute matchups in normal game play.
+ * Degenerate cells (1B ≤ 0 or GB ≤ 0) are collected in `degenerate` rather than
+ * silently discarded — callers can verify via validateEnumeration that no
+ * positive-weight matchup was dropped (important when SAN-15 retunes seed tables).
  */
-export function enumerateGrid(weights: RunValues = DEFAULT_LINEAR_WEIGHTS): CellResult[] {
+export function enumerateGrid(weights: RunValues = DEFAULT_LINEAR_WEIGHTS): EnumerationResult {
   const cells: CellResult[] = []
+  const degenerate: CellDiffs[] = []
   for (const diffs of ALL_DIFFS) {
     try {
       cells.push(computeCell(diffs, weights))
     } catch {
-      // Degenerate combination — not a valid system input
+      degenerate.push(diffs)
     }
   }
-  return cells
+  return { cells, degenerate }
+}
+
+/**
+ * Assert that every degenerate (skipped) cell has zero weight under weightFn.
+ * A positive-weight cell in the degenerate list signals a seed-table regression:
+ * a reachable matchup is broken and has been silently excluded from the aggregate.
+ */
+export function validateEnumeration(
+  degenerate: CellDiffs[],
+  weightFn: DifferentialWeightFn = defaultDifferentialWeight,
+): { pass: boolean; leakedPositiveWeight: CellDiffs[] } {
+  const leakedPositiveWeight = degenerate.filter((d) => weightFn(d) > 0)
+  return { pass: leakedPositiveWeight.length === 0, leakedPositiveWeight }
 }
 
 /** Weighted aggregate slash line across all grid cells. */
