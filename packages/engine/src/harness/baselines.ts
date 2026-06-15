@@ -6,7 +6,7 @@ import type { BaselineConfig, ToleranceConfig } from './types'
  * Provenance: 2024 MLB league totals, retrieved 2026-06-15 from public sources
  * (Baseball Reference 2024 league batting + FanGraphs league dashboard). These
  * are independently transcribed public league aggregates — NOT derived from any
- * private source workbook (see ADR-0011 and the IP hygiene rules in AGENTS.md).
+ * private source workbook (see ADR-0006 and the IP hygiene rules in AGENTS.md).
  *
  * Rates are expressed as fractions of a plate appearance (HR%, K%, BB%) or the
  * standard slash-line ratios (AVG = H/AB, OBP = (H+BB)/PA, SLG = TB/AB).

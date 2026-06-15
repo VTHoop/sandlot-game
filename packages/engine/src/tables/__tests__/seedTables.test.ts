@@ -105,7 +105,7 @@ describe('checksum', () => {
     // Derived from public MLB 2024 rates; see seedTables.ts provenance header.
     // If this fails, a table value was accidentally changed — re-derive, don't adjust this number.
     // (Updated by SAN-15: seed tables retuned so the weighted aggregate lands in the
-    // 2024 MLB tolerance gates — see ADR-0011 and `pnpm derive-balance`.)
+    // 2024 MLB tolerance gates — see ADR-0015 and `pnpm derive-balance`.)
     expect(total).toBe(7538)
   })
 })
@@ -140,27 +140,33 @@ describe('accessor clamping', () => {
   })
 })
 
-// ─── Accessor: league-average baseline (diff=0) ───────────────────────────────
+// ─── Accessor: diff=0 anchor sanity bounds ────────────────────────────────────
+//
+// These bound the diff=0 ANCHOR of each table, not the league average — after the
+// SAN-15 retune the league rate is the weighted AGGREGATE (gated in harness.test.ts),
+// not the diff=0 cell. The ranges are loose sanity bounds centered on the tuned
+// anchor that catch a gross typo in the anchor column; exact balance lives in the
+// aggregate gate. (See seedTables.ts header and ADR-0015.)
 
-describe('accessor diff-0 baseline', () => {
-  it('getHr(0) reflects MLB HR rate ≈ 3.3% × 500 ≈ 17 ±5', () => {
-    expect(getHr(0)).toBeGreaterThanOrEqual(12)
-    expect(getHr(0)).toBeLessThanOrEqual(22)
+describe('accessor diff-0 anchor sanity bounds', () => {
+  it('getHr(0) anchor ≈ 15 (aggregate HR% ≈ 3.1%, gated separately)', () => {
+    expect(getHr(0)).toBeGreaterThanOrEqual(10)
+    expect(getHr(0)).toBeLessThanOrEqual(20)
   })
 
-  it('getBb(0) reflects MLB BB rate ≈ 8.7% × 500 ≈ 44 ±10', () => {
-    expect(getBb(0)).toBeGreaterThanOrEqual(34)
-    expect(getBb(0)).toBeLessThanOrEqual(54)
+  it('getBb(0) anchor ≈ 41 (aggregate BB% ≈ 8.5%, gated separately)', () => {
+    expect(getBb(0)).toBeGreaterThanOrEqual(31)
+    expect(getBb(0)).toBeLessThanOrEqual(51)
   })
 
-  it('getK(0) reflects MLB K rate ≈ 22.5% × 500 ≈ 113 ±15', () => {
+  it('getK(0) anchor ≈ 113 (aggregate K% ≈ 22.8%, gated separately)', () => {
     expect(getK(0)).toBeGreaterThanOrEqual(98)
     expect(getK(0)).toBeLessThanOrEqual(128)
   })
 
-  it('getHitTotal(0) reflects MLB BA ≈ .248 × 500 ≈ 124 ±15', () => {
-    expect(getHitTotal(0)).toBeGreaterThanOrEqual(109)
-    expect(getHitTotal(0)).toBeLessThanOrEqual(139)
+  it('getHitTotal(0) anchor ≈ 111 (drives aggregate AVG/OBP, gated separately)', () => {
+    expect(getHitTotal(0)).toBeGreaterThanOrEqual(96)
+    expect(getHitTotal(0)).toBeLessThanOrEqual(126)
   })
 
   it('getSingle(0,0,0) is positive', () => {

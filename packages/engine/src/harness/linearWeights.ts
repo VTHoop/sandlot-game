@@ -30,7 +30,7 @@ export const RUN_ENVIRONMENT_CONSTANT = 0.127
  * absolute runs in the 2024 environment (see that constant's note).
  *
  * Provenance: derived by us against public 2024 MLB baselines (FanGraphs Guts page
- * + "The Book" Tango/MGL/Dolphin methodology) per ADR-0006 and ADR-0011 — not
+ * + "The Book" Tango/MGL/Dolphin methodology) per ADR-0006 and ADR-0015 — not
  * transcribed from any private source workbook. Keep this table injectable.
  *
  * Distinctions (preserved as value differences):

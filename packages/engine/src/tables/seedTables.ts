@@ -3,7 +3,7 @@
  *
  * Tuned by SAN-15 so the WEIGHTED AGGREGATE slash line over the default
  * triangular differential distribution lands inside the 2024 MLB tolerance gates
- * (see harness/baselines.ts and ADR-0011). The diff=0 column is an anchor, NOT
+ * (see harness/baselines.ts and ADR-0015). The diff=0 column is an anchor, NOT
  * the league average: because the triangular weight is symmetric and these tables
  * are mildly convex, the aggregate differs from the diff=0 cell. What is validated
  * against MLB is the aggregate, reproduced by `pnpm derive-balance`.

@@ -65,7 +65,17 @@ export function validateEnumeration(
   return { pass: leakedPositiveWeight.length === 0, leakedPositiveWeight }
 }
 
-/** Weighted aggregate slash line across all grid cells. */
+/**
+ * Weighted aggregate slash line across all grid cells.
+ *
+ * This is a weighted MEAN OF PER-CELL RATIOS (each cell's AVG/SLG already divides by
+ * that cell's AB), which differs from pooling Σ hits / Σ AB by a Jensen gap. Unlike
+ * `aggregateRunsPerGame` — where the ratio (runsPerPA/outRate) is high-variance and
+ * MUST be pooled — AVG/SLG divide by AB = 1 − bb ≈ 0.92, a low-variance denominator,
+ * so the gap is ~0.0002 AVG / 0.0003 SLG (≈5% of the SAN-15 tolerance budget) and the
+ * mean-of-ratios is the intended, gate-defining definition. OBP/HR%/K%/BB% are over
+ * PA = 1 (count-based), so their weighted mean already equals the pooled value.
+ */
 export function aggregateGrid(
   cells: CellResult[],
   weightFn: DifferentialWeightFn = defaultDifferentialWeight,

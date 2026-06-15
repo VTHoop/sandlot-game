@@ -24,8 +24,10 @@ import type { OutcomeTable } from '../src/tables/seedTables'
 import { BB, DOUBLE, HIT_TOTAL, HR, IF1B, K, TRIPLE } from '../src/tables/seedTables'
 
 // Triangular differential marginal: P(d) = (5−|d|)/25 for |d| ≤ 4, else 0.
-// (Mirror of defaultDistribution.marginalWeight, inlined so this derivation is
-// self-contained and readable as a standalone proof.)
+// Intentionally re-derived here rather than imported from defaultDistribution: this
+// script is an INDEPENDENT audit of the aggregate, so it recomputes the marginal from
+// first principles instead of calling the same code path the gate uses. If the canonical
+// defaultDistribution.marginalWeight ever changes, this constant must be revisited.
 function marginalWeight(d: number): number {
   const abs = Math.abs(d)
   return abs >= 5 ? 0 : (5 - abs) / 25
