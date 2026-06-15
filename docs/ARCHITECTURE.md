@@ -51,8 +51,10 @@ Located at `packages/engine/`. A pure, framework-free TypeScript package — no 
 | `src/styles/app.css` | Tailwind v4 entry: semantic `@theme` design tokens (Night Game, ADR-0012) + base styles |
 | `src/components/ui/` | Foundation components extracted from the duel (Button, ScoreTile, NumberPad, OutcomeLadder, Card) — see `docs/design/design-principles.md` |
 | `src/design/` | Design-spike showcase: duel screens for all four states + `duel.css` reveal choreography |
-| `convex/schema.ts` | Convex data model stub (tables added per Multiplayer tickets) |
+| `convex/schema.ts` | Convex data model (SAN-19): `users`, `teams`, `players`, `games`, `lineups`, `pitches` (secret vault), `atBats` (append-only log), and the `standings`/`playerStatLine`/`boxScoreLine` rollups — per ADR-0004 |
+| `convex/validators.ts` | Shared `v.union` field validators (outcome bands, role, position, game status, half, 1–5 rating, base state, attribute blocks); `outcomeBand` is compile-time-locked to `@sandlot/engine/outcomes` |
 | `convex/auth.config.ts` | Clerk OIDC provider so Convex validates Clerk JWTs |
+| `packages/engine/src/outcomes.ts` | Canonical at-bat outcome band keys (`OUTCOME_BAND_KEYS`, `OutcomeBandKey`) derived from the RangeFinder bands — single source of truth mirrored by the Convex `atBats.outcome` enum |
 | `public/manifest.webmanifest` | PWA manifest (served as-is; `vite-plugin-pwa` handles SW) |
 | `pnpm-workspace.yaml` | pnpm 11 build-script approvals (`allowBuilds`) |
 | `.env.example` | Required env var names with no real values |

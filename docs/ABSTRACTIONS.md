@@ -47,6 +47,41 @@ pacing derived in `src/design/duel/scenario.ts` (pure, unit-tested).
 Components style themselves exclusively from semantic `@theme` tokens in
 `src/styles/app.css`; raw hues and Tailwind stock colors are forbidden.
 
+## Convex data model (`convex/schema.ts`)
+
+The multiplayer schema follows ADR-0004 — **authoritative current-state rows +
+an append-only log + maintained rollups**, not full event sourcing:
+
+- **State rows:** `games` (inning/half/outs/base-state/score/status/current
+  batter+pitcher) and `lineups` (ordered 1–9 batting list + designated pitcher).
+- **`pitches` — secret vault.** The pitcher's committed number lives only here,
+  in its own table by design, so no public/at-bat read path can reach it
+  (game-integrity rule). This ticket adds no read path; the "batter cannot read
+  the pitch" test is owned by the Secret at-bat round-trip ticket.
+- **`atBats` — append-only log.** Each row carries complete pre- and post-state
+  (outs/bases before & after, both committed numbers, outcome, runs, RBI) so
+  entries are never mutated. Ordered within a game by `sequence` (`by_game`).
+- **Rollups:** `standings`, `playerStatLine` (engine `SlashLine` inputs),
+  `boxScoreLine` — maintained aggregates kept in sync with the log by later
+  tickets, never aggregated from raw events on the client.
+
+Mutations, queries, rollup maintenance, append-only enforcement, secrecy
+read-paths, and salary-cap logic are **not** in this layer — they belong to
+downstream Multiplayer/League tickets. This is schema only.
+
+### Shared validators (`convex/validators.ts`)
+
+Every enumerated domain is defined once as a `v.union` of literals and reused:
+outcome bands, role, position, game status, half-inning, the 1–5 attribute
+`rating` (a literal union, so the bound is a schema-level guarantee), base state,
+and the hitter/pitcher attribute blocks. No `v.any()` anywhere.
+
+The `outcomeBand` enum **mirrors the engine** (`HR…K`): a compile-time guard ties
+it to `OutcomeBandKey` from `@sandlot/engine/outcomes`, so the persisted outcome
+enum can never drift from what the RangeFinder produces. The engine is the single
+source of truth; the import is type-only, so the Convex bundle carries no engine
+runtime dependency.
+
 ---
 
 _Components, hooks, and game-logic abstractions are added here as they land._

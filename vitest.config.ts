@@ -4,7 +4,11 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react()],
   test: {
-    include: ['src/**/*.{test,spec}.{ts,tsx}', 'packages/*/src/**/*.test.ts'],
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'packages/*/src/**/*.test.ts',
+      'convex/**/*.test.ts',
+    ],
     environment: 'jsdom',
     coverage: {
       provider: 'v8',
