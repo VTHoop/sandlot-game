@@ -41,13 +41,12 @@ const AGGREGATE = aggregateGrid(GRID)
 // the "2024 MLB tolerance gates" suite below. (The exact band widths per matchup are
 // covered with injected fixtures in rangeFinder/__tests__.)
 
-const RATE_KEYS = ['hr', 'triple', 'double', 'single', 'if1b', 'bb', 'fo', 'po', 'gb', 'k'] as const
-
 describe('width/500 rate identity — holds for every reachable cell', () => {
   it('every rate is a non-negative integer band width over 500', () => {
     for (const cell of GRID) {
-      for (const key of RATE_KEYS) {
-        const rate = cell.rates[key]
+      // Iterate values directly (not via computed key access) — every OutcomeRates
+      // field is one of the ten band rates.
+      for (const rate of Object.values(cell.rates)) {
         expect(rate).toBeGreaterThanOrEqual(0)
         const width = rate * 500
         // rate must be an exact k/500 — i.e. width is a non-negative integer.
