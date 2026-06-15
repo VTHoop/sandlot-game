@@ -45,13 +45,16 @@ function marginalMean(table: OutcomeTable): number {
   return mean
 }
 
-function fmtGate(
-  label: string,
-  actual: number,
-  baseline: number,
-  tol: number,
-  pct: boolean,
-): string {
+interface Gate {
+  label: string
+  actual: number
+  baseline: number
+  tol: number
+  /** Render as a percentage (rates) rather than a 3-decimal ratio (slash line). */
+  pct: boolean
+}
+
+function fmtGate({ label, actual, baseline, tol, pct }: Gate): string {
   const scale = pct ? 100 : 1
   const unit = pct ? '%' : ''
   const pass = Math.abs(actual - baseline) <= tol
@@ -92,12 +95,51 @@ console.log(
 )
 console.log('')
 console.log('Aggregate slash line vs 2024 MLB gates:')
-console.log(fmtGate('AVG', agg.avg, MLB_2024_BASELINE.avg, MLB_2024_TOLERANCE.avg, false))
-console.log(fmtGate('OBP', agg.obp, MLB_2024_BASELINE.obp, MLB_2024_TOLERANCE.obp, false))
-console.log(fmtGate('SLG', agg.slg, MLB_2024_BASELINE.slg, MLB_2024_TOLERANCE.slg, false))
-console.log(fmtGate('HR%', agg.hrPct, MLB_2024_BASELINE.hrPct, MLB_2024_TOLERANCE.hrPct, true))
-console.log(fmtGate('K%', agg.kPct, MLB_2024_BASELINE.kPct, MLB_2024_TOLERANCE.kPct, true))
-console.log(fmtGate('BB%', agg.bbPct, MLB_2024_BASELINE.bbPct, MLB_2024_TOLERANCE.bbPct, true))
+const SLASH_GATES: Gate[] = [
+  {
+    label: 'AVG',
+    actual: agg.avg,
+    baseline: MLB_2024_BASELINE.avg,
+    tol: MLB_2024_TOLERANCE.avg,
+    pct: false,
+  },
+  {
+    label: 'OBP',
+    actual: agg.obp,
+    baseline: MLB_2024_BASELINE.obp,
+    tol: MLB_2024_TOLERANCE.obp,
+    pct: false,
+  },
+  {
+    label: 'SLG',
+    actual: agg.slg,
+    baseline: MLB_2024_BASELINE.slg,
+    tol: MLB_2024_TOLERANCE.slg,
+    pct: false,
+  },
+  {
+    label: 'HR%',
+    actual: agg.hrPct,
+    baseline: MLB_2024_BASELINE.hrPct,
+    tol: MLB_2024_TOLERANCE.hrPct,
+    pct: true,
+  },
+  {
+    label: 'K%',
+    actual: agg.kPct,
+    baseline: MLB_2024_BASELINE.kPct,
+    tol: MLB_2024_TOLERANCE.kPct,
+    pct: true,
+  },
+  {
+    label: 'BB%',
+    actual: agg.bbPct,
+    baseline: MLB_2024_BASELINE.bbPct,
+    tol: MLB_2024_TOLERANCE.bbPct,
+    pct: true,
+  },
+]
+for (const gate of SLASH_GATES) console.log(fmtGate(gate))
 const rgPass = Math.abs(rg - MLB_2024_RUNS_PER_GAME) <= MLB_2024_RUNS_PER_GAME_TOLERANCE
 console.log(
   `  R/G    actual ${rg.toFixed(2)}      target ${MLB_2024_RUNS_PER_GAME.toFixed(2)} ± ${MLB_2024_RUNS_PER_GAME_TOLERANCE.toFixed(2)}        ${rgPass ? 'PASS' : 'FAIL'}`,
