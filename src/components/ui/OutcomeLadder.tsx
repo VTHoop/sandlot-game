@@ -1,5 +1,8 @@
-/** Outcome keys mirror the engine's band names (frontHalf + backHalf). */
-export const OUTCOME_LADDER = ['HR', '3B', '2B', '1B', 'IF1B', 'BB', 'FO', 'PO', 'GB', 'K'] as const
+import { OUTCOME_BAND_KEYS } from '@sandlot/engine/outcomes'
+
+/** The fixed best→worst outcome strip, sourced from the engine's band names so
+ * the UI never drifts from the resolver (single source of truth). */
+export const OUTCOME_LADDER = OUTCOME_BAND_KEYS
 
 export type OutcomeKey = (typeof OUTCOME_LADDER)[number]
 
