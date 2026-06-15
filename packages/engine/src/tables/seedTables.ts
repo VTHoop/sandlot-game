@@ -1,17 +1,22 @@
 /**
- * Seed outcome-band width tables for the at-bat engine RangeFinder.
+ * Outcome-band width tables for the at-bat engine RangeFinder.
  *
- * Provenance: widths at differential=0 are anchored to 2024 MLB league-average
- * outcome rates (BA .248, HR% 3.3%, BB% 8.7%, K% 22.5%, 2B% 5.4%, 3B% 0.4%,
- * IF1B% ~1.1%; source: Baseball Reference 2024 league batting averages).
- * Formula: rate × 500 = band-width unit on the 0–500 difference line.
- * Differential ±1..±5 scaling is interpolated monotonically from the baseline.
+ * Tuned by SAN-15 so the WEIGHTED AGGREGATE slash line over the default
+ * triangular differential distribution lands inside the 2024 MLB tolerance gates
+ * (see harness/baselines.ts and ADR-0015). The diff=0 column is an anchor, NOT
+ * the league average: because the triangular weight is symmetric and these tables
+ * are mildly convex, the aggregate differs from the diff=0 cell. What is validated
+ * against MLB is the aggregate, reproduced by `pnpm derive-balance`.
  *
- * Regenerate: re-derive diff-0 anchors from fresh public MLB rate baselines;
- * see docs/engine/attribute-normalization.md for the attribute→rate mapping.
- * Update the checksum in __tests__/seedTables.test.ts after any regeneration.
+ * Each rate = band_width / 500 (the 0–499 circular-fold identity). Differential
+ * scaling is monotonic so the directional invariants hold (HR% non-decreasing in
+ * Power−Velocity, K% non-increasing in Contact−Movement, BB% non-decreasing in
+ * Eye−Command, 2B+3B non-decreasing in Speed−Awareness).
  *
- * Seed values — deliberately rough; tuned against real MLB rates by SAN-15.
+ * Provenance: independently derived against public 2024 MLB rate baselines via the
+ * simulation harness — never transcribed from any private source workbook (AGENTS.md
+ * IP hygiene). Regenerate with `pnpm derive-balance`; update the checksum in
+ * __tests__/seedTables.test.ts after any retune.
  */
 
 /**
@@ -39,9 +44,9 @@ export type OutcomeTable = readonly [
 /**
  * HR band width keyed by Power − Velocity differential.
  * Non-decreasing: batter Power advantage widens the HR band.
- * Baseline diff=0: 17 ≈ 3.3% × 500
+ * Diff=0 anchor: 15. Aggregate HR% ≈ 3.1% (marginal mean 15.3 / 500).
  */
-export const HR: OutcomeTable = [6, 8, 10, 12, 14, 17, 20, 24, 28, 32, 37]
+export const HR: OutcomeTable = [5, 7, 8, 10, 12, 15, 17, 21, 24, 28, 32]
 
 /**
  * 3B band width keyed by Speed − Awareness differential.
@@ -53,30 +58,36 @@ export const TRIPLE: OutcomeTable = [1, 1, 1, 1, 2, 2, 3, 4, 5, 6, 8]
 /**
  * 2B band width keyed by Speed − Awareness differential.
  * Non-decreasing: batter Speed advantage widens the 2B band.
- * Baseline diff=0: 27 ≈ 5.4% × 500
+ * Diff=0 anchor: 18. Lowered from the prior 27 so aggregate SLG lands at ~.399.
  */
-export const DOUBLE: OutcomeTable = [12, 15, 18, 21, 24, 27, 31, 35, 39, 44, 50]
+export const DOUBLE: OutcomeTable = [8, 10, 12, 14, 16, 18, 20, 22, 24, 27, 31]
 
 /**
  * IF1B band width keyed by Speed − Awareness differential.
  * Non-decreasing: batter Speed advantage widens the infield-single band.
- * Baseline diff=0: 6 ≈ 1.1% × 500
+ * Diff=0 anchor: 5. IF1B and 1B both count as a single hit / one base, so this
+ * table is balance-neutral for the slash line; the high end is held down to keep
+ * 1B (the hit-total residual) positive at high Speed−Awareness (zero degenerate).
  */
-export const IF1B: OutcomeTable = [2, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14]
+export const IF1B: OutcomeTable = [2, 2, 3, 3, 4, 5, 6, 7, 8, 10, 12]
 
 /**
  * BB band width keyed by Eye − Command differential.
  * Non-decreasing: batter Eye advantage widens the walk band.
- * Baseline diff=0: 44 ≈ 8.7% × 500
+ * Diff=0 anchor: 41. Aggregate BB% ≈ 8.5% (marginal mean 42.5 / 500); held toward
+ * the upper gate edge so AVG and OBP can both sit inside their gates (a 2-outcome
+ * AB-or-BB model has no HBP, which tightens the AVG↔OBP relationship).
  */
-export const BB: OutcomeTable = [18, 22, 27, 32, 38, 44, 51, 59, 68, 79, 92]
+export const BB: OutcomeTable = [18, 21, 26, 30, 35, 41, 47, 55, 64, 74, 86]
 
 /**
  * Hit-total band width keyed by Contact − Movement differential.
  * Non-decreasing: batter Contact advantage widens the total-hits band.
- * Baseline diff=0: 125 ≈ BA (.248) × 500
+ * Diff=0 anchor: 111. Drives aggregate h = M(HIT)/500 ≈ .224, giving AVG ≈ .245
+ * and OBP ≈ .310. The low (Contact-weak) end is held up enough that the 1B
+ * residual stays positive even at high Power and Speed advantage.
  */
-export const HIT_TOTAL: OutcomeTable = [72, 83, 94, 106, 115, 125, 136, 148, 161, 175, 190]
+export const HIT_TOTAL: OutcomeTable = [66, 76, 84, 94, 102, 111, 121, 131, 143, 155, 169]
 
 /**
  * K band width keyed by Contact − Movement differential.

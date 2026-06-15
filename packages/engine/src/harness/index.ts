@@ -4,6 +4,7 @@ export { ARTIFACT_PATH, emitArtifact, printAggregateSummary } from './emit'
 export type { EnumerationResult } from './grid'
 export {
   aggregateGrid,
+  aggregateRunsPerGame,
   assertAggregate,
   buildArtifact,
   enumerateGrid,

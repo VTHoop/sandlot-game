@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "emit-grid": "tsx bin/emit-grid.ts"
+    "emit-grid": "tsx bin/emit-grid.ts",
+    "derive-balance": "tsx bin/derive-balance.ts"
   },
   "exports": {
     "./tables": "./src/tables/accessor.ts",

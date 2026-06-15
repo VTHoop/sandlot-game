@@ -14,7 +14,7 @@ A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) r
 - Read the **Linear** issue and all comments fully. The issue is the source of truth for scope. *(Linear MCP disabled; manual modifications made as needed.)*
 - Check `docs/adr/` for relevant architecture decisions before any structural choice.
 - Check `docs/ARCHITECTURE.md` and `docs/ABSTRACTIONS.md` for existing structure and patterns.
-- For engine/balance work: consult the private engine reference (see Product Rules — it is **not** in this repo).
+- For engine/balance work: consult the private engine reference (see Product Rules — it is **not** in this repo). **Run `pnpm emit-grid` immediately** to get the current aggregate slash line before any analysis — don't hand-compute what the harness already answers exactly.
 - For UI tasks: study the existing visual language and components first. **Reuse before recreating** (components, hooks, tokens).
 - Post a Linear comment: `🚀 Starting: <brief approach>`.
 - **Health pre-check:** run the CodeScene MCP code-health score against `.codescene-thresholds`. If already below the gate, **refactor first**, commit, then start. Never start feature work on a codebase that's already below the bar.

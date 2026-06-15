@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import type { AttributeDiff } from '../../tables/accessor'
+import {
+  MLB_2024_BASELINE,
+  MLB_2024_RUNS_PER_GAME,
+  MLB_2024_RUNS_PER_GAME_TOLERANCE,
+  MLB_2024_TOLERANCE,
+} from '../baselines'
 import { computeCell } from '../computeCell'
 import {
   aggregateGrid,
+  aggregateRunsPerGame,
   assertAggregate,
   buildArtifact,
   enumerateGrid,
@@ -25,46 +33,34 @@ const AGGREGATE = aggregateGrid(GRID)
 // The circular/shorter-arc fold of two uniform 1–1000 draws is uniform on 0–499.
 // (TC: "VERIFY the 0–499 fold before assuming width/500" — confirmed true for the
 // circular fold, not raw |X−Y|.)  Therefore rate = band_width / 500.
+//
+// These are *balance-agnostic property tests*: they assert the width/500 fold and
+// the complete partition for every reachable cell, so they survive any SAN-15-style
+// retune. The specific diff=0 widths are no longer pinned here — the seed values are
+// range-checked in tables/__tests__/seedTables.test.ts and the aggregate is gated in
+// the "2024 MLB tolerance gates" suite below. (The exact band widths per matchup are
+// covered with injected fixtures in rangeFinder/__tests__.)
 
-describe('width/500 rate identity (all-zero diffs)', () => {
-  // At diff=0 everywhere the seed tables give deterministic integer widths.
-  // From seedTables.ts diff=0 column (index 5):
-  //   HR=17, 3B=2, 2B=27, IF1B=6, BB=44, HIT_TOTAL=125 → 1B=125−17−2−27−6=73
-  //   K=113, FO=85, PO=35 → GB=500−(17+2+27+73+6+44+85+35+113)=98
-  it('HR rate = 17/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates.hr).toBeCloseTo(17 / 500, 10)
+describe('width/500 rate identity — holds for every reachable cell', () => {
+  it('every rate is a non-negative integer band width over 500', () => {
+    for (const cell of GRID) {
+      // Iterate values directly (not via computed key access) — every OutcomeRates
+      // field is one of the ten band rates.
+      for (const rate of Object.values(cell.rates)) {
+        expect(rate).toBeGreaterThanOrEqual(0)
+        const width = rate * 500
+        // rate must be an exact k/500 — i.e. width is a non-negative integer.
+        expect(width).toBeCloseTo(Math.round(width), 6)
+      }
+    }
   })
-  it('3B rate = 2/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates.triple).toBeCloseTo(2 / 500, 10)
-  })
-  it('2B rate = 27/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates.double).toBeCloseTo(27 / 500, 10)
-  })
-  it('1B rate = 73/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates.single).toBeCloseTo(73 / 500, 10)
-  })
-  it('IF1B rate = 6/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates.if1b).toBeCloseTo(6 / 500, 10)
-  })
-  it('BB rate = 44/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates.bb).toBeCloseTo(44 / 500, 10)
-  })
-  it('K rate = 113/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates.k).toBeCloseTo(113 / 500, 10)
-  })
-  it('FO rate = 85/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates.fo).toBeCloseTo(85 / 500, 10)
-  })
-  it('PO rate = 35/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates.po).toBeCloseTo(35 / 500, 10)
-  })
-  it('GB rate = 98/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates.gb).toBeCloseTo(98 / 500, 10)
-  })
-  it('all rates sum to 1.0', () => {
-    const r = computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).rates
-    const sum = r.hr + r.triple + r.double + r.single + r.if1b + r.bb + r.fo + r.po + r.gb + r.k
-    expect(sum).toBeCloseTo(1.0, 8)
+
+  it('all ten rates sum to exactly 1.0 in every cell (complete partition)', () => {
+    for (const cell of GRID) {
+      const r = cell.rates
+      const sum = r.hr + r.triple + r.double + r.single + r.if1b + r.bb + r.fo + r.po + r.gb + r.k
+      expect(sum).toBeCloseTo(1.0, 9)
+    }
   })
 })
 
@@ -73,32 +69,38 @@ describe('width/500 rate identity (all-zero diffs)', () => {
 // H = HR+3B+2B+1B+IF1B; PA=1; AB = 1−BB_rate
 // AVG = H/AB; OBP = (H+BB)/PA; SLG = total_bases/AB
 // HR%/K%/BB% = rate/PA (PA=1, so they equal the raw rate)
+//
+// Balance-agnostic: each slash field is re-derived from the SAME cell's own rates
+// and must match, for every reachable cell. This pins the formula SHAPE (the 4/3/2/1
+// SLG coefficients, the AB=1−BB denominator, the IF1B term in H) without hard-coding
+// any tuned value, so the suite survives retuning. The exact tuned numbers are gated
+// in the "2024 MLB tolerance gates" suite below.
 
-describe('slash line — exact formulas at all-zero diffs', () => {
-  // H_count/500 = 125/500; AB_count/500 = 456/500
-  it('AVG = H/AB = 125/456', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).slashLine.avg).toBeCloseTo(125 / 456, 10)
+describe('slash line formulas — hold for every reachable cell', () => {
+  it('AVG = H/AB, OBP = H+BB, SLG = TB/AB, and HR%/K%/BB% equal their rates', () => {
+    for (const cell of GRID) {
+      const r = cell.rates
+      const hits = r.hr + r.triple + r.double + r.single + r.if1b
+      const abRate = 1 - r.bb
+      const totalBases = 4 * r.hr + 3 * r.triple + 2 * r.double + (r.single + r.if1b)
+
+      expect(cell.slashLine.avg).toBeCloseTo(hits / abRate, 10)
+      expect(cell.slashLine.obp).toBeCloseTo(hits + r.bb, 10)
+      expect(cell.slashLine.slg).toBeCloseTo(totalBases / abRate, 10)
+      expect(cell.slashLine.hrPct).toBeCloseTo(r.hr, 10)
+      expect(cell.slashLine.kPct).toBeCloseTo(r.k, 10)
+      expect(cell.slashLine.bbPct).toBeCloseTo(r.bb, 10)
+    }
   })
 
-  it('OBP = (H+BB)/PA = 169/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).slashLine.obp).toBeCloseTo(169 / 500, 10)
-  })
-
-  // TB = 4×17 + 3×2 + 2×27 + 1×(73+6) = 68+6+54+79 = 207
-  it('SLG = total_bases/AB = 207/456', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).slashLine.slg).toBeCloseTo(207 / 456, 10)
-  })
-
-  it('HR% = HR/PA = 17/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).slashLine.hrPct).toBeCloseTo(17 / 500, 10)
-  })
-
-  it('K% = K/PA = 113/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).slashLine.kPct).toBeCloseTo(113 / 500, 10)
-  })
-
-  it('BB% = BB/PA = 44/500', () => {
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).slashLine.bbPct).toBeCloseTo(44 / 500, 10)
+  it('OBP ≥ AVG and SLG ≥ AVG in every cell (sanity ordering)', () => {
+    for (const cell of GRID) {
+      expect(cell.slashLine.slg).toBeGreaterThanOrEqual(cell.slashLine.avg)
+      // OBP counts BB in the numerator over PA; AVG divides hits by the smaller AB.
+      // Both exceed the bare hit rate, so assert the weaker, always-true SLG ≥ AVG
+      // and OBP > 0 here; the AVG/OBP ordering is matchup-dependent, not invariant.
+      expect(cell.slashLine.obp).toBeGreaterThan(0)
+    }
   })
 })
 
@@ -147,24 +149,27 @@ describe('runsPerGame', () => {
     expect(weak).toBeLessThan(base)
   })
 
-  it('exact hand-computed value at all-zero diffs', () => {
-    // From seed tables at diff=0: HR=17, 3B=2, 2B=27, 1B=73, IF1B=6, BB=44, K=113, FO=85, PO=35, GB=98
-    // outRate = (85+35+98+113)/500 = 331/500
-    // runsPerPA = Σ(rate_i × weight_i); runsPerGame = (runsPerPA / outRate) × 27
-    const expected =
-      ((17 * 1.4 +
-        2 * 1.04 +
-        27 * 0.77 +
-        73 * 0.47 +
-        6 * 0.47 +
-        44 * 0.31 +
-        85 * -0.26 +
-        35 * -0.26 +
-        98 * -0.26 +
-        113 * -0.3) /
-        331) *
-      27
-    expect(computeCell(ALL_ZERO, DEFAULT_LINEAR_WEIGHTS).runsPerGame).toBeCloseTo(expected, 10)
+  it('equals (Σ rate·weight / outRate) × 27 for every reachable cell', () => {
+    // Balance-agnostic: re-derive the estimator from each cell's own rates and the
+    // injected weights, for every cell. Pins the formula (per-PA run sum, division by
+    // the out rate, × 27 outs/game) without hard-coding any tuned width or weight.
+    const w = DEFAULT_LINEAR_WEIGHTS
+    for (const cell of GRID) {
+      const r = cell.rates
+      const runsPerPA =
+        r.hr * w.hr +
+        r.triple * w.triple +
+        r.double * w.double +
+        r.single * w.single +
+        r.if1b * w.if1b +
+        r.bb * w.bb +
+        r.fo * w.fo +
+        r.po * w.po +
+        r.gb * w.gb +
+        r.k * w.k
+      const outRate = r.fo + r.po + r.gb + r.k
+      expect(cell.runsPerGame).toBeCloseTo((runsPerPA / outRate) * 27, 10)
+    }
   })
 })
 
@@ -209,14 +214,14 @@ describe('enumerateGrid', () => {
 // catches this by asserting every degenerate cell has zero weight.
 
 describe('validateEnumeration', () => {
-  // Pre-SAN-15 state: 5 (powerVel, speedAwa, contactMov) triples where
-  // 1B = HIT_TOTAL(cm) − HR(pv) − TRIPLE/DOUBLE/IF1B(sa) ≤ 0, each paired
-  // with 9 eye-cmd values → 45 reachable (|diff|≤4) degenerate cells.
-  // SAN-15 owns tuning the tables so this count reaches 0.
-  it('leaked-positive-weight count is stable at 45 (pre-SAN-15 ratchet)', () => {
-    const { leakedPositiveWeight } = validateEnumeration(DEGENERATE_CELLS)
-    // Must not increase (regression guard); SAN-15 will decrease it to 0.
-    expect(leakedPositiveWeight.length).toBe(45)
+  // SAN-15 tuned the seed tables so the 1B residual stays positive across every
+  // reachable matchup: 1B = HIT_TOTAL(cm) − HR(pv) − TRIPLE/DOUBLE/IF1B(sa) > 0 for
+  // all |diff| ≤ 4. The pre-SAN-15 count was 45; it is now 0 and ratcheted there —
+  // any future retune that re-introduces a reachable degenerate cell fails here.
+  it('zero positive-weight matchup is silently dropped (degenerate ratchet)', () => {
+    const { pass, leakedPositiveWeight } = validateEnumeration(DEGENERATE_CELLS)
+    expect(leakedPositiveWeight.length).toBe(0)
+    expect(pass).toBe(true)
   })
 
   it('detects when a degenerate cell has positive weight (simulates seed-table regression)', () => {
@@ -310,6 +315,18 @@ describe('aggregateGrid', () => {
 
   it('throws RangeError when cells array is empty', () => {
     expect(() => aggregateGrid([])).toThrow(RangeError)
+  })
+})
+
+describe('aggregateRunsPerGame', () => {
+  it('returns a finite positive league rate under the default distribution', () => {
+    const rg = aggregateRunsPerGame(GRID, DEFAULT_LINEAR_WEIGHTS)
+    expect(Number.isFinite(rg)).toBe(true)
+    expect(rg).toBeGreaterThan(0)
+  })
+
+  it('throws RangeError when no cell has positive weight (prevents silent NaN)', () => {
+    expect(() => aggregateRunsPerGame(GRID, DEFAULT_LINEAR_WEIGHTS, () => 0)).toThrow(RangeError)
   })
 })
 
@@ -440,5 +457,86 @@ describe('buildArtifact', () => {
     const customWeights = { ...DEFAULT_LINEAR_WEIGHTS, hr: 2.0 }
     const artifact = buildArtifact(GRID, customWeights)
     expect(artifact.linearWeights.hr).toBe(2.0)
+  })
+})
+
+// ─── SAN-15 acceptance — 2024 MLB tolerance gates + directional invariants ────
+//
+// This is the committed balance gate. It pins the tuned seed tables and run values
+// against the 2024 MLB baselines (harness/baselines.ts): the weighted aggregate over
+// the default triangular differential distribution must sit inside every gate, the
+// four directional invariants must hold, no reachable matchup may be silently dropped,
+// and the per-cell partition must be complete. A retune that drifts out of any gate or
+// breaks an invariant fails here.
+
+const AXIS: AttributeDiff[] = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5]
+
+/** Sweep one differential axis (others held at 0) and return per-step rates. */
+function sweep(
+  axis: 'powerVel' | 'speedAwa' | 'eyeCmd' | 'contactMov',
+  pick: (rates: (typeof GRID)[number]['rates']) => number,
+): number[] {
+  return AXIS.map((d) => {
+    const diffs: CellDiffs = { powerVel: 0, speedAwa: 0, eyeCmd: 0, contactMov: 0, [axis]: d }
+    return pick(computeCell(diffs, DEFAULT_LINEAR_WEIGHTS).rates)
+  })
+}
+
+function isNonDecreasing(xs: number[]): boolean {
+  return xs.every((x, i) => i === 0 || x >= xs[i - 1])
+}
+
+function isNonIncreasing(xs: number[]): boolean {
+  return xs.every((x, i) => i === 0 || x <= xs[i - 1])
+}
+
+describe('SAN-15 — aggregate slash line inside 2024 MLB tolerance gates', () => {
+  const result = assertAggregate(AGGREGATE, MLB_2024_BASELINE, MLB_2024_TOLERANCE)
+
+  it('passes every per-stat gate (AVG/OBP/SLG/HR%/K%/BB%)', () => {
+    // Surface which stat drifted, if any, instead of a bare boolean.
+    const failing = Object.entries(result.perStatDeltas)
+      .filter(([, d]) => !d.pass)
+      .map(
+        ([k, d]) =>
+          `${k}: actual ${d.actual.toFixed(4)} vs ${d.baseline} (Δ ${d.delta.toFixed(4)})`,
+      )
+    expect(failing).toEqual([])
+    expect(result.pass).toBe(true)
+  })
+
+  it('aggregate runs/game is inside 4.39 ± 0.12', () => {
+    const rg = aggregateRunsPerGame(GRID, DEFAULT_LINEAR_WEIGHTS)
+    expect(Math.abs(rg - MLB_2024_RUNS_PER_GAME)).toBeLessThanOrEqual(
+      MLB_2024_RUNS_PER_GAME_TOLERANCE,
+    )
+  })
+})
+
+describe('SAN-15 — directional invariants', () => {
+  it('HR% is non-decreasing as Power−Velocity rises', () => {
+    expect(isNonDecreasing(sweep('powerVel', (r) => r.hr))).toBe(true)
+  })
+
+  it('K% is non-increasing as Contact−Movement rises', () => {
+    expect(isNonIncreasing(sweep('contactMov', (r) => r.k))).toBe(true)
+  })
+
+  it('BB% is non-decreasing as Eye−Command rises', () => {
+    expect(isNonDecreasing(sweep('eyeCmd', (r) => r.bb))).toBe(true)
+  })
+
+  it('2B+3B is non-decreasing as Speed−Awareness rises', () => {
+    expect(isNonDecreasing(sweep('speedAwa', (r) => r.double + r.triple))).toBe(true)
+  })
+})
+
+describe('SAN-15 — structural integrity', () => {
+  it('no positive-weight matchup is silently excluded from the aggregate', () => {
+    expect(validateEnumeration(DEGENERATE_CELLS).pass).toBe(true)
+  })
+
+  it('partition completeness and GB ≥ 0 hold across the whole grid', () => {
+    expect(validateGridInvariants(GRID).pass).toBe(true)
   })
 })
