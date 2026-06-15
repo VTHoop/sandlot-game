@@ -8,8 +8,11 @@ type ExportedTable = {
   }
 }
 // `export()` is an internal TableDefinition method not in the public type;
-// reach it through `unknown` rather than the public surface.
-const tables = schema.tables as unknown as Record<string, ExportedTable>
+// reach it through `unknown`. A Map (rather than dynamic `tables[name]` index
+// access) keeps the lookup off the object-injection sink path.
+const tables = new Map<string, ExportedTable>(
+  Object.entries(schema.tables).map(([name, def]) => [name, def as unknown as ExportedTable]),
+)
 
 /**
  * Schema-contract test (SAN-19). Locks in the table set, the named indexes (and
@@ -43,7 +46,9 @@ describe('multiplayer schema', () => {
 
   for (const [table, indexes] of Object.entries(EXPECTED_INDEXES)) {
     describe(table, () => {
-      const exported = tables[table].export()
+      const definition = tables.get(table)
+      if (!definition) throw new Error(`table ${table} not found in schema`)
+      const exported = definition.export()
 
       for (const [name, fields] of Object.entries(indexes)) {
         it(`has index ${name} on [${fields.join(', ')}]`, () => {
