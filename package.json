@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "e2e:smoke": "playwright test --project=smoke",
-    "emit-grid": "tsx packages/engine/bin/emit-grid.ts"
+    "emit-grid": "tsx packages/engine/bin/emit-grid.ts",
+    "derive-balance": "tsx packages/engine/bin/derive-balance.ts"
   },
   "dependencies": {
     "@clerk/react": "^6.0.0",
