@@ -1,7 +1,7 @@
 import type { AttributeDiff } from '../tables/accessor'
 import { computeCell } from './computeCell'
 import { defaultDifferentialWeight } from './defaultDistribution'
-import { DEFAULT_LINEAR_WEIGHTS } from './linearWeights'
+import { DEFAULT_LINEAR_WEIGHTS, OUTS_PER_GAME } from './linearWeights'
 import type {
   AssertionResult,
   BaselineConfig,
@@ -104,6 +104,51 @@ export function aggregateGrid(
     kPct: kPct / totalWeight,
     bbPct: bbPct / totalWeight,
   }
+}
+
+/**
+ * Pooled aggregate runs/game across all positive-weight cells.
+ *
+ * R/G is a league-level rate, so we pool numerator and denominator before
+ * dividing — NOT a weighted average of per-cell runsPerGame. Per-cell R/G is
+ * runsPerPA/outRate × 27, a ratio; averaging ratios over-weights high-scoring
+ * cells (Jensen). Pooling Σw·runsPerPA and Σw·outRate, then dividing, yields the
+ * correct "total runs / total games" league rate under the differential weights.
+ */
+export function aggregateRunsPerGame(
+  cells: CellResult[],
+  weights: RunValues = DEFAULT_LINEAR_WEIGHTS,
+  weightFn: DifferentialWeightFn = defaultDifferentialWeight,
+): number {
+  let weightedRunsPerPA = 0
+  let weightedOutRate = 0
+
+  for (const cell of cells) {
+    const w = weightFn(cell.diffs)
+    if (w <= 0) continue
+    const r = cell.rates
+    const runsPerPA =
+      r.hr * weights.hr +
+      r.triple * weights.triple +
+      r.double * weights.double +
+      r.single * weights.single +
+      r.if1b * weights.if1b +
+      r.bb * weights.bb +
+      r.fo * weights.fo +
+      r.po * weights.po +
+      r.gb * weights.gb +
+      r.k * weights.k
+    weightedRunsPerPA += w * runsPerPA
+    weightedOutRate += w * (r.fo + r.po + r.gb + r.k)
+  }
+
+  if (weightedOutRate === 0) {
+    throw new RangeError(
+      'aggregateRunsPerGame: no positive-weight outs — check cells array and weightFn',
+    )
+  }
+
+  return (weightedRunsPerPA / weightedOutRate) * OUTS_PER_GAME
 }
 
 function toStatDelta(actual: number, baseline: number, tolerance: number): StatDelta {

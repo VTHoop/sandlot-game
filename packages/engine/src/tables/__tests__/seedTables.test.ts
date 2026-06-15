@@ -104,7 +104,9 @@ describe('checksum', () => {
       .reduce((acc, v) => acc + v, 0)
     // Derived from public MLB 2024 rates; see seedTables.ts provenance header.
     // If this fails, a table value was accidentally changed — re-derive, don't adjust this number.
-    expect(total).toBe(7878)
+    // (Updated by SAN-15: seed tables retuned so the weighted aggregate lands in the
+    // 2024 MLB tolerance gates — see ADR-0011 and `pnpm derive-balance`.)
+    expect(total).toBe(7538)
   })
 })
 
@@ -131,8 +133,9 @@ describe('accessor clamping', () => {
   })
 
   it('getSingle clamps to 0 when extra-base hits exceed hit-total', () => {
-    // contactMov=-5 → HIT_TOTAL=72; powerVel=+5 → HR=37;
-    // speedAwa=+5 → TRIPLE=8, DOUBLE=50, IF1B=14 → XBH sum=109 > 72
+    // At the unreachable |diff|=5 corner: contactMov=-5 → HIT_TOTAL=66; powerVel=+5 →
+    // HR=32; speedAwa=+5 → TRIPLE=8, DOUBLE=31, IF1B=12 → XBH sum=83 > 66, so 1B clamps
+    // to 0. (This corner has zero differential weight; reachable |diff|≤4 cells keep 1B>0.)
     expect(getSingle({ contactMov: -5, powerVel: 5, speedAwa: 5 })).toBe(0)
   })
 })
