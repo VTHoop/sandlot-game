@@ -80,10 +80,10 @@ const atBatRows = (t: Harness, game: Id<'games'>) =>
       .collect(),
   )
 
-const pitchRows = (t: Harness, game: Id<'games'>) =>
+const commitmentRows = (t: Harness, game: Id<'games'>) =>
   t.run((ctx) =>
     ctx.db
-      .query('pitches')
+      .query('duelCommitments')
       .withIndex('by_game', (q) => q.eq('game', game))
       .collect(),
   )
@@ -119,9 +119,22 @@ describe('secret at-bat round-trip', () => {
       await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 742 })
 
       const view = await t.withIdentity(BATTER).query(api.atBat.getActiveDuel, { game: gameId })
-      expect(view?.status).toBe('awaiting_swing')
+      expect(view?.status).toBe('awaiting_opponent')
       expect(view?.pitchCommitted).toBe(true)
+      expect(view?.swingCommitted).toBe(false)
       expect(view).not.toHaveProperty('pitchNumber')
+      expect(JSON.stringify(view)).not.toContain('742')
+    })
+
+    it('does not reveal the swing to the pitching-team owner before the pitch locks', async () => {
+      const { t, gameId } = await setupGame()
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 742 })
+
+      const view = await t.withIdentity(PITCHER).query(api.atBat.getActiveDuel, { game: gameId })
+      expect(view?.status).toBe('awaiting_opponent')
+      expect(view?.swingCommitted).toBe(true)
+      expect(view?.pitchCommitted).toBe(false)
+      expect(view).not.toHaveProperty('batterNumber')
       expect(JSON.stringify(view)).not.toContain('742')
     })
 
@@ -161,7 +174,7 @@ describe('secret at-bat round-trip', () => {
       await expect(
         t.mutation(api.atBat.commitPitch, { game: gameId, number: 500 }),
       ).rejects.toThrow()
-      expect(await pitchRows(t, gameId)).toHaveLength(0)
+      expect(await commitmentRows(t, gameId)).toHaveLength(0)
     })
 
     it('rejects a pitch from someone who is not the pitching-team owner', async () => {
@@ -169,7 +182,7 @@ describe('secret at-bat round-trip', () => {
       await expect(
         t.withIdentity(BATTER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 }),
       ).rejects.toThrow()
-      expect(await pitchRows(t, gameId)).toHaveLength(0)
+      expect(await commitmentRows(t, gameId)).toHaveLength(0)
     })
 
     it('rejects an unauthenticated swing', async () => {
@@ -197,7 +210,7 @@ describe('secret at-bat round-trip', () => {
           t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: bad }),
         ).rejects.toThrow()
       }
-      expect(await pitchRows(t, gameId)).toHaveLength(0)
+      expect(await commitmentRows(t, gameId)).toHaveLength(0)
     })
 
     it('rejects a missing pitch number at the validator boundary', async () => {
@@ -229,13 +242,17 @@ describe('secret at-bat round-trip', () => {
     })
   })
 
-  describe('ordering & idempotency', () => {
-    it('rejects a swing when no pitch is on file (pitch-first)', async () => {
+  describe('order-independent commits & idempotency (ADR-0014)', () => {
+    it('resolves when the swing is committed first, then the pitch', async () => {
       const { t, gameId } = await setupGame()
-      await expect(
-        t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 }),
-      ).rejects.toThrow()
-      expect(await atBatRows(t, gameId)).toHaveLength(0)
+      // No pitch on file yet — the batter may still lock.
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
+      expect(await atBatRows(t, gameId)).toHaveLength(0) // nothing resolves on one half
+
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      const rows = await atBatRows(t, gameId)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ outcome: 'HR', pitchNumber: 500, batterNumber: 500 })
     })
 
     it('rejects a second pitch for the same at-bat (locked on submit)', async () => {
@@ -244,19 +261,37 @@ describe('secret at-bat round-trip', () => {
       await expect(
         t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 600 }),
       ).rejects.toThrow()
-      const rows = await pitchRows(t, gameId)
+      const rows = await commitmentRows(t, gameId)
       expect(rows).toHaveLength(1)
       expect(rows[0].number).toBe(500)
     })
 
-    it('rejects re-submitting a resolved duel and never appends a second row', async () => {
+    it('rejects a second swing for the same at-bat (locked on submit)', async () => {
       const { t, gameId } = await setupGame()
-      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
       await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
       await expect(
         t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 600 }),
       ).rejects.toThrow()
-      expect(await atBatRows(t, gameId)).toHaveLength(1)
+      const rows = await commitmentRows(t, gameId)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].number).toBe(500)
+    })
+
+    it('appends exactly one row per duel and never re-resolves it', async () => {
+      const { t, gameId } = await setupGame()
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
+
+      const before = await atBatRows(t, gameId)
+      expect(before).toHaveLength(1)
+
+      // The resolved sequence is sealed: the same side cannot reach back and
+      // re-resolve it (its number now addresses the next at-bat), so the
+      // resolved row is never duplicated or mutated.
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 600 })
+      const after = await atBatRows(t, gameId)
+      expect(after).toHaveLength(1)
+      expect(after[0]).toMatchObject({ pitchNumber: 500, batterNumber: 500, sequence: 0 })
     })
   })
 })

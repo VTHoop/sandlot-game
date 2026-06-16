@@ -13,9 +13,13 @@ import { type MutationCtx, mutation, type QueryCtx, query } from './_generated/s
 
 /**
  * The authoritative secret at-bat round-trip (SAN-20). The server is the vault
- * and the referee: the pitch number is written here and never returned by any
- * query until the swing locks, and resolution runs server-side through
+ * and the referee: a committed number is written here and never returned by any
+ * query until both sides have locked, and resolution runs server-side through
  * `@sandlot/engine` (clients never resolve authoritatively). See ADR-0016.
+ *
+ * Commits are order-independent (ADR-0014): either side may lock first and the
+ * server resolves once both numbers are present. The only cross-player signal
+ * before resolution is *that* the opponent has locked — never the number.
  *
  * Scope is one at-bat round-trip. Inning/half/status transitions, advancing the
  * batter, and score/standings rollups belong to downstream tickets — this
@@ -27,27 +31,33 @@ type Ctx = QueryCtx | MutationCtx
 
 /** Lifecycle of the current at-bat from the reveal query's perspective. */
 export enum DuelStatus {
-  AwaitingPitch = 'awaiting_pitch',
-  AwaitingSwing = 'awaiting_swing',
+  AwaitingCommitments = 'awaiting_commitments',
+  AwaitingOpponent = 'awaiting_opponent',
   Resolved = 'resolved',
 }
 
-/** Which side of the matchup an authenticated user owns, if any. */
+/** Which side of the matchup an authenticated user owns, if any. The two
+ * committing roles double as the persisted `duelCommitments.role` values. */
 enum Participant {
   Batting = 'batting',
   Pitching = 'pitching',
   None = 'none',
 }
 
+type CommittingRole = Participant.Batting | Participant.Pitching
+
 /**
- * Participant-facing view of the current duel. Numbers are present only once the
- * swing has locked (`status: 'resolved'`) — never while a pitch sits in the
- * vault awaiting a swing, and never for a non-participant (who receives `null`).
+ * Participant-facing view of the current duel. Numbers are present only once
+ * both sides have locked (`status: 'resolved'`) — never while a single number
+ * sits in the vault awaiting its opponent, and never for a non-participant (who
+ * receives `null`). `pitchCommitted` / `swingCommitted` are the only pre-reveal
+ * cross-player signal (ADR-0014): they say *that* a side has locked, never what.
  */
 export interface DuelView {
   status: DuelStatus
   sequence: number
   pitchCommitted: boolean
+  swingCommitted: boolean
   pitchNumber?: number
   batterNumber?: number
   outcome?: OutcomeBandKey
@@ -116,7 +126,7 @@ async function requireLiveGame(ctx: Ctx, id: Id<'games'>): Promise<Doc<'games'>>
 }
 
 /**
- * The next at-bat ordinal: one past the highest resolved `sequence` for the
+ * The current at-bat ordinal: one past the highest resolved `sequence` for the
  * game. Reads only the last row on the `by_game` index — but that read still
  * depends on the same `by_game` range we append into, so the serializable-OCC
  * one-row-per-duel guarantee below holds exactly as a full-range read would.
@@ -130,10 +140,15 @@ async function currentSequence(ctx: Ctx, game: Id<'games'>): Promise<number> {
   return (last?.sequence ?? -1) + 1
 }
 
-function pitchAt(ctx: Ctx, game: Id<'games'>, sequence: number): Promise<Doc<'pitches'> | null> {
+function commitmentAt(
+  ctx: Ctx,
+  game: Id<'games'>,
+  sequence: number,
+  role: CommittingRole,
+): Promise<Doc<'duelCommitments'> | null> {
   return ctx.db
-    .query('pitches')
-    .withIndex('by_game', (q) => q.eq('game', game).eq('sequence', sequence))
+    .query('duelCommitments')
+    .withIndex('by_game', (q) => q.eq('game', game).eq('sequence', sequence).eq('role', role))
     .unique()
 }
 
@@ -162,85 +177,108 @@ function asPitcher(attributes: Doc<'players'>['attributes']): PitcherAttributes 
   throw new Error('Current pitcher does not carry a pitcher attribute block')
 }
 
-// ─── Mutations ──────────────────────────────────────────────────────────────
+// ─── Commit & resolve ───────────────────────────────────────────────────────
+
+type Resolution = { atBatId: Id<'atBats'>; outcome: OutcomeBandKey } | null
+
+/**
+ * Resolve the duel at `sequence` iff BOTH sides have committed. Appends exactly
+ * one complete `atBats` row and returns it; a no-op (returns `null`) while only
+ * one half is on file. Idempotency / one-row-per-duel without a unique
+ * constraint: the existence checks and the append both read+write the `atBats`
+ * `by_game` range, so Convex's serializable OCC makes concurrent commits
+ * conflict — the loser retries, re-reads, and either resolves once or is a
+ * no-op. (A two-sided race resolves on whichever commit Convex serializes last.)
+ */
+async function tryResolve(
+  ctx: MutationCtx,
+  game: Doc<'games'>,
+  sequence: number,
+): Promise<Resolution> {
+  const pitching = await commitmentAt(ctx, game._id, sequence, Participant.Pitching)
+  const batting = await commitmentAt(ctx, game._id, sequence, Participant.Batting)
+  if (!pitching || !batting) return null
+  if (await atBatAt(ctx, game._id, sequence)) return null
+
+  const batter = await ctx.db.get(batting.player)
+  const pitcher = await ctx.db.get(pitching.player)
+  if (!batter || !pitcher) throw new Error('Matchup players not found')
+
+  const resolved = resolveAtBat({
+    pitch: pitching.number,
+    swing: batting.number,
+    hitter: asHitter(batter.attributes),
+    pitcher: asPitcher(pitcher.attributes),
+    basesBefore: game.bases,
+    outsBefore: game.outs,
+  })
+
+  const atBatId = await ctx.db.insert('atBats', {
+    game: game._id,
+    sequence,
+    inning: game.inning,
+    half: game.half,
+    batter: batter._id,
+    pitcher: pitcher._id,
+    outsBefore: game.outs,
+    basesBefore: game.bases,
+    batterNumber: batting.number,
+    pitchNumber: pitching.number,
+    outcome: resolved.outcome,
+    runsScored: resolved.runsScored,
+    rbi: resolved.rbi,
+    basesAfter: resolved.basesAfter,
+    outsAfter: resolved.outsAfter,
+    createdAt: Date.now(),
+  })
+  return { atBatId, outcome: resolved.outcome }
+}
+
+/**
+ * Seal one side's secret number for the current at-bat, then resolve if the
+ * opponent is already on file. Shared by both mutations; `role` fixes which team
+ * must own the caller and which seat is being committed.
+ */
+async function commit(
+  ctx: MutationCtx,
+  gameId: Id<'games'>,
+  number: number,
+  role: CommittingRole,
+): Promise<Resolution> {
+  const game = await requireLiveGame(ctx, gameId)
+  const user = await authedUser(ctx)
+  const { battingTeam, pitchingTeam } = teamsForHalf(game)
+  await assertOwns(ctx, role === Participant.Pitching ? pitchingTeam : battingTeam, user)
+  assertDuelNumber(number)
+
+  const player = role === Participant.Pitching ? game.currentPitcher : game.currentBatter
+  if (!player)
+    throw new Error(`Game has no active ${role === Participant.Pitching ? 'pitcher' : 'batter'}`)
+
+  const sequence = await currentSequence(ctx, game._id)
+  if (await commitmentAt(ctx, game._id, sequence, role)) {
+    throw new Error('Your number is already committed for this at-bat')
+  }
+  await ctx.db.insert('duelCommitments', {
+    game: game._id,
+    sequence,
+    role,
+    player,
+    number,
+    createdAt: Date.now(),
+  })
+
+  return tryResolve(ctx, game, sequence)
+}
 
 export const commitPitch = mutation({
   args: { game: v.id('games'), number: v.float64() },
-  handler: async (ctx, args) => {
-    const game = await requireLiveGame(ctx, args.game)
-    const user = await authedUser(ctx)
-    const { pitchingTeam } = teamsForHalf(game)
-    await assertOwns(ctx, pitchingTeam, user)
-    assertDuelNumber(args.number)
-    if (!game.currentPitcher) throw new Error('Game has no active pitcher')
-
-    const sequence = await currentSequence(ctx, game._id)
-    if (await pitchAt(ctx, game._id, sequence)) {
-      throw new Error('A pitch is already committed for this at-bat')
-    }
-    await ctx.db.insert('pitches', {
-      game: game._id,
-      sequence,
-      pitcher: game.currentPitcher,
-      number: args.number,
-      createdAt: Date.now(),
-    })
-  },
+  handler: (ctx, args) => commit(ctx, args.game, args.number, Participant.Pitching),
 })
 
 export const commitSwing = mutation({
   args: { game: v.id('games'), number: v.float64() },
-  handler: async (ctx, args) => {
-    const game = await requireLiveGame(ctx, args.game)
-    const user = await authedUser(ctx)
-    const { battingTeam } = teamsForHalf(game)
-    await assertOwns(ctx, battingTeam, user)
-    assertDuelNumber(args.number)
-
-    const sequence = await currentSequence(ctx, game._id)
-    const pitch = await pitchAt(ctx, game._id, sequence)
-    if (!pitch) throw new Error('No pitch on file for this at-bat (pitch must come first)')
-
-    if (!game.currentBatter || !game.currentPitcher) throw new Error('Game has no active matchup')
-    const batter = await ctx.db.get(game.currentBatter)
-    const pitcher = await ctx.db.get(game.currentPitcher)
-    if (!batter || !pitcher) throw new Error('Matchup players not found')
-
-    const resolved = resolveAtBat({
-      pitch: pitch.number,
-      swing: args.number,
-      hitter: asHitter(batter.attributes),
-      pitcher: asPitcher(pitcher.attributes),
-      basesBefore: game.bases,
-      outsBefore: game.outs,
-    })
-
-    // Append-only: exactly one complete row per duel. A second (sequential)
-    // swing finds the sequence advanced and no pending pitch, so it is rejected
-    // above. Concurrent swings are safe too: `currentSequence` reads the atBats
-    // `by_game` range and this insert writes into it, so Convex's serializable
-    // OCC detects the conflict and retries the loser — which then re-derives the
-    // advanced sequence and is rejected. No unique constraint is required.
-    const atBatId = await ctx.db.insert('atBats', {
-      game: game._id,
-      sequence,
-      inning: game.inning,
-      half: game.half,
-      batter: batter._id,
-      pitcher: pitcher._id,
-      outsBefore: game.outs,
-      basesBefore: game.bases,
-      batterNumber: args.number,
-      pitchNumber: pitch.number,
-      outcome: resolved.outcome,
-      runsScored: resolved.runsScored,
-      rbi: resolved.rbi,
-      basesAfter: resolved.basesAfter,
-      outsAfter: resolved.outsAfter,
-      createdAt: Date.now(),
-    })
-    return { atBatId, outcome: resolved.outcome }
-  },
+  handler: (ctx, args) => commit(ctx, args.game, args.number, Participant.Batting),
 })
 
 // ─── Reveal query ───────────────────────────────────────────────────────────
@@ -250,6 +288,7 @@ function revealed(row: Doc<'atBats'>): DuelView {
     status: DuelStatus.Resolved,
     sequence: row.sequence,
     pitchCommitted: true,
+    swingCommitted: true,
     pitchNumber: row.pitchNumber,
     batterNumber: row.batterNumber,
     outcome: row.outcome,
@@ -270,14 +309,28 @@ export const getActiveDuel = query({
     if (!user || (await roleOf(ctx, game, user)) === Participant.None) return null
 
     const sequence = await currentSequence(ctx, game._id)
-    if (await pitchAt(ctx, game._id, sequence)) {
-      // A pitch is vaulted but the swing has not locked — the number stays secret.
-      return { status: DuelStatus.AwaitingSwing, sequence, pitchCommitted: true }
+    const pitching = await commitmentAt(ctx, game._id, sequence, Participant.Pitching)
+    const batting = await commitmentAt(ctx, game._id, sequence, Participant.Batting)
+    // Both present would have resolved (and advanced the sequence), so at the
+    // in-progress sequence at most one side is on file. While one is, the number
+    // stays secret — only the "locked" booleans cross to the opponent.
+    if (pitching || batting) {
+      return {
+        status: DuelStatus.AwaitingOpponent,
+        sequence,
+        pitchCommitted: pitching !== null,
+        swingCommitted: batting !== null,
+      }
     }
     if (sequence > 0) {
       const last = await atBatAt(ctx, game._id, sequence - 1)
       if (last) return revealed(last)
     }
-    return { status: DuelStatus.AwaitingPitch, sequence, pitchCommitted: false }
+    return {
+      status: DuelStatus.AwaitingCommitments,
+      sequence,
+      pitchCommitted: false,
+      swingCommitted: false,
+    }
   },
 })

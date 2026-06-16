@@ -32,7 +32,7 @@ const EXPECTED_INDEXES: Record<string, Record<string, string[]>> = {
     by_away_team: ['awayTeam'],
   },
   lineups: { by_game: ['game'], by_team: ['team'] },
-  pitches: { by_game: ['game', 'sequence'] },
+  duelCommitments: { by_game: ['game', 'sequence', 'role'] },
   atBats: { by_game: ['game', 'sequence'] },
   standings: { by_team: ['team'] },
   playerStatLine: { by_player: ['player'] },

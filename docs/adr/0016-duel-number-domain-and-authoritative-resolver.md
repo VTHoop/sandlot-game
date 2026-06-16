@@ -5,11 +5,14 @@
 
 ## Context
 
-SAN-20 implements the first authoritative secret at-bat round-trip: a Convex
-mutation vaults the pitcher's number, a second mutation commits the swing and
-resolves the duel server-side through `@sandlot/engine`, and the result is
-revealed. Building it forced three decisions that are not derivable from the
-existing code and that the prior ADRs left open.
+SAN-20 implements the first authoritative secret at-bat round-trip: each side
+commits a secret number through a Convex mutation, the server resolves the duel
+server-side through `@sandlot/engine` once both are present, and the result is
+revealed. Commits are **order-independent** — either side may lock first — per
+the already-accepted product rule in ADR-0014 ("with blind commits, entry order
+doesn't matter… 'Pitch must be entered first' was inherited fiction"). Building
+SAN-20 forced three further decisions that are not derivable from the existing
+code and that the prior ADRs left open.
 
 **1. The committed-number domain and the fold.** The decoded reference and
 earlier docs describe the duel as two numbers in `1–1000` whose circular
@@ -61,11 +64,18 @@ raw and may reach 3; the inning/half/status transition is the Game-state-machine
 ticket's job, so resolution appends the `atBats` row and does **not** mutate the
 `games` row.
 
-**Key the secret vault by `(game, sequence)`** (the at-bat's pre-resolution
-identity), not by an `atBats` id: the pitch is committed before the at-bat is
-resolved, and per ADR-0004 + the AC exactly one *complete* `atBats` row is
-appended only at resolution, so the vault cannot reference a row that does not
-yet exist.
+**Key the secret vault by `(game, sequence, role)`** (the at-bat's
+pre-resolution identity plus the committing side), not by an `atBats` id. Two
+reasons: (a) a committed number exists before the at-bat is resolved, and per
+ADR-0004 + the AC exactly one *complete* `atBats` row is appended only at
+resolution, so the vault cannot reference a row that does not yet exist; (b)
+order-independence (ADR-0014) makes the vault **symmetric** — either side's
+number may be the one already on file — so the vault is a single
+`duelCommitments` table where each side's number is one row tagged by `role`,
+rather than a pitch-only table that presumes the pitch arrives first. A shared
+`commit` path seals one side's number and then resolves iff the opposite role is
+already present; the reveal query exposes only `pitchCommitted` /
+`swingCommitted` booleans until both land, never a number.
 
 ## Alternatives considered
 

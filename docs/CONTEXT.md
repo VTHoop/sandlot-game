@@ -19,7 +19,7 @@ Orientation for any human or agent opening this repo. **`AGENTS.md` is the worki
 - **Source material (private, on disk):** `/Users/hoop/Downloads/Copy of BBTN 3.12.9 TYGEN 2 Runners.xlsx` (the calculator) and `…/Official Baseball by the Numbers Rules and Guidelines (Version 1).txt` (the rules).
 
 ## Cardinal rules (full text in the ADRs)
-- **Game integrity (ADR-0004 + AGENTS.md):** the pitch is secret — written by a Convex mutation, never returned by any client query before the swing locks. Add a test that asserts the batter can't read it.
+- **Game integrity (ADR-0004 + AGENTS.md):** each committed number is secret — written by a Convex mutation, never returned by any client query until *both* sides have locked (commits are order-independent, ADR-0014). Add a test that asserts the opponent can't read it.
 - **IP & data (ADR-0006):** use the *mechanic*, not the original brand/text/tables. **Never commit MLB data** to this public repo. Re-derive balance; credit `r/baseballbythenumbers` as inspiration.
 
 ## Where to start building

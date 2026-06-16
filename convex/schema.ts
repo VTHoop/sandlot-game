@@ -3,6 +3,7 @@ import { v } from 'convex/values'
 import {
   attributes,
   baseState,
+  duelRole,
   gameStatus,
   half,
   outcomeBand,
@@ -91,20 +92,23 @@ export default defineSchema({
     .index('by_game', ['game'])
     .index('by_team', ['team']),
 
-  // SECRET VAULT. The pitcher's committed number lives only here, in its own
-  // table by design, so no public/at-bat read path can reach it (game-integrity
-  // rule). Keyed by the at-bat's pre-resolution identity `(game, sequence)` —
-  // the pitch is committed before the at-bat is resolved, so it cannot reference
-  // an `atBats` row (that row is appended only at resolution). `sequence` matches
+  // SECRET VAULT. Each committed duel number (pitch or swing) lives only here,
+  // in its own table by design, so no public/at-bat read path can reach it
+  // (game-integrity rule). The vault is symmetric: either side may lock first
+  // and the server resolves once both are present (order-independent commits,
+  // ADR-0014), so a row is keyed by the at-bat's pre-resolution identity plus
+  // the committing `role` — `(game, sequence, role)`. It cannot reference an
+  // `atBats` row (that row is appended only at resolution); `sequence` matches
   // the eventual `atBats.sequence`. Range (1–999) and the secrecy read-paths are
   // enforced by `convex/atBat.ts` (SAN-20).
-  pitches: defineTable({
+  duelCommitments: defineTable({
     game: v.id('games'),
     sequence: v.float64(),
-    pitcher: v.id('players'),
-    number: v.float64(), // 1–999; range enforced by the commitPitch mutation
+    role: duelRole,
+    player: v.id('players'),
+    number: v.float64(), // 1–999; range enforced by the commit mutation
     createdAt: v.float64(),
-  }).index('by_game', ['game', 'sequence']),
+  }).index('by_game', ['game', 'sequence', 'role']),
 
   // APPEND-ONLY LOG (ADR-0004). Each entry carries complete pre- and post-state
   // so rows are never mutated — append-only is enforced by the insert-only
