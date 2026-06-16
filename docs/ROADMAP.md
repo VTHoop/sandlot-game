@@ -31,8 +31,8 @@ Prove the core loop is fun and that the async social dynamic creates pull, among
 - [P2] Derive attribute → run-value → price from the sim (feeds salary cap)
 
 ### Project: Core Multiplayer Loop  *(P0/P1 — Convex)*
-- [P0] Convex schema: games, teams, lineups, players, **pitches (secret)**, at_bats (append-only log), rollups
-- [P0] **Secret at-bat round-trip**: pitch mutation (vault) → swing mutation → server resolution → result; test asserting batter can't read the pitch
+- [P0] Convex schema: games, teams, lineups, players, **duelCommitments (secret vault)**, at_bats (append-only log), rollups
+- [P0] **Secret at-bat round-trip**: order-independent commit mutations (either side locks first, ADR-0014) → server resolution once both land → result; test asserting neither side can read the other's number pre-lock
 - [P0] Game state machine (innings/outs/bases/score) via authoritative mutations
 - [P1] Realtime subscriptions (live at-bat: "pitch is in" → swing → shared result)
 - [P1] Web push (VAPID) "it's your turn"; scheduled turn reminders
