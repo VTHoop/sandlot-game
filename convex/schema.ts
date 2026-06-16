@@ -24,7 +24,7 @@ import {
  * `./validators` so each is defined once; the `outcomeBand` enum mirrors the
  * engine's RangeFinder band names (single source of truth).
  *
- * Numeric ranges Convex validators can't express (pitch/swing `number` 1–1000,
+ * Numeric ranges Convex validators can't express (pitch/swing `number` 1–999,
  * batting order length 1–9) are enforced by the insert-only access functions
  * added in later tickets.
  */
@@ -119,8 +119,8 @@ export default defineSchema({
     pitcher: v.id('players'),
     outsBefore: v.float64(),
     basesBefore: baseState,
-    batterNumber: v.float64(), // committed swing number, 1–1000
-    pitchNumber: v.float64(), // committed pitch number, 1–1000
+    batterNumber: v.float64(), // committed swing number, 1–999
+    pitchNumber: v.float64(), // committed pitch number, 1–999
     outcome: outcomeBand,
     runsScored: v.float64(),
     rbi: v.float64(),

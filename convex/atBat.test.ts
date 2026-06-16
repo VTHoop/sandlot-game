@@ -217,6 +217,16 @@ describe('secret at-bat round-trip', () => {
         ).rejects.toThrow()
       }
     })
+
+    it('accepts the inclusive boundary values 1 and 999 on both mutations', async () => {
+      const { t, gameId } = await setupGame()
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 1 })
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 999 })
+
+      const rows = await atBatRows(t, gameId)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ pitchNumber: 1, batterNumber: 999 })
+    })
   })
 
   describe('ordering & idempotency', () => {

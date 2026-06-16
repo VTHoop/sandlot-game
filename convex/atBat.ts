@@ -115,13 +115,19 @@ async function requireLiveGame(ctx: Ctx, id: Id<'games'>): Promise<Doc<'games'>>
   return game
 }
 
-/** The next at-bat ordinal: the count of already-resolved rows for the game. */
+/**
+ * The next at-bat ordinal: one past the highest resolved `sequence` for the
+ * game. Reads only the last row on the `by_game` index — but that read still
+ * depends on the same `by_game` range we append into, so the serializable-OCC
+ * one-row-per-duel guarantee below holds exactly as a full-range read would.
+ */
 async function currentSequence(ctx: Ctx, game: Id<'games'>): Promise<number> {
-  const rows = await ctx.db
+  const last = await ctx.db
     .query('atBats')
     .withIndex('by_game', (q) => q.eq('game', game))
-    .collect()
-  return rows.length
+    .order('desc')
+    .first()
+  return (last?.sequence ?? -1) + 1
 }
 
 function pitchAt(ctx: Ctx, game: Id<'games'>, sequence: number): Promise<Doc<'pitches'> | null> {
