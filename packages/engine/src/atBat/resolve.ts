@@ -1,6 +1,9 @@
 import type { CellDiffs } from '../harness/types'
 import type { OutcomeBandKey } from '../outcomes'
-import type { BaseState, OutcomeApplication } from './advance'
+import { toAttributeDiff } from '../tables/accessor'
+import { applyOutcome, type BaseState, type OutcomeApplication } from './advance'
+import { classifyOutcome } from './classify'
+import { foldDifference } from './fold'
 
 /** Hitter 1–5 attribute block (Convex-free; the caller maps its own shape onto this). */
 export interface HitterAttributes {
@@ -33,11 +36,22 @@ export interface ResolvedAtBat extends OutcomeApplication {
 }
 
 /** Derive the four batter − pitcher attribute differentials, clamped to [−5, +5]. */
-export function deriveDiffs(_hitter: HitterAttributes, _pitcher: PitcherAttributes): CellDiffs {
-  throw new Error('not implemented')
+export function deriveDiffs(hitter: HitterAttributes, pitcher: PitcherAttributes): CellDiffs {
+  return {
+    powerVel: toAttributeDiff(hitter.power - pitcher.velocity),
+    contactMov: toAttributeDiff(hitter.contact - pitcher.movement),
+    speedAwa: toAttributeDiff(hitter.speed - pitcher.awareness),
+    eyeCmd: toAttributeDiff(hitter.eye - pitcher.command),
+  }
 }
 
-/** Fold, classify, and apply — the authoritative single-at-bat resolution. */
-export function resolveAtBat(_input: ResolveInput): ResolvedAtBat {
-  throw new Error('not implemented')
+/**
+ * Fold, classify, and apply — the authoritative single-at-bat resolution shared
+ * by the Convex server (the vault) and the read-only client preview (ADR-0009).
+ */
+export function resolveAtBat(input: ResolveInput): ResolvedAtBat {
+  const difference = foldDifference(input.pitch, input.swing)
+  const outcome = classifyOutcome(difference, deriveDiffs(input.hitter, input.pitcher))
+  const application = applyOutcome(outcome, input.basesBefore, input.outsBefore)
+  return { difference, outcome, ...application }
 }
