@@ -93,14 +93,18 @@ export default defineSchema({
 
   // SECRET VAULT. The pitcher's committed number lives only here, in its own
   // table by design, so no public/at-bat read path can reach it (game-integrity
-  // rule). This ticket adds no read path; the "batter cannot read the pitch"
-  // test is owned by the Secret at-bat round-trip ticket.
+  // rule). Keyed by the at-bat's pre-resolution identity `(game, sequence)` —
+  // the pitch is committed before the at-bat is resolved, so it cannot reference
+  // an `atBats` row (that row is appended only at resolution). `sequence` matches
+  // the eventual `atBats.sequence`. Range (1–999) and the secrecy read-paths are
+  // enforced by `convex/atBat.ts` (SAN-20).
   pitches: defineTable({
-    atBat: v.id('atBats'),
+    game: v.id('games'),
+    sequence: v.float64(),
     pitcher: v.id('players'),
-    number: v.float64(), // 1–1000; range enforced by insert-only access fns
+    number: v.float64(), // 1–999; range enforced by the commitPitch mutation
     createdAt: v.float64(),
-  }).index('by_at_bat', ['atBat']),
+  }).index('by_game', ['game', 'sequence']),
 
   // APPEND-ONLY LOG (ADR-0004). Each entry carries complete pre- and post-state
   // so rows are never mutated — append-only is enforced by the insert-only
