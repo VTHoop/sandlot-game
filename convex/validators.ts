@@ -63,6 +63,14 @@ export const gameStatus = v.union(v.literal('scheduled'), v.literal('live'), v.l
 export const half = v.union(v.literal('top'), v.literal('bottom'))
 
 /**
+ * Which side committed a secret number in a duel. The vault is symmetric —
+ * either side may lock first and the server resolves once both are present
+ * (order-independent commits, ADR-0014) — so each sealed number is tagged with
+ * the role that produced it.
+ */
+export const duelRole = v.union(v.literal('pitching'), v.literal('batting'))
+
+/**
  * A 1–5 attribute rating. Modeled as a literal union so the 1–5 bound is a
  * schema-level guarantee (Convex's `v` validators don't express numeric ranges).
  * Internal to this module — composed into `attributes`; export when a downstream

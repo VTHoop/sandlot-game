@@ -3,7 +3,7 @@
 Orientation for any human or agent opening this repo. **`AGENTS.md` is the working contract (the *how*); the ADRs are the *why*; this file says where everything lives.**
 
 ## What this is
-**Sandlot** (working name; brand "Sandlot ___" TBD) — a turn-based, async-first multiplayer baseball game. Core mechanic: a **hidden-number duel** — the pitcher submits a secret number (1–1000), the batter submits one, and the server resolves the outcome by how close they are, with player **attributes (1–5)** resizing the outcome bands. Wrapped in a **salary-cap league** where you draft real, stat-derived MLB players plus one custom "signature" player. First milestone: a **6-team family-league beta**. It's also a **public portfolio piece** — optimize for *visible judgment* (the ADRs), and **ship the vertical slice**.
+**Sandlot** (working name; brand "Sandlot ___" TBD) — a turn-based, async-first multiplayer baseball game. Core mechanic: a **hidden-number duel** — the pitcher submits a secret number (1–999), the batter submits one, and the server resolves the outcome by how close they are (circular distance on a ring of 999; see ADR-0016), with player **attributes (1–5)** resizing the outcome bands. Wrapped in a **salary-cap league** where you draft real, stat-derived MLB players plus one custom "signature" player. First milestone: a **6-team family-league beta**. It's also a **public portfolio piece** — optimize for *visible judgment* (the ADRs), and **ship the vertical slice**.
 
 ## Where the reasoning lives
 - **`AGENTS.md`** / `CLAUDE.md` — the engineering contract: TDD, PR flow, quality gates, product rules. Read first.
@@ -19,7 +19,7 @@ Orientation for any human or agent opening this repo. **`AGENTS.md` is the worki
 - **Source material (private, on disk):** `/Users/hoop/Downloads/Copy of BBTN 3.12.9 TYGEN 2 Runners.xlsx` (the calculator) and `…/Official Baseball by the Numbers Rules and Guidelines (Version 1).txt` (the rules).
 
 ## Cardinal rules (full text in the ADRs)
-- **Game integrity (ADR-0004 + AGENTS.md):** the pitch is secret — written by a Convex mutation, never returned by any client query before the swing locks. Add a test that asserts the batter can't read it.
+- **Game integrity (ADR-0004 + AGENTS.md):** each committed number is secret — written by a Convex mutation, never returned by any client query until *both* sides have locked (commits are order-independent, ADR-0014). Add a test that asserts the opponent can't read it.
 - **IP & data (ADR-0006):** use the *mechanic*, not the original brand/text/tables. **Never commit MLB data** to this public repo. Re-derive balance; credit `r/baseballbythenumbers` as inspiration.
 
 ## Where to start building

@@ -3,6 +3,7 @@ import { v } from 'convex/values'
 import {
   attributes,
   baseState,
+  duelRole,
   gameStatus,
   half,
   outcomeBand,
@@ -24,7 +25,7 @@ import {
  * `./validators` so each is defined once; the `outcomeBand` enum mirrors the
  * engine's RangeFinder band names (single source of truth).
  *
- * Numeric ranges Convex validators can't express (pitch/swing `number` 1–1000,
+ * Numeric ranges Convex validators can't express (pitch/swing `number` 1–999,
  * batting order length 1–9) are enforced by the insert-only access functions
  * added in later tickets.
  */
@@ -91,16 +92,23 @@ export default defineSchema({
     .index('by_game', ['game'])
     .index('by_team', ['team']),
 
-  // SECRET VAULT. The pitcher's committed number lives only here, in its own
-  // table by design, so no public/at-bat read path can reach it (game-integrity
-  // rule). This ticket adds no read path; the "batter cannot read the pitch"
-  // test is owned by the Secret at-bat round-trip ticket.
-  pitches: defineTable({
-    atBat: v.id('atBats'),
-    pitcher: v.id('players'),
-    number: v.float64(), // 1–1000; range enforced by insert-only access fns
+  // SECRET VAULT. Each committed duel number (pitch or swing) lives only here,
+  // in its own table by design, so no public/at-bat read path can reach it
+  // (game-integrity rule). The vault is symmetric: either side may lock first
+  // and the server resolves once both are present (order-independent commits,
+  // ADR-0014), so a row is keyed by the at-bat's pre-resolution identity plus
+  // the committing `role` — `(game, sequence, role)`. It cannot reference an
+  // `atBats` row (that row is appended only at resolution); `sequence` matches
+  // the eventual `atBats.sequence`. Range (1–999) and the secrecy read-paths are
+  // enforced by `convex/atBat.ts` (SAN-20).
+  duelCommitments: defineTable({
+    game: v.id('games'),
+    sequence: v.float64(),
+    role: duelRole,
+    player: v.id('players'),
+    number: v.float64(), // 1–999; range enforced by the commit mutation
     createdAt: v.float64(),
-  }).index('by_at_bat', ['atBat']),
+  }).index('by_game', ['game', 'sequence', 'role']),
 
   // APPEND-ONLY LOG (ADR-0004). Each entry carries complete pre- and post-state
   // so rows are never mutated — append-only is enforced by the insert-only
@@ -115,8 +123,8 @@ export default defineSchema({
     pitcher: v.id('players'),
     outsBefore: v.float64(),
     basesBefore: baseState,
-    batterNumber: v.float64(), // committed swing number, 1–1000
-    pitchNumber: v.float64(), // committed pitch number, 1–1000
+    batterNumber: v.float64(), // committed swing number, 1–999
+    pitchNumber: v.float64(), // committed pitch number, 1–999
     outcome: outcomeBand,
     runsScored: v.float64(),
     rbi: v.float64(),

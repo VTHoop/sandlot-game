@@ -10,6 +10,11 @@ export default defineConfig({
       'convex/**/*.test.ts',
     ],
     environment: 'jsdom',
+    // The engine harness suite exhaustively iterates the full attribute grid;
+    // under v8 coverage instrumentation those cases run ~5s and intermittently
+    // trip the default 5000ms per-test timeout. 15s absorbs the variance without
+    // masking a genuine hang.
+    testTimeout: 15000,
     coverage: {
       provider: 'v8',
       reporter: ['lcov', 'text'],

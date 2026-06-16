@@ -54,10 +54,12 @@ an append-only log + maintained rollups**, not full event sourcing:
 
 - **State rows:** `games` (inning/half/outs/base-state/score/status/current
   batter+pitcher) and `lineups` (ordered 1–9 batting list + designated pitcher).
-- **`pitches` — secret vault.** The pitcher's committed number lives only here,
-  in its own table by design, so no public/at-bat read path can reach it
-  (game-integrity rule). This ticket adds no read path; the "batter cannot read
-  the pitch" test is owned by the Secret at-bat round-trip ticket.
+- **`duelCommitments` — symmetric secret vault.** Each side's committed number
+  (pitch or swing) lives only here, in its own table by design, so no public/
+  at-bat read path can reach it (game-integrity rule). Commits are
+  order-independent (ADR-0014): a row is keyed `(game, sequence, role)` and the
+  server resolves once both roles are present. The "opponent cannot read your
+  number before both lock" test is owned by the Secret at-bat round-trip ticket.
 - **`atBats` — append-only log.** Each row carries complete pre- and post-state
   (outs/bases before & after, both committed numbers, outcome, runs, RBI) so
   entries are never mutated. Ordered within a game by `sequence` (`by_game`).

@@ -19,9 +19,9 @@ on a phone.
 
 ## The core mechanic you're designing for (the "duel")
 Each at-bat is a blind number duel between two human managers:
-- The **pitcher** secretly picks a number 1–1000 and locks it. It is never revealed to
+- The **pitcher** secretly picks a number 1–999 and locks it. It is never revealed to
   the batter until both have committed.
-- The **batter** then picks a number 1–1000, blind.
+- The **batter** then picks a number 1–999, blind.
 - The server folds the difference between the two numbers into an outcome on a fixed
   ladder — best to worst: HR → 3B → 2B → 1B → infield single → walk → fly out → pop out
   → groundout → strikeout. Each player's 1–5 attribute ratings (Power, Contact, Speed,

@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as atBat from "../atBat.js";
 import type * as validators from "../validators.js";
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  atBat: typeof atBat;
   validators: typeof validators;
 }>;
 
