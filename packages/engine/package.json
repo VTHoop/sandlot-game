@@ -8,6 +8,7 @@
     "derive-balance": "tsx bin/derive-balance.ts"
   },
   "exports": {
+    "./atBat": "./src/atBat/index.ts",
     "./tables": "./src/tables/accessor.ts",
     "./rangeFinder": "./src/rangeFinder/frontHalf.ts",
     "./harness": "./src/harness/index.ts",
