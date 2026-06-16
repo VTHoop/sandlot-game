@@ -4,8 +4,10 @@ import { OUTS_PER_GAME } from './linearWeights'
 import type { CellDiffs, CellResult, OutcomeRates, RunValues, SlashLine } from './types'
 
 // The 0–499 difference line has 500 positions.
-// Rate identity: rate = band_width / RANGE holds because the circular/shorter-arc
-// fold of two uniform 1–1000 draws produces a uniform distribution on 0–499.
+// Rate identity: rate = band_width / RANGE. The circular fold of two uniform
+// 1–999 draws (ring of 999, ADR-0016) is uniform across the interior 1–499;
+// only the exact-match value 0 is half-weight, so this analytic identity is an
+// idealization that treats all 500 positions as equally likely.
 const RANGE = 500
 
 function bandWidth(lo: number, hi: number): number {

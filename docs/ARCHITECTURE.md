@@ -29,7 +29,7 @@ Located at `packages/engine/`. A pure, framework-free TypeScript package — no 
 
 **Dual-use deployment:** Convex server functions import it as the authoritative at-bat resolver (mutations are the secret vault). The React client imports it for read-only odds and near-miss previews. One engine, two contexts.
 
-**Resolution model:** the RangeFinder — takes attribute differentials, looks up each outcome band's width from a table, and assembles them into a 0–500 partition. Band order: `HR → 3B → 2B → 1B → IF1B → BB → FO → PO → GB/GO → K`. Front half (HR→BB) is a cumulative sum of direct table lookups. Back half (FO/PO/GB/K) is an elastic remainder (deferred).
+**Resolution model:** the RangeFinder — takes attribute differentials, looks up each outcome band's width from a table, and assembles them into a 0–499 partition. Band order: `HR → 3B → 2B → 1B → IF1B → BB → FO → PO → GB/GO → K`. Front half (HR→BB) is a cumulative sum of direct table lookups. Back half (FO/PO/GB/K) is an elastic remainder. The top-level `resolveAtBat` (`src/atBat/`) folds the two committed numbers into a 0–499 difference (circular distance on a ring of 999, ADR-0016), classifies the band, and applies standard one-base advancement to produce the complete at-bat outcome.
 
 **Table structure:** each committed seed table is an 11-element `readonly` tuple indexed by attribute differential `[−5..+5]`. Width values at `diff=0` are anchored to 2024 public MLB league-average rates (`rate × 500`). Differential scaling is monotonic; exact values are rough seeds, tuned by SAN-15 via the Monte Carlo harness.
 
@@ -51,10 +51,12 @@ Located at `packages/engine/`. A pure, framework-free TypeScript package — no 
 | `src/styles/app.css` | Tailwind v4 entry: semantic `@theme` design tokens (Night Game, ADR-0012) + base styles |
 | `src/components/ui/` | Foundation components extracted from the duel (Button, ScoreTile, NumberPad, OutcomeLadder, Card) — see `docs/design/design-principles.md` |
 | `src/design/` | Design-spike showcase: duel screens for all four states + `duel.css` reveal choreography |
-| `convex/schema.ts` | Convex data model (SAN-19): `users`, `teams`, `players`, `games`, `lineups`, `pitches` (secret vault), `atBats` (append-only log), and the `standings`/`playerStatLine`/`boxScoreLine` rollups — per ADR-0004 |
+| `convex/schema.ts` | Convex data model (SAN-19): `users`, `teams`, `players`, `games`, `lineups`, `pitches` (secret vault, keyed by `(game, sequence)` — SAN-20/ADR-0016), `atBats` (append-only log), and the `standings`/`playerStatLine`/`boxScoreLine` rollups — per ADR-0004 |
+| `convex/atBat.ts` | The authoritative secret at-bat round-trip (SAN-20): `commitPitch` (vault), `commitSwing` (resolve via `@sandlot/engine` + append the complete `atBats` row), and `getActiveDuel` (gated reveal — no number leaves the vault until the swing locks; non-participants get `null`) |
 | `convex/validators.ts` | Shared `v.union` field validators (outcome bands, role, position, game status, half, 1–5 rating, base state, attribute blocks); `outcomeBand` is compile-time-locked to `@sandlot/engine/outcomes` |
 | `convex/auth.config.ts` | Clerk OIDC provider so Convex validates Clerk JWTs |
 | `packages/engine/src/outcomes.ts` | Canonical at-bat outcome band keys (`OUTCOME_BAND_KEYS`, `OutcomeBandKey`) derived from the RangeFinder bands — single source of truth mirrored by the Convex `atBats.outcome` enum |
+| `packages/engine/src/atBat/` | Top-level resolver: `foldDifference` (ring-999 circular fold), `classifyOutcome`, `applyOutcome` (one-base advancement), and `resolveAtBat` — the dual-use authoritative resolution (ADR-0016) |
 | `public/manifest.webmanifest` | PWA manifest (served as-is; `vite-plugin-pwa` handles SW) |
 | `pnpm-workspace.yaml` | pnpm 11 build-script approvals (`allowBuilds`) |
 | `.env.example` | Required env var names with no real values |

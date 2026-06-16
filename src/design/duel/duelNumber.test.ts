@@ -5,9 +5,10 @@ describe('isValidDuelNumber', () => {
   it.each([
     ['1', true],
     ['472', true],
-    ['1000', true],
+    ['999', true],
     ['', false],
     ['0', false],
+    ['1000', false],
     ['1001', false],
   ])('"%s" → %s', (raw, expected) => {
     expect(isValidDuelNumber(raw)).toBe(expected)

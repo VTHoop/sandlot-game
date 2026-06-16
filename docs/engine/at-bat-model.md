@@ -4,8 +4,8 @@ The shared mental model for the at-bat resolution engine: what the recurring ter
 
 ## Glossary
 
-- **Hidden-number duel** — the core mechanic ([CONTEXT.md](../CONTEXT.md)): pitcher submits a secret number `1–1000`, batter submits one, and the outcome is decided by *how close* they are.
-- **Difference** — the absolute distance between the two numbers, folded into `0–499` (closer guess → smaller difference → better outcome for the batter). This single value is what the bands partition.
+- **Hidden-number duel** — the core mechanic ([CONTEXT.md](../CONTEXT.md)): pitcher submits a secret number `1–999`, batter submits one, and the outcome is decided by *how close* they are.
+- **Difference** — the circular distance between the two numbers on a **ring of 999**, `min(d, 999 − d)` where `d = |pitch − swing|` ([ADR-0016](../adr/0016-duel-number-domain-and-authoritative-resolver.md)). An odd ring has no antipode, so this folds onto exactly `0–499` (closer guess → smaller difference → better outcome for the batter) with no clamp. This single value is what the bands partition.
 - **Outcome bands** — the `0–499` difference line is partitioned into an **ordered stack of outcomes, best → worst**. Whichever band the difference lands in is the result of the at-bat. A band's **width** comes from a table lookup keyed by the matchup (see *attribute differentials*); wider band = more likely outcome.
 - **RangeFinder** — the *assembler*: the logic that takes the attribute differentials, looks up each band's width, and lays the bands out end-to-end into the final partition. Named after the source workbook tab that does this.
 - **"The sheet"** — the reverse-engineered source calculator (a Google Sheets / Excel workbook). It is a **private reference for structure only**, deliberately **not committed** (ADR-0006). "Unit-test against the sheet's values" means: validate our port against values captured from that private reference, not that the sheet ships here.

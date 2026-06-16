@@ -30,9 +30,9 @@ const AGGREGATE = aggregateGrid(GRID)
 
 // ─── Width/500 rate identity ───────────────────────────────────────────────────
 //
-// The circular/shorter-arc fold of two uniform 1–1000 draws is uniform on 0–499.
-// (TC: "VERIFY the 0–499 fold before assuming width/500" — confirmed true for the
-// circular fold, not raw |X−Y|.)  Therefore rate = band_width / 500.
+// The circular fold of two uniform 1–999 draws (ring of 999, ADR-0016) is uniform
+// across the interior 1–499; only the exact-match value 0 is half-weight. The
+// harness treats all 500 positions as equally likely, so rate = band_width / 500.
 //
 // These are *balance-agnostic property tests*: they assert the width/500 fold and
 // the complete partition for every reachable cell, so they survive any SAN-15-style
