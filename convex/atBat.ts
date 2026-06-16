@@ -209,8 +209,12 @@ export const commitSwing = mutation({
       outsBefore: game.outs,
     })
 
-    // Append-only: exactly one complete row per duel. A second swing finds the
-    // sequence advanced and no pending pitch, so it is rejected above.
+    // Append-only: exactly one complete row per duel. A second (sequential)
+    // swing finds the sequence advanced and no pending pitch, so it is rejected
+    // above. Concurrent swings are safe too: `currentSequence` reads the atBats
+    // `by_game` range and this insert writes into it, so Convex's serializable
+    // OCC detects the conflict and retries the loser — which then re-derives the
+    // advanced sequence and is rejected. No unique constraint is required.
     const atBatId = await ctx.db.insert('atBats', {
       game: game._id,
       sequence,
