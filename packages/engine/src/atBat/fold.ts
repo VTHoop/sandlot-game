@@ -4,6 +4,16 @@ export const DUEL_MIN = 1
 export const DUEL_MAX = 999
 
 /**
+ * Whether `n` is a valid committed duel number: a whole number in
+ * `[DUEL_MIN, DUEL_MAX]`. Single source of truth for the domain rule, shared by
+ * the authoritative Convex mutation and the client input validator.
+ */
+export function isDuelNumber(n: number): boolean {
+  if (!Number.isInteger(n)) return false
+  return n >= DUEL_MIN && n <= DUEL_MAX
+}
+
+/**
  * Circular distance between two duel numbers, folded onto 0–499.
  *
  * The numbers live on a ring of 999 (DUEL_MAX). Because 999 is odd there is no

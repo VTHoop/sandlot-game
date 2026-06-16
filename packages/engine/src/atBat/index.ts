@@ -1,7 +1,7 @@
 export type { BaseState, OutcomeApplication } from './advance'
 export { applyOutcome } from './advance'
 export { classifyOutcome } from './classify'
-export { DUEL_MAX, DUEL_MIN, foldDifference } from './fold'
+export { DUEL_MAX, DUEL_MIN, foldDifference, isDuelNumber } from './fold'
 export type {
   HitterAttributes,
   PitcherAttributes,

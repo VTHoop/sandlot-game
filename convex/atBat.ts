@@ -3,6 +3,7 @@ import {
   DUEL_MAX,
   DUEL_MIN,
   type HitterAttributes,
+  isDuelNumber,
   type PitcherAttributes,
   resolveAtBat,
 } from '@sandlot/engine/atBat'
@@ -162,7 +163,7 @@ function atBatAt(ctx: Ctx, game: Id<'games'>, sequence: number): Promise<Doc<'at
 // ─── Validation & attribute extraction ──────────────────────────────────────
 
 function assertDuelNumber(n: number): void {
-  if (!Number.isInteger(n) || n < DUEL_MIN || n > DUEL_MAX) {
+  if (!isDuelNumber(n)) {
     throw new Error(`Number must be an integer in ${DUEL_MIN}–${DUEL_MAX}`)
   }
 }

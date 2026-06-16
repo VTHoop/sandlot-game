@@ -1,10 +1,9 @@
-import { DUEL_MAX, DUEL_MIN } from '@sandlot/engine/atBat'
+import { DUEL_MAX, DUEL_MIN, isDuelNumber } from '@sandlot/engine/atBat'
 
 export { DUEL_MAX, DUEL_MIN }
 
 /** A committed duel number must be a whole number in [1, 999] (ring of 999, ADR-0016). */
 export function isValidDuelNumber(raw: string): boolean {
   if (raw === '') return false
-  const n = Number(raw)
-  return Number.isInteger(n) && n >= DUEL_MIN && n <= DUEL_MAX
+  return isDuelNumber(Number(raw))
 }

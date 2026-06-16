@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DUEL_MAX, DUEL_MIN, foldDifference } from '../fold'
+import { DUEL_MAX, DUEL_MIN, foldDifference, isDuelNumber } from '../fold'
 
 /**
  * The duel difference is a circular distance on a ring of 999 (numbers 1–999).
@@ -54,5 +54,25 @@ describe('foldDifference — circular distance on the 999 ring', () => {
     }
     expect(min).toBe(0)
     expect(max).toBe(499)
+  })
+})
+
+describe('isDuelNumber — the committed-number domain rule', () => {
+  it('accepts the inclusive boundary values and interior integers', () => {
+    for (const n of [DUEL_MIN, 2, 500, 998, DUEL_MAX]) {
+      expect(isDuelNumber(n)).toBe(true)
+    }
+  })
+
+  it('rejects values outside [1, 999]', () => {
+    for (const n of [0, -1, 1000, 1500]) {
+      expect(isDuelNumber(n)).toBe(false)
+    }
+  })
+
+  it('rejects non-integers (incl. NaN/Infinity)', () => {
+    for (const n of [1.5, 2.0001, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(isDuelNumber(n)).toBe(false)
+    }
   })
 })
