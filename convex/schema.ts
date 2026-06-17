@@ -57,8 +57,14 @@ export default defineSchema({
     .index('by_role', ['role']),
 
   // Authoritative current game state. `currentBatter`/`currentPitcher` are null
-  // until the game goes live. A game references two teams, so team lookups use
-  // separate home/away indexes (a single index cannot match the away side).
+  // until the game goes live (and again once it is final). A game references two
+  // teams, so team lookups use separate home/away indexes (a single index cannot
+  // match the away side). All of these fields are written ONLY by the authoritative
+  // game-state mutations (SAN-21, `convex/game.ts`) — never by a client directly.
+  // `homeBattingIndex`/`awayBattingIndex` are each team's 0-based batting-order
+  // pointer; they persist across half-innings so a team resumes where it left off.
+  // `lastResolvedSequence` is the `atBats.sequence` of the last at-bat folded into
+  // this row (-1 before any), which makes per-at-bat advancement idempotent.
   games: defineTable({
     homeTeam: v.id('teams'),
     awayTeam: v.id('teams'),
@@ -71,6 +77,9 @@ export default defineSchema({
     status: gameStatus,
     currentBatter: v.union(v.id('players'), v.null()),
     currentPitcher: v.union(v.id('players'), v.null()),
+    homeBattingIndex: v.float64(),
+    awayBattingIndex: v.float64(),
+    lastResolvedSequence: v.float64(),
   })
     .index('by_status', ['status'])
     .index('by_home_team', ['homeTeam'])

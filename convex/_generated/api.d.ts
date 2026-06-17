@@ -9,6 +9,8 @@
  */
 
 import type * as atBat from "../atBat.js";
+import type * as game from "../game.js";
+import type * as participants from "../participants.js";
 import type * as validators from "../validators.js";
 
 import type {
@@ -19,6 +21,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   atBat: typeof atBat;
+  game: typeof game;
+  participants: typeof participants;
   validators: typeof validators;
 }>;
 

@@ -53,7 +53,7 @@ async function setupGame() {
       attributes: { velocity: 3, movement: 3, awareness: 3, command: 3 },
     })
 
-    return await ctx.db.insert('games', {
+    const gameId = await ctx.db.insert('games', {
       homeTeam,
       awayTeam,
       inning: 1,
@@ -65,7 +65,27 @@ async function setupGame() {
       status: 'live',
       currentBatter: hitter,
       currentPitcher: pitcher,
+      homeBattingIndex: 0,
+      awayBattingIndex: 0,
+      lastResolvedSequence: -1,
     })
+
+    // Lineups so the authoritative state fold (SAN-21) can seat the next batter
+    // and pitcher. Both sides use the same minimal roster; the away (batting) team
+    // leads off with `hitter`, the home (fielding) team's pitcher is `pitcher`.
+    await ctx.db.insert('lineups', {
+      game: gameId,
+      team: awayTeam,
+      battingOrder: [{ player: hitter, position: 'CF' }],
+      pitcher,
+    })
+    await ctx.db.insert('lineups', {
+      game: gameId,
+      team: homeTeam,
+      battingOrder: [{ player: hitter, position: 'CF' }],
+      pitcher,
+    })
+    return gameId
   })
   return { t, gameId }
 }
