@@ -144,6 +144,18 @@ describe('startGame — scheduled → live', () => {
     const { t, game } = await seedScheduledGame()
     await expect(t.mutation(api.game.startGame, { game })).rejects.toThrow()
   })
+
+  it('rejects a lineup with an empty batting order', async () => {
+    const { t, game } = await seedScheduledGame()
+    // A game can't run with nobody to bat — seating a null leadoff would be a
+    // broken live state, so the load boundary rejects it outright.
+    await t.run(async (ctx) => {
+      const away = (await ctx.db.query('lineups').collect()).find((l) => l.game === game)
+      if (away) await ctx.db.patch(away._id, { battingOrder: [] })
+    })
+    await expect(t.withIdentity(HOME).mutation(api.game.startGame, { game })).rejects.toThrow()
+    expect((await gameRow(t, game))?.status).toBe('scheduled')
+  })
 })
 
 describe('client-write invariant — live state advances only through resolution', () => {

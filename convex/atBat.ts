@@ -24,10 +24,11 @@ import { assertOwns, authedUser, type Ctx, maybeUser, ownsTeam, teamsForHalf } f
  * server resolves once both numbers are present. The only cross-player signal
  * before resolution is *that* the opponent has locked — never the number.
  *
- * Scope is one at-bat round-trip. Inning/half/status transitions, advancing the
- * batter, and score/standings rollups belong to downstream tickets — this
- * module appends the complete `atBats` row and reveals it; it does not mutate
- * the `games` row.
+ * Scope is one at-bat round-trip. Once both numbers land, resolution appends the
+ * complete `atBats` row and, in the SAME transaction, folds it into the live
+ * `games` row via `game.applyResolvedAtBat` (SAN-21) — so the log and the live
+ * envelope never diverge (ADR-0004). Standings/box-score rollups still belong to
+ * downstream tickets.
  */
 
 /** Lifecycle of the current at-bat from the reveal query's perspective. */

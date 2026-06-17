@@ -40,6 +40,9 @@ async function loadContext(ctx: MutationCtx, game: Doc<'games'>): Promise<GameCo
   const home = lineups.find((l) => l.team === game.homeTeam)
   const away = lineups.find((l) => l.team === game.awayTeam)
   if (!home || !away) throw new Error('Both lineups must be set before the game can run')
+  if (!home.battingOrder.length || !away.battingOrder.length) {
+    throw new Error('Both lineups need a non-empty batting order before the game can run')
+  }
   return { home: toTeamLineup(home), away: toTeamLineup(away) }
 }
 
