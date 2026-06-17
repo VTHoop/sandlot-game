@@ -245,6 +245,47 @@ describe('advance — end of game (6-inning regulation)', () => {
     expect(next.currentPitcher).toBeNull()
   })
 
+  it('walks off in extra innings the moment the home team takes the lead (bottom 7th)', () => {
+    const next = advance(
+      liveState({
+        inning: 7,
+        half: Half.Bottom,
+        outs: 1,
+        homeScore: 3,
+        awayScore: 3,
+        homeBattingIndex: 0,
+        currentBatter: 'H1',
+        currentPitcher: 'AP',
+      }),
+      homer(0, 1, 1), // extra-innings walk-off run
+      CONTEXT,
+    )
+    expect(next.status).toBe(GameStatus.Final)
+    expect(next.homeScore).toBe(4)
+    expect(next.currentBatter).toBeNull()
+  })
+
+  it('ends in extra innings when the away team leads after a completed bottom 7th', () => {
+    const next = advance(
+      liveState({
+        inning: 7,
+        half: Half.Bottom,
+        outs: 2,
+        homeScore: 3,
+        awayScore: 4,
+        homeBattingIndex: 5,
+        currentBatter: 'H6',
+        currentPitcher: 'AP',
+      }),
+      k(0, 2),
+      CONTEXT,
+    )
+    expect(next.status).toBe(GameStatus.Final)
+    expect(next.homeScore).toBe(3)
+    expect(next.awayScore).toBe(4)
+    expect(next.currentBatter).toBeNull()
+  })
+
   it('continues into extra innings when tied after a completed 6th', () => {
     const next = advance(
       liveState({
@@ -283,5 +324,13 @@ describe('advance — guards', () => {
   it('rejects a sequence gap', () => {
     const state = liveState({ lastResolvedSequence: 3 })
     expect(() => advance(state, k(5, 0), CONTEXT)).toThrow()
+  })
+
+  it("rejects an at-bat whose outsBefore disagrees with the live state's outs", () => {
+    // The out delta (outsAfter − outsBefore) is only sound when the at-bat was
+    // resolved against the same out count the live row holds. A mismatch would
+    // silently corrupt the out total (and cascade into wrong inning flips).
+    const state = liveState({ outs: 1 })
+    expect(() => advance(state, k(0, 0), CONTEXT)).toThrow(/outs/i)
   })
 })

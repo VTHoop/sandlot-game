@@ -59,6 +59,13 @@ export function advance(
       `Out-of-order at-bat: expected sequence ${state.lastResolvedSequence + 1}, got ${atBat.sequence}`,
     )
   }
+  // The out delta below is only sound if the at-bat was resolved against the same
+  // out count the live row holds. A mismatch would silently corrupt the total.
+  if (atBat.outsBefore !== state.outs) {
+    throw new Error(
+      `Out count mismatch: at-bat resolved at ${atBat.outsBefore} outs, live state has ${state.outs}`,
+    )
+  }
 
   const battingIsHome = state.half === Half.Bottom
   const battingTeam = battingIsHome ? context.home : context.away
