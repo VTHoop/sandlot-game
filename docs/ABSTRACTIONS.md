@@ -53,7 +53,9 @@ The multiplayer schema follows ADR-0004 — **authoritative current-state rows +
 an append-only log + maintained rollups**, not full event sourcing:
 
 - **State rows:** `games` (inning/half/outs/base-state/score/status/current
-  batter+pitcher) and `lineups` (ordered 1–9 batting list + designated pitcher).
+  batter+pitcher, plus each team's persisted batting-order pointer and the
+  applied-at-bat marker — see *Game state machine* below) and `lineups` (ordered
+  1–9 batting list + designated pitcher).
 - **`duelCommitments` — symmetric secret vault.** Each side's committed number
   (pitch or swing) lives only here, in its own table by design, so no public/
   at-bat read path can reach it (game-integrity rule). Commits are
@@ -83,6 +85,31 @@ it to `OutcomeBandKey` from `@sandlot/engine/outcomes`, so the persisted outcome
 enum can never drift from what the RangeFinder produces. The engine is the single
 source of truth; the import is type-only, so the Convex bundle carries no engine
 runtime dependency.
+
+## Game state machine (`@sandlot/engine/game` + `convex/game.ts`)
+
+The authoritative live game envelope (SAN-21, ADR-0017). The **rules** are a pure
+engine module: `startGame(context)` seeds a live state from the lineups, and
+`advance(state, resolvedAtBat, context, config?)` folds one resolved at-bat into
+the next state — applying the recorded run/out/base deltas, advancing the batting
+team's order pointer (persists per team across half-innings), flipping
+half-innings / innings on the third out, and resolving end-of-game over a
+**6-inning regulation** (`REGULATION_INNINGS = 6`): walk-off short-circuit, home
+already leading after the top of the final inning, regulation final, and
+tie → extra innings. It is pure, deterministic, exhaustively unit-tested, and
+idempotent per at-bat (an at-bat at or behind `lastResolvedSequence` is a no-op).
+
+`convex/game.ts` is the thin Convex boundary — it computes none of the rules:
+
+- **`startGame`** — a participant-gated mutation (home/away owner, `scheduled`
+  only) that maps the engine's seed state onto the `games` row.
+- **`applyResolvedAtBat`** — *not* client-callable; called from the secret
+  round-trip's resolution (`atBat.ts`) within the **same transaction** as the
+  `atBats` append, so the log and the live row never diverge (ADR-0004).
+
+**Client-write invariant:** the live games-state fields move only through these
+two server paths. No client mutation writes them directly — the same vault
+discipline as the secret pitch, extended to the whole envelope.
 
 ---
 
