@@ -1,4 +1,5 @@
 import type { BaseState } from '../atBat/advance'
+import { type HalfInning, halfInning } from './halfInning'
 import {
   type AppliedAtBat,
   DEFAULT_CONFIG,
@@ -51,6 +52,28 @@ export function advance(
   config: GameConfig = DEFAULT_CONFIG,
 ): LiveGameState {
   if (atBat.sequence <= state.lastResolvedSequence) return state // already folded in
+  assertApplicable(state, atBat)
+
+  const half = halfInning(state.half, context)
+  const folded = foldAtBat(state, atBat, half)
+
+  // Walk-off: the home team taking the lead in the bottom of a regulation-or-later
+  // inning ends the game immediately — no further at-bats.
+  if (half.battingIsHome && homeHasWon(folded, config)) return finalize(folded)
+
+  // Mid-half: the same team stays at bat (pointer already advanced) against the
+  // same pitcher.
+  if (folded.outs < 3) return seatBatter(folded, half)
+
+  // Third out — the half is over (and possibly the game).
+  return endHalf(folded, context, config)
+}
+
+/**
+ * Reject an at-bat that cannot be folded into this state. (The idempotent no-op
+ * for an already-applied sequence is handled by the caller before this runs.)
+ */
+function assertApplicable(state: LiveGameState, atBat: AppliedAtBat): void {
   if (state.status !== GameStatus.Live) {
     throw new Error('Cannot advance a game that is not live')
   }
@@ -66,92 +89,80 @@ export function advance(
       `Out count mismatch: at-bat resolved at ${atBat.outsBefore} outs, live state has ${state.outs}`,
     )
   }
+}
 
-  const battingIsHome = state.half === Half.Bottom
-  const battingTeam = battingIsHome ? context.home : context.away
-  const fieldingTeam = battingIsHome ? context.away : context.home
-
-  // Apply the resolved deltas: runs to the batting team, the out delta, new bases.
-  const homeScore = state.homeScore + (battingIsHome ? atBat.runsScored : 0)
-  const awayScore = state.awayScore + (battingIsHome ? 0 : atBat.runsScored)
-  const outs = state.outs + (atBat.outsAfter - atBat.outsBefore)
-
-  // Advance the batting team's order pointer (1→9, wraps; persists per team).
-  const priorIndex = battingIsHome ? state.homeBattingIndex : state.awayBattingIndex
-  const nextIndex = (priorIndex + 1) % battingTeam.battingOrder.length
-
-  const folded: LiveGameState = {
+/**
+ * Apply the resolved deltas — runs to the batting team, the out delta, the new
+ * bases — and advance that team's batting-order pointer (1→9, wraps; each team's
+ * pointer persists across its half-innings). Inning/half/status are untouched
+ * here; the end-of-half and end-of-game decisions follow in {@link advance}.
+ */
+function foldAtBat(state: LiveGameState, atBat: AppliedAtBat, half: HalfInning): LiveGameState {
+  const priorIndex = half.battingIsHome ? state.homeBattingIndex : state.awayBattingIndex
+  const nextIndex = (priorIndex + 1) % half.battingTeam.battingOrder.length
+  return {
     ...state,
-    homeScore,
-    awayScore,
-    outs,
+    homeScore: state.homeScore + (half.battingIsHome ? atBat.runsScored : 0),
+    awayScore: state.awayScore + (half.battingIsHome ? 0 : atBat.runsScored),
+    outs: state.outs + (atBat.outsAfter - atBat.outsBefore),
     bases: atBat.basesAfter,
-    homeBattingIndex: battingIsHome ? nextIndex : state.homeBattingIndex,
-    awayBattingIndex: battingIsHome ? state.awayBattingIndex : nextIndex,
+    homeBattingIndex: half.battingIsHome ? nextIndex : state.homeBattingIndex,
+    awayBattingIndex: half.battingIsHome ? state.awayBattingIndex : nextIndex,
     lastResolvedSequence: atBat.sequence,
   }
-
-  // Walk-off: the home team taking the lead in the bottom of a regulation-or-later
-  // inning ends the game immediately — no further at-bats.
-  if (battingIsHome && state.inning >= config.regulationInnings && homeScore > awayScore) {
-    return finalize(folded)
-  }
-
-  // Mid-half: the same team stays at bat against the same pitcher.
-  if (outs < 3) {
-    return {
-      ...folded,
-      currentBatter: battingTeam.battingOrder[nextIndex] ?? null,
-      currentPitcher: fieldingTeam.pitcher,
-    }
-  }
-
-  // Third out — the half is over.
-  return state.half === Half.Top
-    ? endTopHalf(folded, context, config)
-    : endInning(folded, context, config)
 }
 
 /**
- * Top half complete. If the home team already leads at the regulation-or-later
- * mark, the game is over and the bottom half is never played; otherwise the home
- * team comes to bat in the same inning.
+ * The third out ends the current half. After the top half the home team comes to
+ * bat — unless it already leads at the regulation-or-later mark, in which case the
+ * bottom is never played. After the bottom half the inning is complete: a decided
+ * regulation-or-later inning ends the game; a tie continues into extra innings.
  */
-function endTopHalf(
+function endHalf(folded: LiveGameState, context: GameContext, config: GameConfig): LiveGameState {
+  if (folded.half === Half.Top) {
+    return homeHasWon(folded, config)
+      ? finalize(folded)
+      : openHalf(folded, Half.Bottom, folded.inning, context)
+  }
+  return isDecidedInning(folded, config)
+    ? finalize(folded)
+    : openHalf(folded, Half.Top, folded.inning + 1, context)
+}
+
+/**
+ * Begin a fresh half-inning: reset outs/bases, set the half and inning, and seat
+ * the resuming batter at the batting team's stored pointer against its pitcher.
+ */
+function openHalf(
   folded: LiveGameState,
+  nextHalf: Half,
+  inning: number,
   context: GameContext,
-  config: GameConfig,
 ): LiveGameState {
-  if (folded.inning >= config.regulationInnings && folded.homeScore > folded.awayScore) {
-    return finalize(folded)
-  }
+  const fresh = { ...folded, half: nextHalf, inning, outs: 0, bases: EMPTY_BASES }
+  return seatBatter(fresh, halfInning(nextHalf, context))
+}
+
+/** Seat the batting team's current batter against the fielding team's pitcher. */
+function seatBatter(state: LiveGameState, half: HalfInning): LiveGameState {
+  const index = half.battingIsHome ? state.homeBattingIndex : state.awayBattingIndex
   return {
-    ...folded,
-    half: Half.Bottom,
-    outs: 0,
-    bases: EMPTY_BASES,
-    currentBatter: context.home.battingOrder[folded.homeBattingIndex] ?? null,
-    currentPitcher: context.away.pitcher,
+    ...state,
+    currentBatter: half.battingTeam.battingOrder[index] ?? null,
+    currentPitcher: half.fieldingTeam.pitcher,
   }
 }
 
-/**
- * Bottom half complete — a full inning is done. A regulation-or-later inning with
- * a leader ends the game; a tie continues into extra innings (no run-limit mercy).
- */
-function endInning(folded: LiveGameState, context: GameContext, config: GameConfig): LiveGameState {
-  if (folded.inning >= config.regulationInnings && folded.homeScore !== folded.awayScore) {
-    return finalize(folded)
-  }
-  return {
-    ...folded,
-    half: Half.Top,
-    inning: folded.inning + 1,
-    outs: 0,
-    bases: EMPTY_BASES,
-    currentBatter: context.away.battingOrder[folded.awayBattingIndex] ?? null,
-    currentPitcher: context.home.pitcher,
-  }
+/** The home team has clinched: a regulation-or-later inning in which it leads —
+ * the trigger for both a bottom-inning walk-off and skipping an unneeded bottom. */
+function homeHasWon(folded: LiveGameState, config: GameConfig): boolean {
+  return folded.inning >= config.regulationInnings && folded.homeScore > folded.awayScore
+}
+
+/** A completed regulation-or-later inning with a leader — the game is over (an
+ * extra-innings tie, by contrast, plays on). */
+function isDecidedInning(folded: LiveGameState, config: GameConfig): boolean {
+  return folded.inning >= config.regulationInnings && folded.homeScore !== folded.awayScore
 }
 
 /** Seal the game: no team is at bat in a finished game. */

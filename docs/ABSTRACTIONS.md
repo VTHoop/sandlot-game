@@ -98,6 +98,9 @@ half-innings / innings on the third out, and resolving end-of-game over a
 already leading after the top of the final inning, regulation final, and
 tie → extra innings. It is pure, deterministic, exhaustively unit-tested, and
 idempotent per at-bat (an at-bat at or behind `lastResolvedSequence` is a no-op).
+The "who bats / who fields this half" rule is factored into a small `HalfInning`
+model (`halfInning(half, context)`) so the transition never re-derives offense vs.
+defense at each score / pointer / seating step.
 
 `convex/game.ts` is the thin Convex boundary — it computes none of the rules:
 
