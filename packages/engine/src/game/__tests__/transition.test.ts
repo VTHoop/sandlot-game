@@ -169,9 +169,19 @@ describe('advance — half-inning and inning transitions on the third out', () =
 })
 
 describe('advance — end of game (6-inning regulation)', () => {
-  it('ends the game after a completed bottom 6th when the score is not tied', () => {
-    const next = advance(
-      liveState({
+  // Each row: the live state going into the final at-bat, the play that resolves
+  // it, and the authoritative fields the resulting state must carry. `expected`
+  // is a partial — every key listed is asserted exactly (toMatchObject), keys
+  // omitted are intentionally not under test for that scenario.
+  const cases: Array<{
+    name: string
+    state: Partial<LiveGameState>
+    play: AppliedAtBat
+    expected: Partial<LiveGameState>
+  }> = [
+    {
+      name: 'ends the game after a completed bottom 6th when the score is not tied',
+      state: {
         inning: 6,
         half: Half.Bottom,
         outs: 2,
@@ -180,20 +190,19 @@ describe('advance — end of game (6-inning regulation)', () => {
         homeBattingIndex: 4,
         currentBatter: 'H5',
         currentPitcher: 'AP',
-      }),
-      k(0, 2),
-      CONTEXT,
-    )
-    expect(next.status).toBe(GameStatus.Final)
-    expect(next.currentBatter).toBeNull()
-    expect(next.currentPitcher).toBeNull()
-    expect(next.homeScore).toBe(3)
-    expect(next.awayScore).toBe(5)
-  })
-
-  it('ends immediately when the home team already leads after the top of the 6th', () => {
-    const next = advance(
-      liveState({
+      },
+      play: k(0, 2),
+      expected: {
+        status: GameStatus.Final,
+        currentBatter: null,
+        currentPitcher: null,
+        homeScore: 3,
+        awayScore: 5,
+      },
+    },
+    {
+      name: 'ends immediately when the home team already leads after the top of the 6th',
+      state: {
         inning: 6,
         half: Half.Top,
         outs: 2,
@@ -201,32 +210,26 @@ describe('advance — end of game (6-inning regulation)', () => {
         awayScore: 3,
         awayBattingIndex: 3,
         currentBatter: 'A4',
-      }),
-      k(0, 2),
-      CONTEXT,
-    )
-    expect(next.status).toBe(GameStatus.Final)
-    expect(next.currentBatter).toBeNull()
-    expect(next.half).toBe(Half.Top) // the bottom 6th is never played
-    expect(next.inning).toBe(6)
-  })
-
-  it('plays the bottom 6th when the score is tied after the top half', () => {
-    const next = advance(
-      liveState({ inning: 6, half: Half.Top, outs: 2, homeScore: 3, awayScore: 3 }),
-      k(0, 2),
-      CONTEXT,
-    )
-    expect(next.status).toBe(GameStatus.Live)
-    expect(next.half).toBe(Half.Bottom)
-    expect(next.inning).toBe(6)
-    expect(next.currentBatter).toBe('H1')
-    expect(next.currentPitcher).toBe('AP')
-  })
-
-  it('short-circuits to final the moment the home team takes the lead in the bottom 6th', () => {
-    const next = advance(
-      liveState({
+      },
+      play: k(0, 2),
+      // half stays Top / inning 6: the bottom 6th is never played.
+      expected: { status: GameStatus.Final, currentBatter: null, half: Half.Top, inning: 6 },
+    },
+    {
+      name: 'plays the bottom 6th when the score is tied after the top half',
+      state: { inning: 6, half: Half.Top, outs: 2, homeScore: 3, awayScore: 3 },
+      play: k(0, 2),
+      expected: {
+        status: GameStatus.Live,
+        half: Half.Bottom,
+        inning: 6,
+        currentBatter: 'H1',
+        currentPitcher: 'AP',
+      },
+    },
+    {
+      name: 'short-circuits to final the moment the home team takes the lead in the bottom 6th',
+      state: {
         inning: 6,
         half: Half.Bottom,
         outs: 1,
@@ -235,19 +238,18 @@ describe('advance — end of game (6-inning regulation)', () => {
         homeBattingIndex: 4,
         currentBatter: 'H5',
         currentPitcher: 'AP',
-      }),
-      homer(0, 1, 1), // walk-off run, only one out
-      CONTEXT,
-    )
-    expect(next.status).toBe(GameStatus.Final)
-    expect(next.homeScore).toBe(4)
-    expect(next.currentBatter).toBeNull()
-    expect(next.currentPitcher).toBeNull()
-  })
-
-  it('walks off in extra innings the moment the home team takes the lead (bottom 7th)', () => {
-    const next = advance(
-      liveState({
+      },
+      play: homer(0, 1, 1), // walk-off run, only one out
+      expected: {
+        status: GameStatus.Final,
+        homeScore: 4,
+        currentBatter: null,
+        currentPitcher: null,
+      },
+    },
+    {
+      name: 'walks off in extra innings the moment the home team takes the lead (bottom 7th)',
+      state: {
         inning: 7,
         half: Half.Bottom,
         outs: 1,
@@ -256,18 +258,13 @@ describe('advance — end of game (6-inning regulation)', () => {
         homeBattingIndex: 0,
         currentBatter: 'H1',
         currentPitcher: 'AP',
-      }),
-      homer(0, 1, 1), // extra-innings walk-off run
-      CONTEXT,
-    )
-    expect(next.status).toBe(GameStatus.Final)
-    expect(next.homeScore).toBe(4)
-    expect(next.currentBatter).toBeNull()
-  })
-
-  it('ends in extra innings when the away team leads after a completed bottom 7th', () => {
-    const next = advance(
-      liveState({
+      },
+      play: homer(0, 1, 1), // extra-innings walk-off run
+      expected: { status: GameStatus.Final, homeScore: 4, currentBatter: null },
+    },
+    {
+      name: 'ends in extra innings when the away team leads after a completed bottom 7th',
+      state: {
         inning: 7,
         half: Half.Bottom,
         outs: 2,
@@ -276,19 +273,13 @@ describe('advance — end of game (6-inning regulation)', () => {
         homeBattingIndex: 5,
         currentBatter: 'H6',
         currentPitcher: 'AP',
-      }),
-      k(0, 2),
-      CONTEXT,
-    )
-    expect(next.status).toBe(GameStatus.Final)
-    expect(next.homeScore).toBe(3)
-    expect(next.awayScore).toBe(4)
-    expect(next.currentBatter).toBeNull()
-  })
-
-  it('continues into extra innings when tied after a completed 6th', () => {
-    const next = advance(
-      liveState({
+      },
+      play: k(0, 2),
+      expected: { status: GameStatus.Final, homeScore: 3, awayScore: 4, currentBatter: null },
+    },
+    {
+      name: 'continues into extra innings when tied after a completed 6th',
+      state: {
         inning: 6,
         half: Half.Bottom,
         outs: 2,
@@ -297,15 +288,20 @@ describe('advance — end of game (6-inning regulation)', () => {
         homeBattingIndex: 2,
         currentBatter: 'H3',
         currentPitcher: 'AP',
-      }),
-      k(0, 2),
-      CONTEXT,
-    )
-    expect(next.status).toBe(GameStatus.Live)
-    expect(next.inning).toBe(7)
-    expect(next.half).toBe(Half.Top)
-    expect(next.currentBatter).toBe('A1')
-    expect(next.currentPitcher).toBe('HP')
+      },
+      play: k(0, 2),
+      expected: {
+        status: GameStatus.Live,
+        inning: 7,
+        half: Half.Top,
+        currentBatter: 'A1',
+        currentPitcher: 'HP',
+      },
+    },
+  ]
+
+  it.each(cases)('$name', ({ state, play, expected }) => {
+    expect(advance(liveState(state), play, CONTEXT)).toMatchObject(expected)
   })
 })
 
