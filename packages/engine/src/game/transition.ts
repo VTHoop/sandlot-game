@@ -148,7 +148,7 @@ function seatBatter(state: LiveGameState, half: HalfInning): LiveGameState {
   const index = half.battingIsHome ? state.homeBattingIndex : state.awayBattingIndex
   return {
     ...state,
-    currentBatter: half.battingTeam.battingOrder[index] ?? null,
+    currentBatter: half.battingTeam.battingOrder.at(index) ?? null,
     currentPitcher: half.fieldingTeam.pitcher,
   }
 }
