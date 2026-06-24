@@ -13,11 +13,25 @@ import {
 const EMPTY_BASES: BaseState = { first: false, second: false, third: false }
 
 /**
+ * Reject a context whose lineups can't field a batting order. The pointer math
+ * (`% battingOrder.length`) and leadoff seating both assume a non-empty order; an
+ * empty one yields a NaN pointer / null batter that silently corrupts the live
+ * state. The engine is a standalone package (ADR-0009), so it validates its own
+ * input rather than trusting every caller — the Convex boundary guards this too.
+ */
+function assertNonEmptyBattingOrders(context: GameContext): void {
+  if (!context.home.battingOrder.length || !context.away.battingOrder.length) {
+    throw new Error('Both lineups need a non-empty batting order before the game can run')
+  }
+}
+
+/**
  * Initialize a live game from its lineups (scheduled → live). The away team leads
  * off the top of the 1st while the home team takes the mound; both batting-order
  * pointers start at the leadoff slot and no at-bat has been folded yet.
  */
 export function startGame(context: GameContext): LiveGameState {
+  assertNonEmptyBattingOrders(context)
   return {
     status: GameStatus.Live,
     inning: 1,
@@ -52,7 +66,7 @@ export function advance(
   config: GameConfig = DEFAULT_CONFIG,
 ): LiveGameState {
   if (atBat.sequence <= state.lastResolvedSequence) return state // already folded in
-  assertApplicable(state, atBat)
+  assertApplicable(state, atBat, context)
 
   const half = halfInning(state.half, context)
   const folded = foldAtBat(state, atBat, half)
@@ -73,7 +87,8 @@ export function advance(
  * Reject an at-bat that cannot be folded into this state. (The idempotent no-op
  * for an already-applied sequence is handled by the caller before this runs.)
  */
-function assertApplicable(state: LiveGameState, atBat: AppliedAtBat): void {
+function assertApplicable(state: LiveGameState, atBat: AppliedAtBat, context: GameContext): void {
+  assertNonEmptyBattingOrders(context)
   if (state.status !== GameStatus.Live) {
     throw new Error('Cannot advance a game that is not live')
   }
