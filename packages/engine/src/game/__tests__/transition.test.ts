@@ -67,6 +67,14 @@ describe('startGame — scheduled → live initialization', () => {
       lastResolvedSequence: -1,
     })
   })
+
+  it('rejects a lineup with an empty batting order rather than seating a null leadoff', () => {
+    const noAway: GameContext = {
+      home: { battingOrder: order('H'), pitcher: 'HP' },
+      away: { battingOrder: [], pitcher: 'AP' },
+    }
+    expect(() => startGame(noAway)).toThrow(/batting order/i)
+  })
 })
 
 describe('advance — per-at-bat folding', () => {
@@ -328,5 +336,16 @@ describe('advance — guards', () => {
     // silently corrupt the out total (and cascade into wrong inning flips).
     const state = liveState({ outs: 1 })
     expect(() => advance(state, k(0, 0), CONTEXT)).toThrow(/outs/i)
+  })
+
+  it('rejects an empty batting order instead of computing a NaN pointer', () => {
+    // The order-pointer advance is `(index + 1) % battingOrder.length`; an empty
+    // order makes that a modulo-by-zero → NaN that silently corrupts the live
+    // state. Fail fast at the engine boundary rather than propagate garbage.
+    const emptyAway: GameContext = {
+      home: { battingOrder: order('H'), pitcher: 'HP' },
+      away: { battingOrder: [], pitcher: 'AP' },
+    }
+    expect(() => advance(liveState(), k(0, 0), emptyAway)).toThrow(/batting order/i)
   })
 })
