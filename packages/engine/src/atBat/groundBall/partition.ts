@@ -14,7 +14,7 @@ import { GroundBallResult } from './result'
  * by the Monte Carlo harness, exactly as the seed tables were tuned by SAN-15.
  */
 const GO_RA_FRACTION = 0.08
-const DP_FRACTION_CENTER = 0.44
+const DP_FRACTION_CENTER = 0.47
 const DP_FRACTION_PER_SPEED = 0.06
 const DP_FRACTION_MIN = 0.2
 const DP_FRACTION_MAX = 0.68

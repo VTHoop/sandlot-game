@@ -74,12 +74,28 @@ export function gidpPerOpportunity(
   weightFn: DifferentialWeightFn = defaultDifferentialWeight,
   speedDiff: number = NEUTRAL_SPEED_DIFF,
 ): number {
-  // Stub: implemented in the GREEN step.
-  void cells
-  void opportunities
-  void weightFn
-  void speedDiff
-  void dpBandWidth
-  void RANGE
-  return 0
+  const opportunityWeight = opportunities.reduce((sum, o) => sum + o.weight, 0)
+  if (opportunityWeight === 0) {
+    throw new RangeError('gidpPerOpportunity: opportunity weights sum to zero')
+  }
+
+  let weightedGidp = 0
+  let totalWeight = 0
+  for (const cell of cells) {
+    const w = weightFn(cell.diffs)
+    if (w <= 0) continue
+    const gbWidth = Math.round(cell.rates.gb * RANGE)
+    // Per opportunity state, P(GIDP) = P(GB) × DP-share-of-GB = DP-width / RANGE.
+    let stateGidp = 0
+    for (const o of opportunities) {
+      stateGidp += o.weight * (dpBandWidth(gbWidth, o.bases, o.outs, speedDiff) / RANGE)
+    }
+    weightedGidp += w * (stateGidp / opportunityWeight)
+    totalWeight += w
+  }
+
+  if (totalWeight === 0) {
+    throw new RangeError('gidpPerOpportunity: no cells have positive weight')
+  }
+  return weightedGidp / totalWeight
 }
