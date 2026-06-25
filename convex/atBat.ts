@@ -216,6 +216,9 @@ async function tryResolve(
     batterNumber: batting.number,
     pitchNumber: pitching.number,
     outcome: resolved.outcome,
+    // GB sub-result (SAN-16) or null for non-GB; the engine enum's string values
+    // are exactly the persisted literals, so the relabel is sound (cf. basesAfter).
+    groundBallResult: resolved.groundBallResult as Doc<'atBats'>['groundBallResult'],
     runsScored: resolved.runsScored,
     rbi: resolved.rbi,
     // Engine bases hold opaque runner ids that all originate from this game's

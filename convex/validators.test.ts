@@ -1,7 +1,7 @@
-import type { BaseState } from '@sandlot/engine/atBat'
+import { type BaseState, GroundBallResult } from '@sandlot/engine/atBat'
 import { OUTCOME_BAND_KEYS } from '@sandlot/engine/outcomes'
 import { describe, expect, it } from 'vitest'
-import { baseState, outcomeBand } from './validators'
+import { baseState, groundBallResult, outcomeBand } from './validators'
 
 /**
  * Runtime single-source-of-truth backstop: the persisted `outcomeBand` enum must
@@ -15,6 +15,18 @@ describe('outcomeBand validator', () => {
   it('matches the engine band keys exactly, in stack order', () => {
     const literals = outcomeBand.members.map((member) => member.value)
     expect(literals).toEqual([...OUTCOME_BAND_KEYS])
+  })
+})
+
+/**
+ * Runtime twin of the compile-time guard for the GB sub-result (SAN-16): the
+ * persisted `groundBallResult` literals must equal the engine's `GroundBallResult`
+ * enum values, so the boundary relabel in `atBat.ts` is sound.
+ */
+describe('groundBallResult validator', () => {
+  it('matches the engine GroundBallResult enum values', () => {
+    const literals = groundBallResult.members.map((member) => member.value)
+    expect(literals).toEqual(Object.values(GroundBallResult))
   })
 })
 

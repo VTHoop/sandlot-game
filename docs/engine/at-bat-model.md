@@ -42,7 +42,35 @@ The two halves differ in **how each band's width is computed**, which is why the
 - **Front half — `HR → BB`.** A clean **cumulative sum** of independent table lookups: look up each band's width, lay them out one after another from `0`. Deterministic and self-contained, so it's **unit-tested directly** against captured reference values.
 - **Back half — `FO / PO / GB / K`.** An **elastic remainder**: K is **right-anchored at 499** (K.hi = 499 always; K.lo = 499 − K_width + 1, where K_width comes from the Contact − Movement table). FO and PO fill in from the front (FO → PO starting at BB.hi + 1, keyed by Power − Velocity). GB is the elastic fill between PO.hi + 1 and K.lo − 1 — no seed table; it absorbs whatever space remains. An assembler error is raised if FO + PO + K exceed the available back-half space (GB_width < 0). The partition is unit-tested with frozen tables for exact boundaries and a live-table smoke test confirms GB ≥ 0 across the full differential grid.
 
-After the bands are assembled, later stages apply on top: **ground-ball sub-resolution**, **park effects**, then **steals / bunts / extra-base** (all separate roadmap items).
+After the bands are assembled, later stages apply on top: **ground-ball sub-resolution** (below, SAN-16), then **park effects** and **steals / bunts / extra-base** (still separate roadmap items).
+
+## Ground-ball sub-resolution (SAN-16 / ADR-0019)
+
+The `GB` band is not a single out. When the difference lands in it, the band
+**sub-resolves** into the ground-ball play that actually happened — driven by base
+state, outs, and the batter/runner/pitcher **speed − awareness** allocation. The
+persisted band stays `GB`; the sub-result is recorded alongside it as a nullable
+`groundBallResult` (null for every non-GB outcome). The sub-results
+(rules §2.9–2.15):
+
+- **GO** — bases empty: batter out at 1st.
+- **GO, RA** — out at 1st, all runners advance one base (a run scores from 3rd).
+- **FC / FC 2nd / FC 3rd / FC Home** — fielder's choice: a runner is cut down at
+  2nd / 3rd / home while the batter (and, per variant, the lead runners) are safe.
+- **DP** — force double play (needs a force and < 2 outs): batter + lead forced
+  runner.
+- **TP** — triple play (needs a force at every base in play and 0 outs): the thin
+  **top tail** of the GB band.
+
+The sub-bands **partition `[GB.lo, GB.hi]` exactly** (contiguous, gapless,
+non-overlapping), the same invariant the front/back-half assembly holds. Only the
+results eligible for the current base/out state are seated; as the speed edge
+rises the **DP share shrinks and the FC share grows**. When `TP`/`DP` are
+ineligible their tail collapses onto the next eligible out, so the partition stays
+exact in every state. The inning-ending out **suppresses** the runs that would
+have scored on the play. Magnitudes (the DP-vs-FC fractions, the TP tail) are
+**re-derived** and tuned by the harness against a public GIDP baseline — never
+transcribed from the private calculator (ADR-0006).
 
 ## RangeFinder — assembly contract
 

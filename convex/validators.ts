@@ -1,3 +1,4 @@
+import type { GroundBallResult } from '@sandlot/engine/atBat'
 import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { type Infer, v } from 'convex/values'
 
@@ -35,6 +36,33 @@ type AssertEqual<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : never
 const _outcomeMatchesEngine: AssertEqual<Infer<typeof outcomeBand>, OutcomeBandKey> = true
 void _outcomeMatchesEngine
+
+/**
+ * Ground-ball sub-result (SAN-16, ADR-0019). The persisted `outcomeBand` stays
+ * `GB`; this finer taxonomy is recorded alongside it (nullable — null for every
+ * non-GB outcome). Mirrors the engine's `GroundBallResult` enum, the same way
+ * `outcomeBand` mirrors `OutcomeBandKey`: explicit literals (so Convex infers the
+ * precise union and the bundle carries no engine runtime dependency) locked to the
+ * engine by the guard below. The engine is the single source of truth.
+ */
+export const groundBallResult = v.union(
+  v.literal('GO'),
+  v.literal('GO_RA'),
+  v.literal('FC'),
+  v.literal('FC_2ND'),
+  v.literal('FC_3RD'),
+  v.literal('FC_HOME'),
+  v.literal('DP'),
+  v.literal('TP'),
+)
+
+// The engine type is a string enum, not a literal union, so coerce its members to
+// their string values (`${GroundBallResult}`) before the equality check.
+const _groundBallMatchesEngine: AssertEqual<
+  Infer<typeof groundBallResult>,
+  `${GroundBallResult}`
+> = true
+void _groundBallMatchesEngine
 
 /** Roster role: drives which attribute block a player carries. */
 export const role = v.union(v.literal('hitter'), v.literal('pitcher'))
