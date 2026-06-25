@@ -32,9 +32,11 @@ describe('partitionGroundBall — partition invariants', () => {
     expect(bands.map((b) => b.result)).toEqual(LOADED) // preserves low→high order
     expect(bands[0].lo).toBe(BAND.lo)
     expect(bands[bands.length - 1].hi).toBe(BAND.hi)
-    for (let i = 1; i < bands.length; i++) {
-      expect(bands[i].lo).toBe(bands[i - 1].hi + 1) // contiguous, no gap/overlap
-    }
+    // contiguous, no gap/overlap — each sub-band starts one past the previous hi
+    bands.reduce((prev, sub) => {
+      expect(sub.lo).toBe(prev.hi + 1)
+      return sub
+    })
     const total = bands.reduce((sum, b) => sum + (b.hi - b.lo + 1), 0)
     expect(total).toBe(BAND.hi - BAND.lo + 1)
   })
@@ -66,7 +68,10 @@ describe('partitionGroundBall — partition invariants', () => {
     expect(bands[0].lo).toBe(tiny.lo)
     expect(bands[bands.length - 1].result).toBe(TP)
     expect(bands[bands.length - 1].hi).toBe(tiny.hi)
-    for (let i = 1; i < bands.length; i++) expect(bands[i].lo).toBe(bands[i - 1].hi + 1)
+    bands.reduce((prev, sub) => {
+      expect(sub.lo).toBe(prev.hi + 1)
+      return sub
+    })
     const total = bands.reduce((sum, b) => sum + (b.hi - b.lo + 1), 0)
     expect(total).toBe(tiny.hi - tiny.lo + 1)
     expect(selectGroundBallResult(sizing(LOADED, tiny, 0), tiny.hi)).toBe(TP)
@@ -75,18 +80,20 @@ describe('partitionGroundBall — partition invariants', () => {
 
 describe('partitionGroundBall — directional speed rule (FC grows, DP shrinks)', () => {
   it('DP width is non-increasing and FC-family width non-decreasing as the speed edge rises', () => {
-    const dpWidths: number[] = []
-    const fcWidths: number[] = []
-    for (const speedDiff of [-3, -2, -1, 0, 1, 2, 3]) {
+    const widths = [-3, -2, -1, 0, 1, 2, 3].map((speedDiff) => {
       const bands = partitionGroundBall(sizing(LOADED, BAND, speedDiff))
-      dpWidths.push(widthOf(bands, DP))
-      fcWidths.push(widthOf(bands, FC_2ND) + widthOf(bands, FC_3RD) + widthOf(bands, FC_HOME))
-    }
-    for (let i = 1; i < dpWidths.length; i++) {
-      expect(dpWidths[i]).toBeLessThanOrEqual(dpWidths[i - 1])
-      expect(fcWidths[i]).toBeGreaterThanOrEqual(fcWidths[i - 1])
-    }
-    expect(dpWidths[dpWidths.length - 1]).toBeLessThan(dpWidths[0]) // strictly shrinks overall
+      return {
+        dp: widthOf(bands, DP),
+        fc: widthOf(bands, FC_2ND) + widthOf(bands, FC_3RD) + widthOf(bands, FC_HOME),
+      }
+    })
+    // DP non-increasing and FC-family non-decreasing as the speed edge rises
+    widths.reduce((prev, cur) => {
+      expect(cur.dp).toBeLessThanOrEqual(prev.dp)
+      expect(cur.fc).toBeGreaterThanOrEqual(prev.fc)
+      return cur
+    })
+    expect(widths[widths.length - 1].dp).toBeLessThan(widths[0].dp) // strictly shrinks overall
   })
 
   it('GO_RA stays a small near-constant slice across the speed axis', () => {

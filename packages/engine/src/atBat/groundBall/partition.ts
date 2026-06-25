@@ -105,18 +105,21 @@ const widest = (sized: SizedResult[]): SizedResult =>
 function apportion(sizing: GroundBallSizing): SizedResult[] {
   const total = bandWidth(sizing.band)
   const fractions = targetFractions(sizing)
-  const ideals = sizing.eligible.map((r) => (fractions.get(r) ?? 0) * total)
-  const sized: SizedResult[] = sizing.eligible.map((result, i) => ({
-    result,
-    width: Math.floor(ideals[i]),
-  }))
-  const byFraction = ideals
-    .map((ideal, i) => ({ i, frac: ideal - sized[i].width }))
-    .sort((a, b) => b.frac - a.frac)
+  // Pair each result's real-valued ideal with its floored width so the leftover
+  // pass needs no index lookups (object-injection sink). The largest-remainder
+  // leftover is always < the slice count, so each top-remainder slice that the
+  // sort surfaces gets exactly one extra number.
+  const sized = sizing.eligible.map((result) => {
+    const ideal = (fractions.get(result) ?? 0) * total
+    return { result, ideal, width: Math.floor(ideal) }
+  })
   let leftover = total - sized.reduce((sum, s) => sum + s.width, 0)
-  for (let k = 0; leftover > 0; k++, leftover--)
-    sized[byFraction[k % byFraction.length].i].width += 1
-  return sized
+  for (const slice of [...sized].sort((a, b) => b.ideal - b.width - (a.ideal - a.width))) {
+    if (leftover <= 0) break
+    slice.width += 1
+    leftover -= 1
+  }
+  return sized.map(({ result, width }) => ({ result, width }))
 }
 
 /**

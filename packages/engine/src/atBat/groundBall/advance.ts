@@ -32,40 +32,58 @@ function doublePlay(b: BaseState): BaseState {
 }
 
 /** Movement per sub-result (rules §2.9–2.15). Pure; builds fresh base literals. */
-const MOVEMENT: Record<GroundBallResult, (b: BaseState, batter: RunnerId) => GroundBallAdvance> = {
-  [GroundBallResult.GO]: (b) => ({ runsScored: 0, outsDelta: 1, basesAfter: { ...b } }),
-  [GroundBallResult.GO_RA]: (b) => ({
-    runsScored: scored(b.third),
-    outsDelta: 1,
-    basesAfter: { first: null, second: b.first, third: b.second },
-  }),
-  [GroundBallResult.FC]: (b, batter) => ({
-    runsScored: 0,
-    outsDelta: 1,
-    basesAfter: { first: batter, second: null, third: b.third },
-  }),
-  [GroundBallResult.FC_2ND]: (b, batter) => ({
-    runsScored: scored(b.third),
-    outsDelta: 1,
-    basesAfter: { first: batter, second: null, third: b.second },
-  }),
-  [GroundBallResult.FC_3RD]: (b, batter) => ({
-    runsScored: scored(b.third),
-    outsDelta: 1,
-    basesAfter: { first: batter, second: b.first, third: null },
-  }),
-  [GroundBallResult.FC_HOME]: (b, batter) => ({
-    runsScored: 0,
-    outsDelta: 1,
-    basesAfter: { first: batter, second: b.first, third: b.second },
-  }),
-  [GroundBallResult.DP]: (b) => ({ runsScored: 0, outsDelta: 2, basesAfter: doublePlay(b) }),
-  [GroundBallResult.TP]: () => ({
-    runsScored: 0,
-    outsDelta: 3,
-    basesAfter: { first: null, second: null, third: null },
-  }),
-}
+type GroundBallMovement = (bases: BaseState, batter: RunnerId) => GroundBallAdvance
+
+// Keyed by a Map (not a plain object) so the dynamic lookup in advanceGroundBall
+// stays off the object-injection sink — the same discipline as ADVANCERS.
+const MOVEMENT = new Map<GroundBallResult, GroundBallMovement>([
+  [GroundBallResult.GO, (b) => ({ runsScored: 0, outsDelta: 1, basesAfter: { ...b } })],
+  [
+    GroundBallResult.GO_RA,
+    (b) => ({
+      runsScored: scored(b.third),
+      outsDelta: 1,
+      basesAfter: { first: null, second: b.first, third: b.second },
+    }),
+  ],
+  [
+    GroundBallResult.FC,
+    (b, batter) => ({
+      runsScored: 0,
+      outsDelta: 1,
+      basesAfter: { first: batter, second: null, third: b.third },
+    }),
+  ],
+  [
+    GroundBallResult.FC_2ND,
+    (b, batter) => ({
+      runsScored: scored(b.third),
+      outsDelta: 1,
+      basesAfter: { first: batter, second: null, third: b.second },
+    }),
+  ],
+  [
+    GroundBallResult.FC_3RD,
+    (b, batter) => ({
+      runsScored: scored(b.third),
+      outsDelta: 1,
+      basesAfter: { first: batter, second: b.first, third: null },
+    }),
+  ],
+  [
+    GroundBallResult.FC_HOME,
+    (b, batter) => ({
+      runsScored: 0,
+      outsDelta: 1,
+      basesAfter: { first: batter, second: b.first, third: b.second },
+    }),
+  ],
+  [GroundBallResult.DP, (b) => ({ runsScored: 0, outsDelta: 2, basesAfter: doublePlay(b) })],
+  [
+    GroundBallResult.TP,
+    () => ({ runsScored: 0, outsDelta: 3, basesAfter: { first: null, second: null, third: null } }),
+  ],
+])
 
 /**
  * Apply a ground-ball sub-result's runner movement. Pure and out-count-agnostic:
@@ -76,5 +94,7 @@ export function advanceGroundBall(
   bases: BaseState,
   batter: RunnerId,
 ): GroundBallAdvance {
-  return MOVEMENT[result](bases, batter)
+  const move = MOVEMENT.get(result)
+  if (!move) throw new RangeError(`unknown ground-ball result ${result}`)
+  return move(bases, batter)
 }
