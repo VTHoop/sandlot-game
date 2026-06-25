@@ -1,6 +1,7 @@
 export { computeCell } from './computeCell'
 export { defaultDifferentialWeight } from './defaultDistribution'
 export { ARTIFACT_PATH, emitArtifact, printAggregateSummary } from './emit'
+export { GIDP_OPPORTUNITY_STATES, gidpPerOpportunity, type OpportunityState } from './gidp'
 export type { EnumerationResult } from './grid'
 export {
   aggregateGrid,
