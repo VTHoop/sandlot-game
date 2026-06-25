@@ -18,9 +18,27 @@ import { GroundBallResult } from './result'
  * when outs make `TP`/`DP` ineligible, dropping them here is exactly the TP-tail
  * collapse — the next-lower result becomes the top slice and absorbs the tail.
  */
+const { GO, GO_RA, FC, FC_2ND, FC_3RD, FC_HOME, DP, TP } = GroundBallResult
+
+/** Occupancy → the sub-results that *structurally* occur, in low→high band order. */
+function structurallyEligible(first: boolean, second: boolean, third: boolean): GroundBallResult[] {
+  if (!first && !second && !third) return [GO]
+  if (first && second && third) return [GO_RA, FC_2ND, FC_3RD, FC_HOME, DP, TP]
+  if (first && second) return [GO_RA, FC_2ND, FC_3RD, DP, TP]
+  if (first && third) return [GO_RA, FC, FC_2ND, FC_HOME, DP]
+  if (second && third) return [GO_RA, FC_HOME]
+  if (first) return [GO_RA, FC, DP]
+  // runner on 2nd or 3rd alone — no force, no eligible FC variant.
+  return [GO_RA]
+}
+
 export function eligibleGroundBallResults(bases: BaseState, outs: number): GroundBallResult[] {
-  // Stub: implemented in the GREEN step.
-  void bases
-  void outs
-  return []
+  const eligible = structurallyEligible(
+    bases.first !== null,
+    bases.second !== null,
+    bases.third !== null,
+  )
+  // DP needs < 2 outs; TP needs 0 outs. Dropping them is the TP-tail collapse:
+  // the next-lower result becomes the top slice and absorbs the freed tail.
+  return eligible.filter((result) => !(result === DP && outs >= 2) && !(result === TP && outs >= 1))
 }
