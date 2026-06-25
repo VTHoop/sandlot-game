@@ -82,11 +82,48 @@ function targetFractions(
 
 const argmax = (xs: number[]): number => xs.reduce((best, x, i) => (x > xs[best] ? i : best), 0)
 
+/** Floor the ideal widths and hand the leftover to the largest fractional remainders. */
+function largestRemainderWidths(ideals: number[], W: number): number[] {
+  const widths = ideals.map(Math.floor)
+  const byFraction = ideals
+    .map((ideal, i) => ({ i, frac: ideal - widths[i] }))
+    .sort((a, b) => b.frac - a.frac)
+  let leftover = W - widths.reduce((a, b) => a + b, 0)
+  for (let k = 0; leftover > 0; k++, leftover--) widths[byFraction[k % byFraction.length].i] += 1
+  return widths
+}
+
+/**
+ * Move one number from the widest slice into `target`. `minDonor` is the smallest
+ * donor width allowed to give: `2` lifts a zero without creating a new one (when
+ * there is room for everyone); `1` lets a lower-priority slice be dropped to zero
+ * so a higher-priority one (TP) is still seated in a squeeze.
+ */
+function liftInto(widths: number[], target: number, minDonor: number): void {
+  const donor = argmax(widths)
+  if (donor !== target && widths[donor] >= minDonor) {
+    widths[donor] -= 1
+    widths[target] += 1
+  }
+}
+
+/**
+ * Guarantee reachability in place: every eligible slice gets at least one number
+ * when the band is wide enough, and TP keeps its top-tail number even in a band
+ * narrower than the eligible set (dropping the widest lower-priority slice).
+ */
+function ensureReachable(widths: number[], eligible: GroundBallResult[], W: number): void {
+  if (W >= eligible.length) {
+    for (let i = 0; i < widths.length; i++) if (widths[i] === 0) liftInto(widths, i, 2)
+    return
+  }
+  const tp = eligible.indexOf(GroundBallResult.TP)
+  if (tp >= 0 && widths[tp] === 0) liftInto(widths, tp, 1)
+}
+
 /**
  * Convert the per-result fractions into integer widths summing exactly to `W`
- * (largest-remainder apportionment), then guarantee reachability: every eligible
- * slice gets at least one number when the band is wide enough, and TP keeps its
- * top-tail number even in a squeezed band.
+ * (largest-remainder apportionment), then guarantee reachability.
  */
 function allocateWidths(
   eligible: GroundBallResult[],
@@ -94,32 +131,8 @@ function allocateWidths(
   W: number,
 ): number[] {
   const ideals = eligible.map((r) => (weights.get(r) ?? 0) * W)
-  const widths = ideals.map(Math.floor)
-  const remainders = eligible
-    .map((_, i) => ({ i, frac: ideals[i] - widths[i] }))
-    .sort((a, b) => b.frac - a.frac)
-  let leftover = W - widths.reduce((a, b) => a + b, 0)
-  for (let k = 0; leftover > 0; k++, leftover--) widths[remainders[k % remainders.length].i] += 1
-
-  // Move one number from the widest slice to `target`. `floor` is the smallest
-  // donor width allowed to give: `> 1` lifts a zero without creating a new one
-  // (used when there is room for everyone); `>= 1` lets a lower-priority slice be
-  // dropped to zero so a higher-priority one (TP) is still seated in a squeeze.
-  const liftInto = (target: number, floor: number): void => {
-    const donor = argmax(widths)
-    if (donor !== target && widths[donor] >= floor) {
-      widths[donor] -= 1
-      widths[target] += 1
-    }
-  }
-  if (W >= eligible.length) {
-    for (let i = 0; i < widths.length; i++) if (widths[i] === 0) liftInto(i, 2)
-  } else {
-    // Too few numbers to seat everyone — keep TP's structural top-of-band tail,
-    // dropping the widest lower-priority slice if that is the only way to seat it.
-    const tp = eligible.indexOf(GroundBallResult.TP)
-    if (tp >= 0 && widths[tp] === 0) liftInto(tp, 1)
-  }
+  const widths = largestRemainderWidths(ideals, W)
+  ensureReachable(widths, eligible, W)
   return widths
 }
 
