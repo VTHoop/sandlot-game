@@ -46,6 +46,20 @@ describe('partitionGroundBall — partition invariants', () => {
     const bands = partitionGroundBall([GO_RA], BAND, 0)
     expect(bands).toEqual([{ result: GO_RA, lo: BAND.lo, hi: BAND.hi }])
   })
+
+  it('keeps TP its top-of-band number even when the band is narrower than the eligible set', () => {
+    // Squeeze: 6 eligible results into a 4-wide band. The partition must stay exact
+    // and TP must still own band.hi — a lower-priority slice is dropped, not TP.
+    const tiny: Band = { lo: 10, hi: 13 } // width 4 < 6 eligible
+    const bands = partitionGroundBall(LOADED, tiny, 0)
+    expect(bands[0].lo).toBe(tiny.lo)
+    expect(bands[bands.length - 1].result).toBe(TP)
+    expect(bands[bands.length - 1].hi).toBe(tiny.hi)
+    for (let i = 1; i < bands.length; i++) expect(bands[i].lo).toBe(bands[i - 1].hi + 1)
+    const total = bands.reduce((sum, b) => sum + (b.hi - b.lo + 1), 0)
+    expect(total).toBe(tiny.hi - tiny.lo + 1)
+    expect(selectGroundBallResult(tiny.hi, LOADED, tiny, 0)).toBe(TP)
+  })
 })
 
 describe('partitionGroundBall — directional speed rule (FC grows, DP shrinks)', () => {

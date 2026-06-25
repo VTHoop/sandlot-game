@@ -101,19 +101,24 @@ function allocateWidths(
   let leftover = W - widths.reduce((a, b) => a + b, 0)
   for (let k = 0; leftover > 0; k++, leftover--) widths[remainders[k % remainders.length].i] += 1
 
-  const lift = (target: number): void => {
+  // Move one number from the widest slice to `target`. `floor` is the smallest
+  // donor width allowed to give: `> 1` lifts a zero without creating a new one
+  // (used when there is room for everyone); `>= 1` lets a lower-priority slice be
+  // dropped to zero so a higher-priority one (TP) is still seated in a squeeze.
+  const liftInto = (target: number, floor: number): void => {
     const donor = argmax(widths)
-    if (widths[donor] > 1) {
+    if (donor !== target && widths[donor] >= floor) {
       widths[donor] -= 1
       widths[target] += 1
     }
   }
   if (W >= eligible.length) {
-    for (let i = 0; i < widths.length; i++) if (widths[i] === 0) lift(i)
+    for (let i = 0; i < widths.length; i++) if (widths[i] === 0) liftInto(i, 2)
   } else {
-    // Too few numbers to seat everyone — keep TP's structural top-of-band tail.
+    // Too few numbers to seat everyone — keep TP's structural top-of-band tail,
+    // dropping the widest lower-priority slice if that is the only way to seat it.
     const tp = eligible.indexOf(GroundBallResult.TP)
-    if (tp >= 0 && widths[tp] === 0) lift(tp)
+    if (tp >= 0 && widths[tp] === 0) liftInto(tp, 1)
   }
   return widths
 }
