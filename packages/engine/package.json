@@ -9,6 +9,7 @@
   },
   "exports": {
     "./atBat": "./src/atBat/index.ts",
+    "./game": "./src/game/index.ts",
     "./tables": "./src/tables/accessor.ts",
     "./rangeFinder": "./src/rangeFinder/frontHalf.ts",
     "./harness": "./src/harness/index.ts",

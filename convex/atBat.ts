@@ -10,7 +10,9 @@ import {
 import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
-import { type MutationCtx, mutation, type QueryCtx, query } from './_generated/server'
+import { type MutationCtx, mutation, query } from './_generated/server'
+import { applyResolvedAtBat } from './game'
+import { assertOwns, authedUser, type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
 
 /**
  * The authoritative secret at-bat round-trip (SAN-20). The server is the vault
@@ -22,13 +24,12 @@ import { type MutationCtx, mutation, type QueryCtx, query } from './_generated/s
  * server resolves once both numbers are present. The only cross-player signal
  * before resolution is *that* the opponent has locked — never the number.
  *
- * Scope is one at-bat round-trip. Inning/half/status transitions, advancing the
- * batter, and score/standings rollups belong to downstream tickets — this
- * module appends the complete `atBats` row and reveals it; it does not mutate
- * the `games` row.
+ * Scope is one at-bat round-trip. Once both numbers land, resolution appends the
+ * complete `atBats` row and, in the SAME transaction, folds it into the live
+ * `games` row via `game.applyResolvedAtBat` (SAN-21) — so the log and the live
+ * envelope never diverge (ADR-0004). Standings/box-score rollups still belong to
+ * downstream tickets.
  */
-
-type Ctx = QueryCtx | MutationCtx
 
 /** Lifecycle of the current at-bat from the reveal query's perspective. */
 export enum DuelStatus {
@@ -68,47 +69,7 @@ export interface DuelView {
   basesAfter?: BaseState
 }
 
-// ─── Auth & participants ────────────────────────────────────────────────────
-
-function userBySubject(ctx: Ctx, subject: string): Promise<Doc<'users'> | null> {
-  return ctx.db
-    .query('users')
-    .withIndex('by_clerk_subject', (q) => q.eq('clerkSubject', subject))
-    .unique()
-}
-
-async function maybeUser(ctx: Ctx): Promise<Doc<'users'> | null> {
-  const identity = await ctx.auth.getUserIdentity()
-  return identity ? userBySubject(ctx, identity.subject) : null
-}
-
-async function authedUser(ctx: Ctx): Promise<Doc<'users'>> {
-  const user = await maybeUser(ctx)
-  if (!user) throw new Error('Not authenticated')
-  return user
-}
-
-/**
- * In the top half the away team bats and the home team pitches; the bottom half
- * is the mirror. (Fielding/pitching side is the team NOT at bat.)
- */
-function teamsForHalf(game: Doc<'games'>): {
-  battingTeam: Id<'teams'>
-  pitchingTeam: Id<'teams'>
-} {
-  return game.half === 'top'
-    ? { battingTeam: game.awayTeam, pitchingTeam: game.homeTeam }
-    : { battingTeam: game.homeTeam, pitchingTeam: game.awayTeam }
-}
-
-async function ownsTeam(ctx: Ctx, team: Id<'teams'>, user: Doc<'users'>): Promise<boolean> {
-  const doc = await ctx.db.get(team)
-  return doc !== null && doc.owner === user._id
-}
-
-async function assertOwns(ctx: Ctx, team: Id<'teams'>, user: Doc<'users'>): Promise<void> {
-  if (!(await ownsTeam(ctx, team, user))) throw new Error('Not authorized for this team')
-}
+// ─── Participants (duel-specific) ───────────────────────────────────────────
 
 async function roleOf(ctx: Ctx, game: Doc<'games'>, user: Doc<'users'>): Promise<Participant> {
   const { battingTeam, pitchingTeam } = teamsForHalf(game)
@@ -232,6 +193,18 @@ async function tryResolve(
     outsAfter: resolved.outsAfter,
     createdAt: Date.now(),
   })
+
+  // Fold this at-bat into the authoritative live game state in the SAME
+  // transaction as the append (ADR-0004): the log and current-state row never
+  // diverge. SAN-21 owns inning/half/outs/bases/score/whose-turn + lifecycle.
+  await applyResolvedAtBat(ctx, game, {
+    sequence,
+    outsBefore: game.outs,
+    outsAfter: resolved.outsAfter,
+    basesAfter: resolved.basesAfter,
+    runsScored: resolved.runsScored,
+  })
+
   return { atBatId, outcome: resolved.outcome }
 }
 
