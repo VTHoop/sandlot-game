@@ -15,7 +15,10 @@ export interface BaseState {
   third: RunnerId | null
 }
 
-export const EMPTY_BASES: BaseState = { first: null, second: null, third: null }
+// Frozen: a single shared, exported value must never become writable process-wide
+// state. Every base holds a primitive (null), so a shallow freeze fully protects
+// it; advancers build fresh literals rather than handing this reference back.
+export const EMPTY_BASES: BaseState = Object.freeze({ first: null, second: null, third: null })
 
 /** The post-state an outcome produces from the pre-state. */
 export interface OutcomeApplication {
