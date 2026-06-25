@@ -41,6 +41,84 @@ export function dpFraction(speedDiff: number): number {
 }
 
 /**
+ * Target fraction of the GB band for each eligible result (sums to 1). TP takes a
+ * thin constant tail, DP its speed-driven share, GO_RA a small constant, and the
+ * fielder's-choice family splits the remainder — so as DP shrinks with the speed
+ * edge the FC share grows. When no FC variant is eligible (bases empty, or a lone
+ * runner on 2nd/3rd) the sole ground-out result absorbs the whole band.
+ */
+function targetFractions(
+  eligible: GroundBallResult[],
+  speedDiff: number,
+): Map<GroundBallResult, number> {
+  const fcVariants = eligible.filter(isFc)
+  const weights = new Map<GroundBallResult, number>()
+  let remainder = 1
+
+  if (eligible.includes(GroundBallResult.TP)) {
+    weights.set(GroundBallResult.TP, TP_FRACTION)
+    remainder -= TP_FRACTION
+  }
+  if (eligible.includes(GroundBallResult.DP)) {
+    const dp = dpFraction(speedDiff)
+    weights.set(GroundBallResult.DP, dp)
+    remainder -= dp
+  }
+
+  if (fcVariants.length > 0) {
+    if (eligible.includes(GroundBallResult.GO_RA)) {
+      weights.set(GroundBallResult.GO_RA, GO_RA_FRACTION)
+      remainder -= GO_RA_FRACTION
+    }
+    const each = remainder / fcVariants.length
+    for (const fc of fcVariants) weights.set(fc, each)
+  } else {
+    // No fielder's choice possible: the lone ground-out result takes the remainder.
+    const absorber = eligible.find((r) => r !== GroundBallResult.TP && r !== GroundBallResult.DP)
+    if (absorber) weights.set(absorber, (weights.get(absorber) ?? 0) + remainder)
+  }
+  return weights
+}
+
+const argmax = (xs: number[]): number => xs.reduce((best, x, i) => (x > xs[best] ? i : best), 0)
+
+/**
+ * Convert the per-result fractions into integer widths summing exactly to `W`
+ * (largest-remainder apportionment), then guarantee reachability: every eligible
+ * slice gets at least one number when the band is wide enough, and TP keeps its
+ * top-tail number even in a squeezed band.
+ */
+function allocateWidths(
+  eligible: GroundBallResult[],
+  weights: Map<GroundBallResult, number>,
+  W: number,
+): number[] {
+  const ideals = eligible.map((r) => (weights.get(r) ?? 0) * W)
+  const widths = ideals.map(Math.floor)
+  const remainders = eligible
+    .map((_, i) => ({ i, frac: ideals[i] - widths[i] }))
+    .sort((a, b) => b.frac - a.frac)
+  let leftover = W - widths.reduce((a, b) => a + b, 0)
+  for (let k = 0; leftover > 0; k++, leftover--) widths[remainders[k % remainders.length].i] += 1
+
+  const lift = (target: number): void => {
+    const donor = argmax(widths)
+    if (widths[donor] > 1) {
+      widths[donor] -= 1
+      widths[target] += 1
+    }
+  }
+  if (W >= eligible.length) {
+    for (let i = 0; i < widths.length; i++) if (widths[i] === 0) lift(i)
+  } else {
+    // Too few numbers to seat everyone — keep TP's structural top-of-band tail.
+    const tp = eligible.indexOf(GroundBallResult.TP)
+    if (tp >= 0 && widths[tp] === 0) lift(tp)
+  }
+  return widths
+}
+
+/**
  * Partition `[band.lo, band.hi]` into contiguous, gapless, non-overlapping
  * sub-bands — one per eligible sub-result, in the given low→high order. TP, when
  * present, is the top slice and is guaranteed at least one number ("top of the GB
@@ -51,14 +129,16 @@ export function partitionGroundBall(
   band: Band,
   speedDiff: number,
 ): GroundBallSubBand[] {
-  // Stub: implemented in the GREEN step.
-  void eligible
-  void band
-  void speedDiff
-  void GO_RA_FRACTION
-  void TP_FRACTION
-  void isFc
-  return []
+  const width = band.hi - band.lo + 1
+  const widths = allocateWidths(eligible, targetFractions(eligible, speedDiff), width)
+  const subBands: GroundBallSubBand[] = []
+  let cursor = band.lo
+  eligible.forEach((result, i) => {
+    if (widths[i] === 0) return // collapsed in an extreme squeeze — contributes no numbers
+    subBands.push({ result, lo: cursor, hi: cursor + widths[i] - 1 })
+    cursor += widths[i]
+  })
+  return subBands
 }
 
 /** Select the sub-result whose sub-band contains `difference` (must lie in `band`). */
