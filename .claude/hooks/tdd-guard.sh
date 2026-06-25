@@ -28,10 +28,17 @@ removed() { printf '%s\n' "$diff" | grep -E '^-'  | grep -vE '^---';    }
 # A parametrize refactor — folding individual it/test cases into a single
 # it.each / test.each / describe.each table — legitimately reduces the literal
 # count of both test blocks and expect calls while preserving (or growing) the
-# runtime cases. Detect an added each-table and exempt the count-based gates
-# (#2, #3); the skip/only gate (#1) and the coverage ratchet (#4) still apply.
+# runtime cases. It exempts the count-based gates (#2, #3); the skip/only gate
+# (#1) and the coverage ratchet (#4) still apply.
+#
+# Scope the exemption to a REAL conversion: an added each-table AND removed
+# it()/test() block(s) in the same diff. A lone added `.each` must NOT blanket-
+# exempt the file — otherwise an unrelated `.each` could mask assertion or
+# test-case removals elsewhere.
 parametrized=false
-if added | grep -qE '\.each\s*\('; then parametrized=true; fi
+if added | grep -qE '\.each\s*\(' && removed | grep -qE '^-\s*(it|test)\s*\('; then
+  parametrized=true
+fi
 
 # 1. .skip or .only added
 if added | grep -qE '\.(skip|only)\s*\('; then
