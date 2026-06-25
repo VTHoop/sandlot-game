@@ -8,7 +8,8 @@ import {
 
 const HITTER: HitterAttributes = { power: 3, contact: 3, speed: 3, eye: 3 }
 const PITCHER: PitcherAttributes = { velocity: 3, movement: 3, awareness: 3, command: 3 }
-const EMPTY = { first: false, second: false, third: false }
+const EMPTY = { first: null, second: null, third: null }
+const BATTER = 'batter-1'
 
 describe('deriveDiffs — batter − pitcher, clamped to [−5, +5]', () => {
   it('pairs each attribute matchup correctly', () => {
@@ -38,6 +39,7 @@ describe('resolveAtBat — end-to-end authoritative resolution', () => {
       pitcher: PITCHER,
       basesBefore: EMPTY,
       outsBefore: 0,
+      batter: BATTER,
     })
     expect(result.difference).toBe(0)
     expect(result.outcome).toBe('HR')
@@ -55,6 +57,7 @@ describe('resolveAtBat — end-to-end authoritative resolution', () => {
       pitcher: PITCHER,
       basesBefore: EMPTY,
       outsBefore: 1,
+      batter: BATTER,
     })
     expect(result.difference).toBe(499)
     expect(result.outcome).toBe('K')
@@ -70,7 +73,25 @@ describe('resolveAtBat — end-to-end authoritative resolution', () => {
       pitcher: PITCHER,
       basesBefore: EMPTY,
       outsBefore: 0,
+      batter: BATTER,
     }
     expect(resolveAtBat(input)).toEqual(resolveAtBat(input))
+  })
+
+  it('threads basesBefore through and seats no runner on an out', () => {
+    // A runner already on first; the duel resolves to a strikeout (difference
+    // 499). The out preserves the on-base runner's identity and never seats the
+    // batter — proving resolveAtBat forwards basesBefore/batter into applyOutcome.
+    const result = resolveAtBat({
+      pitch: 1,
+      swing: 500,
+      hitter: HITTER,
+      pitcher: PITCHER,
+      basesBefore: { first: 'on-first', second: null, third: null },
+      outsBefore: 0,
+      batter: BATTER,
+    })
+    expect(result.outcome).toBe('K')
+    expect(result.basesAfter).toEqual({ first: 'on-first', second: null, third: null })
   })
 })

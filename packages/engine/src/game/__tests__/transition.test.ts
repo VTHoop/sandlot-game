@@ -3,7 +3,7 @@ import type { BaseState } from '../../atBat/advance'
 import { type AppliedAtBat, type GameContext, GameStatus, Half, type LiveGameState } from '../state'
 import { advance, startGame } from '../transition'
 
-const EMPTY: BaseState = { first: false, second: false, third: false }
+const EMPTY: BaseState = { first: null, second: null, third: null }
 
 const order = (prefix: string, n = 9): string[] =>
   Array.from({ length: n }, (_, i) => `${prefix}${i + 1}`)

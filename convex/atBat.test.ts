@@ -13,7 +13,7 @@ const PITCHER = { subject: 'pitcher-subject' }
 const BATTER = { subject: 'batter-subject' }
 const STRANGER = { subject: 'stranger-subject' }
 
-const EMPTY_BASES = { first: false, second: false, third: false }
+const EMPTY_BASES = { first: null, second: null, third: null }
 
 /**
  * Seed a live game in the top half: the away team (owned by BATTER) is at bat,
@@ -312,6 +312,38 @@ describe('secret at-bat round-trip', () => {
       const after = await atBatRows(t, gameId)
       expect(after).toHaveLength(1)
       expect(after[0]).toMatchObject({ pitchNumber: 500, batterNumber: 500, sequence: 0 })
+    })
+  })
+
+  describe('runner-aware base state (SAN-44)', () => {
+    it('round-trips an on-base runner id through resolution into the live row and log', async () => {
+      const { t, gameId } = await setupGame()
+      // Put a distinct runner on first, then resolve a strikeout (pitch 1 vs swing
+      // 500 → difference 499 → K): an out preserves the runner's identity, so the
+      // id must survive the engine boundary, the live `games.bases`, and the append.
+      const runner = await t.run((ctx) =>
+        ctx.db.insert('players', {
+          name: 'Runner',
+          source: 'custom',
+          role: 'hitter',
+          position: '2B',
+          price: null,
+          attributes: { power: 3, contact: 3, speed: 5, eye: 3 },
+        }),
+      )
+      const onFirst = { first: runner, second: null, third: null }
+      await t.run((ctx) => ctx.db.patch(gameId, { bases: onFirst }))
+
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 1 })
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
+
+      const row = await t.run((ctx) => ctx.db.get(gameId))
+      expect(row?.bases).toEqual(onFirst)
+
+      const [ab] = await atBatRows(t, gameId)
+      expect(ab.outcome).toBe('K')
+      expect(ab.basesBefore).toEqual(onFirst)
+      expect(ab.basesAfter).toEqual(onFirst)
     })
   })
 })

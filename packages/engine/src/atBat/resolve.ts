@@ -1,7 +1,7 @@
 import type { CellDiffs } from '../harness/types'
 import type { OutcomeBandKey } from '../outcomes'
 import { toAttributeDiff } from '../tables/accessor'
-import { applyOutcome, type BaseState, type OutcomeApplication } from './advance'
+import { applyOutcome, type BaseState, type OutcomeApplication, type RunnerId } from './advance'
 import { classifyOutcome } from './classify'
 import { foldDifference } from './fold'
 
@@ -28,6 +28,8 @@ export interface ResolveInput {
   pitcher: PitcherAttributes
   basesBefore: BaseState
   outsBefore: number
+  /** The batter's opaque id, seated on base when the outcome reaches base (SAN-44). */
+  batter: RunnerId
 }
 
 export interface ResolvedAtBat extends OutcomeApplication {
@@ -52,6 +54,6 @@ export function deriveDiffs(hitter: HitterAttributes, pitcher: PitcherAttributes
 export function resolveAtBat(input: ResolveInput): ResolvedAtBat {
   const difference = foldDifference(input.pitch, input.swing)
   const outcome = classifyOutcome(difference, deriveDiffs(input.hitter, input.pitcher))
-  const application = applyOutcome(outcome, input.basesBefore, input.outsBefore)
+  const application = applyOutcome(outcome, input.basesBefore, input.outsBefore, input.batter)
   return { difference, outcome, ...application }
 }

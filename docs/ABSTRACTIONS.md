@@ -77,14 +77,23 @@ downstream Multiplayer/League tickets. This is schema only.
 
 Every enumerated domain is defined once as a `v.union` of literals and reused:
 outcome bands, role, position, game status, half-inning, the 1–5 attribute
-`rating` (a literal union, so the bound is a schema-level guarantee), base state,
-and the hitter/pitcher attribute blocks. No `v.any()` anywhere.
+`rating` (a literal union, so the bound is a schema-level guarantee), the
+runner-aware `baseState`, and the hitter/pitcher attribute blocks. No `v.any()`
+anywhere.
 
 The `outcomeBand` enum **mirrors the engine** (`HR…K`): a compile-time guard ties
 it to `OutcomeBandKey` from `@sandlot/engine/outcomes`, so the persisted outcome
 enum can never drift from what the RangeFinder produces. The engine is the single
 source of truth; the import is type-only, so the Convex bundle carries no engine
 runtime dependency.
+
+`baseState` is **runner-aware** (SAN-44, ADR-0018): each base references the
+player standing on it (`Id<'players'>`) or null, mirroring the engine's
+`BaseState` (`RunnerId | null` per base) and following the
+`currentBatter`/`currentPitcher` player-reference pattern, so an on-base runner's
+already-modeled speed is reachable by id. A runtime mirror test anchors the
+validator's base field set to the engine `BaseState` — the twin of the boundary
+cast in `game.ts`/`atBat.ts`.
 
 ## Game state machine (`@sandlot/engine/game` + `convex/game.ts`)
 

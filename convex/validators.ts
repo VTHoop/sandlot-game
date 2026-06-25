@@ -78,12 +78,19 @@ export const duelRole = v.union(v.literal('pitching'), v.literal('batting'))
  */
 const rating = v.union(v.literal(1), v.literal(2), v.literal(3), v.literal(4), v.literal(5))
 
-/** Base occupancy snapshot. Reused for a game's live state and the pre/post
- * state recorded on each immutable at-bat log entry. */
+/**
+ * Runner-aware base state (SAN-44): each base references the player standing on
+ * it (`Id<'players'>`), or null when empty — mirroring the engine's `BaseState`
+ * (opaque `RunnerId | null` per base) and following the `currentBatter` /
+ * `currentPitcher` player-reference pattern. Reused for a game's live state and
+ * the pre/post state recorded on each immutable at-bat log entry. The
+ * `baseState validator` test in `validators.test.ts` anchors these field names
+ * to the engine's `BaseState` shape (the runtime twin of the boundary cast).
+ */
 export const baseState = v.object({
-  first: v.boolean(),
-  second: v.boolean(),
-  third: v.boolean(),
+  first: v.union(v.id('players'), v.null()),
+  second: v.union(v.id('players'), v.null()),
+  third: v.union(v.id('players'), v.null()),
 })
 
 /** Hitter attribute block (`power − velocity`, `speed − awareness`,

@@ -173,6 +173,7 @@ async function tryResolve(
     pitcher: asPitcher(pitcher.attributes),
     basesBefore: game.bases,
     outsBefore: game.outs,
+    batter: batter._id, // seated on base when the outcome reaches base (SAN-44)
   })
 
   const atBatId = await ctx.db.insert('atBats', {
@@ -189,7 +190,9 @@ async function tryResolve(
     outcome: resolved.outcome,
     runsScored: resolved.runsScored,
     rbi: resolved.rbi,
-    basesAfter: resolved.basesAfter,
+    // Engine bases hold opaque runner ids that all originate from this game's
+    // lineups (or null), so the relabel back to `Id<'players'>` is sound.
+    basesAfter: resolved.basesAfter as Doc<'atBats'>['basesAfter'],
     outsAfter: resolved.outsAfter,
     createdAt: Date.now(),
   })

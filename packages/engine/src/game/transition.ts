@@ -1,4 +1,4 @@
-import type { BaseState } from '../atBat/advance'
+import { EMPTY_BASES } from '../atBat/advance'
 import { type HalfInning, halfInning } from './halfInning'
 import {
   type AppliedAtBat,
@@ -9,8 +9,6 @@ import {
   Half,
   type LiveGameState,
 } from './state'
-
-const EMPTY_BASES: BaseState = { first: false, second: false, third: false }
 
 /**
  * Reject a context whose lineups can't field a batting order. The pointer math
