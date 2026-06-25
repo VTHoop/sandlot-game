@@ -1,4 +1,5 @@
 import {
+  type BaseSpeeds,
   type BaseState,
   DUEL_MAX,
   DUEL_MIN,
@@ -139,6 +140,32 @@ function asPitcher(attributes: Doc<'players'>['attributes']): PitcherAttributes 
   throw new Error('Current pitcher does not carry a pitcher attribute block')
 }
 
+/** A runner's 1–5 speed for the GB speed axis; a pitcher-as-runner is the slowest (1, SAN-16). */
+function runnerSpeed(attributes: Doc<'players'>['attributes']): number {
+  return 'power' in attributes ? attributes.speed : 1
+}
+
+/**
+ * Look up each on-base runner's speed for the GB sub-resolution, positionally
+ * aligned to `bases` (null where empty). The engine consumes this block rather
+ * than a roster handle (ADR-0009); the pitcher-as-runner default lives here.
+ */
+async function runnerSpeedsFor(
+  ctx: MutationCtx,
+  bases: Doc<'games'>['bases'],
+): Promise<BaseSpeeds> {
+  const speedAt = async (id: Id<'players'> | null): Promise<number | null> => {
+    if (!id) return null
+    const player = await ctx.db.get(id)
+    return player ? runnerSpeed(player.attributes) : null
+  }
+  return {
+    first: await speedAt(bases.first),
+    second: await speedAt(bases.second),
+    third: await speedAt(bases.third),
+  }
+}
+
 // ─── Commit & resolve ───────────────────────────────────────────────────────
 
 type Resolution = { atBatId: Id<'atBats'>; outcome: OutcomeBandKey } | null
@@ -174,6 +201,7 @@ async function tryResolve(
     basesBefore: game.bases,
     outsBefore: game.outs,
     batter: batter._id, // seated on base when the outcome reaches base (SAN-44)
+    runnerSpeeds: await runnerSpeedsFor(ctx, game.bases), // GB speed axis (SAN-16)
   })
 
   const atBatId = await ctx.db.insert('atBats', {
