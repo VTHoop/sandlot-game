@@ -13,7 +13,7 @@ const HOME = { subject: 'home-owner' }
 const AWAY = { subject: 'away-owner' }
 const STRANGER = { subject: 'stranger' }
 
-const EMPTY_BASES = { first: false, second: false, third: false }
+const EMPTY_BASES = { first: null, second: null, third: null }
 
 const HITTER = { source: 'custom', role: 'hitter', position: 'CF', price: null } as const
 const ARM = { source: 'custom', role: 'pitcher', position: 'P', price: null } as const

@@ -65,15 +65,16 @@ function toLiveState(game: Doc<'games'>): LiveGameState {
 }
 
 /** The patch of authoritative fields the engine state produces. Player refs the
- * engine returns always originate from the context lineups (or null), so the
- * cast back to `Id<'players'>` is sound. */
+ * engine returns — the current batter/pitcher and every on-base runner id — always
+ * originate from the context lineups (or null), so the relabel back to
+ * `Id<'players'>` (a typed cast, never a value remap) is sound. */
 function toGamePatch(state: LiveGameState) {
   return {
     status: state.status,
     inning: state.inning,
     half: state.half,
     outs: state.outs,
-    bases: state.bases,
+    bases: state.bases as Doc<'games'>['bases'],
     homeScore: state.homeScore,
     awayScore: state.awayScore,
     homeBattingIndex: state.homeBattingIndex,

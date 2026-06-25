@@ -56,10 +56,10 @@ Located at `packages/engine/`. A pure, framework-free TypeScript package — no 
 | `convex/game.ts` | Authoritative game-state mutations (SAN-21): `startGame` (scheduled → live, participant-gated, seeded from lineups) and `applyResolvedAtBat` (folds each resolved at-bat into the `games` row via the pure engine transition). The live games-state fields are written only here — never by a client (ADR-0017) |
 | `convex/participants.ts` | Shared Clerk-auth + team-ownership helpers (`authedUser`, `ownsTeam`, `teamsForHalf`, …) reused by `atBat.ts` and `game.ts` |
 | `packages/engine/src/game/` | Pure game-envelope state machine (SAN-21/ADR-0017): `startGame` + `advance` (current state + resolved at-bat → next state), `REGULATION_INNINGS = 6`, half/inning flips, walk-off / extra-innings end conditions, idempotent per at-bat |
-| `convex/validators.ts` | Shared `v.union` field validators (outcome bands, role, position, game status, half, 1–5 rating, base state, attribute blocks); `outcomeBand` is compile-time-locked to `@sandlot/engine/outcomes` |
+| `convex/validators.ts` | Shared `v.union` field validators (outcome bands, role, position, game status, half, 1–5 rating, runner-aware base state — `Id<'players'>`-or-null per base, attribute blocks); `outcomeBand` is compile-time-locked to `@sandlot/engine/outcomes` |
 | `convex/auth.config.ts` | Clerk OIDC provider so Convex validates Clerk JWTs |
 | `packages/engine/src/outcomes.ts` | Canonical at-bat outcome band keys (`OUTCOME_BAND_KEYS`, `OutcomeBandKey`) derived from the RangeFinder bands — single source of truth mirrored by the Convex `atBats.outcome` enum |
-| `packages/engine/src/atBat/` | Top-level resolver: `foldDifference` (ring-999 circular fold), `classifyOutcome`, `applyOutcome` (one-base advancement), and `resolveAtBat` — the dual-use authoritative resolution (ADR-0016) |
+| `packages/engine/src/atBat/` | Top-level resolver: `foldDifference` (ring-999 circular fold), `classifyOutcome`, `applyOutcome` (identity-preserving one-base advancement over a runner-aware `BaseState`, ADR-0018), and `resolveAtBat` — the dual-use authoritative resolution (ADR-0016) |
 | `public/manifest.webmanifest` | PWA manifest (served as-is; `vite-plugin-pwa` handles SW) |
 | `pnpm-workspace.yaml` | pnpm 11 build-script approvals (`allowBuilds`) |
 | `.env.example` | Required env var names with no real values |
