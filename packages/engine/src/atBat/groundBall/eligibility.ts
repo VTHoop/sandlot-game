@@ -20,24 +20,25 @@ import { GroundBallResult } from './result'
  */
 const { GO, GO_RA, FC, FC_2ND, FC_3RD, FC_HOME, DP, TP } = GroundBallResult
 
-/** Occupancy → the sub-results that *structurally* occur, in low→high band order. */
-function structurallyEligible(first: boolean, second: boolean, third: boolean): GroundBallResult[] {
-  if (!first && !second && !third) return [GO]
-  if (first && second && third) return [GO_RA, FC_2ND, FC_3RD, FC_HOME, DP, TP]
-  if (first && second) return [GO_RA, FC_2ND, FC_3RD, DP, TP]
-  if (first && third) return [GO_RA, FC, FC_2ND, FC_HOME, DP]
-  if (second && third) return [GO_RA, FC_HOME]
-  if (first) return [GO_RA, FC, DP]
-  // runner on 2nd or 3rd alone — no force, no eligible FC variant.
-  return [GO_RA]
-}
+/** Occupancy bitmask `first<<2 | second<<1 | third` → structurally-possible
+ * sub-results, in low→high band order. Keyed by a Map (not a plain object) to
+ * keep the lookup off the dynamic object-member-access sink. A lone runner on
+ * 2nd/3rd has no force and no eligible FC variant, so only `GO_RA` occurs. */
+const ELIGIBLE_BY_OCCUPANCY = new Map<number, GroundBallResult[]>([
+  [0b000, [GO]],
+  [0b100, [GO_RA, FC, DP]], // 1st
+  [0b010, [GO_RA]], // 2nd
+  [0b001, [GO_RA]], // 3rd
+  [0b110, [GO_RA, FC_2ND, FC_3RD, DP, TP]], // 1st & 2nd
+  [0b101, [GO_RA, FC, FC_2ND, FC_HOME, DP]], // 1st & 3rd
+  [0b011, [GO_RA, FC_HOME]], // 2nd & 3rd
+  [0b111, [GO_RA, FC_2ND, FC_3RD, FC_HOME, DP, TP]], // loaded
+])
 
 export function eligibleGroundBallResults(bases: BaseState, outs: number): GroundBallResult[] {
-  const eligible = structurallyEligible(
-    bases.first !== null,
-    bases.second !== null,
-    bases.third !== null,
-  )
+  const occupancy =
+    (bases.first ? 0b100 : 0) | (bases.second ? 0b010 : 0) | (bases.third ? 0b001 : 0)
+  const eligible = ELIGIBLE_BY_OCCUPANCY.get(occupancy) ?? [GO_RA]
   // DP needs < 2 outs; TP needs 0 outs. Dropping them is the TP-tail collapse:
   // the next-lower result becomes the top slice and absorbs the freed tail.
   return eligible.filter((result) => !(result === DP && outs >= 2) && !(result === TP && outs >= 1))
