@@ -25,20 +25,29 @@ fi
 added()   { printf '%s\n' "$diff" | grep -E '^\+' | grep -vE '^\+\+\+'; }
 removed() { printf '%s\n' "$diff" | grep -E '^-'  | grep -vE '^---';    }
 
+# A parametrize refactor — folding individual it/test cases into a single
+# it.each / test.each / describe.each table — legitimately reduces the literal
+# count of both test blocks and expect calls while preserving (or growing) the
+# runtime cases. Detect an added each-table and exempt the count-based gates
+# (#2, #3); the skip/only gate (#1) and the coverage ratchet (#4) still apply.
+parametrized=false
+if added | grep -qE '\.each\s*\('; then parametrized=true; fi
+
 # 1. .skip or .only added
 if added | grep -qE '\.(skip|only)\s*\('; then
   printf 'TDD guard: .skip or .only modifier added to a test in %s — remove before proceeding.\n' "$file_path"
   exit 2
 fi
 
-# 2. Test case or describe block removed
-if removed | grep -qE '^-\s*(it|test|describe)\s*\('; then
-  printf 'TDD guard: test case or describe block removed from %s — restore the test or justify the removal in its own commit.\n' "$file_path"
+# 2. Test case or describe block removed (unless parametrized into a .each table)
+if [[ "$parametrized" == false ]] && removed | grep -qE '^-\s*(it|test|describe)\s*\('; then
+  printf 'TDD guard: test case or describe block removed from %s — restore the test, parametrize it with it.each, or justify the removal in its own commit.\n' "$file_path"
   exit 2
 fi
 
-# 3. Assertion removed (test files only; net-count gate so refactors don't false-trigger)
-if printf '%s\n' "$file_path" | grep -qE '\.(test|spec)\.(ts|tsx|js|jsx)$'; then
+# 3. Assertion removed (test files only; net-count gate so refactors don't
+#    false-trigger — also exempt when parametrized into a .each table)
+if [[ "$parametrized" == false ]] && printf '%s\n' "$file_path" | grep -qE '\.(test|spec)\.(ts|tsx|js|jsx)$'; then
   removed_expect=$(removed | grep -cE 'expect\s*\(' || true)
   added_expect=$(added   | grep -cE 'expect\s*\(' || true)
   if (( removed_expect > 0 && removed_expect > added_expect )); then
