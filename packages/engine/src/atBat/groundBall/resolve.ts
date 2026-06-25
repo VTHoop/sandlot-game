@@ -35,7 +35,10 @@ export interface GroundBallResolution {
  */
 export function resolveGroundBall(input: GroundBallInput): GroundBallResolution {
   const eligible = eligibleGroundBallResults(input.basesBefore, input.outsBefore)
-  const result = selectGroundBallResult(input.difference, eligible, input.gbBand, input.speedDiff)
+  const result = selectGroundBallResult(
+    { eligible, band: input.gbBand, speedDiff: input.speedDiff },
+    input.difference,
+  )
   const { runsScored, outsDelta, basesAfter } = advanceGroundBall(
     result,
     input.basesBefore,

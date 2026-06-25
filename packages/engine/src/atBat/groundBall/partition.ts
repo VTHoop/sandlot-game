@@ -28,14 +28,31 @@ export interface GroundBallSubBand {
   hi: number
 }
 
-const isFc = (r: GroundBallResult): boolean =>
-  r === GroundBallResult.FC ||
-  r === GroundBallResult.FC_2ND ||
-  r === GroundBallResult.FC_3RD ||
-  r === GroundBallResult.FC_HOME
+/** The inputs that size a GB sub-partition — eligibility, the elastic band, and
+ * the speed axis always travel together. */
+export interface GroundBallSizing {
+  eligible: GroundBallResult[]
+  band: Band
+  speedDiff: number
+}
+
+/** A sub-result with its allocated integer width — the working value during sizing. */
+interface SizedResult {
+  result: GroundBallResult
+  width: number
+}
+
+const FC_RESULTS: ReadonlySet<GroundBallResult> = new Set([
+  GroundBallResult.FC,
+  GroundBallResult.FC_2ND,
+  GroundBallResult.FC_3RD,
+  GroundBallResult.FC_HOME,
+])
+
+const bandWidth = (band: Band): number => band.hi - band.lo + 1
 
 /** DP share of the GB band, shrinking as the runner/batter speed edge over the pitcher rises. */
-export function dpFraction(speedDiff: number): number {
+function dpFraction(speedDiff: number): number {
   const raw = DP_FRACTION_CENTER - DP_FRACTION_PER_SPEED * speedDiff
   return Math.min(DP_FRACTION_MAX, Math.max(DP_FRACTION_MIN, raw))
 }
@@ -47,11 +64,8 @@ export function dpFraction(speedDiff: number): number {
  * edge the FC share grows. When no FC variant is eligible (bases empty, or a lone
  * runner on 2nd/3rd) the sole ground-out result absorbs the whole band.
  */
-function targetFractions(
-  eligible: GroundBallResult[],
-  speedDiff: number,
-): Map<GroundBallResult, number> {
-  const fcVariants = eligible.filter(isFc)
+function targetFractions({ eligible, speedDiff }: GroundBallSizing): Map<GroundBallResult, number> {
+  const fcVariants = eligible.filter((r) => FC_RESULTS.has(r))
   const weights = new Map<GroundBallResult, number>()
   let remainder = 1
 
@@ -80,30 +94,42 @@ function targetFractions(
   return weights
 }
 
-const argmax = (xs: number[]): number => xs.reduce((best, x, i) => (x > xs[best] ? i : best), 0)
+const widest = (sized: SizedResult[]): SizedResult =>
+  sized.reduce((best, slice) => (slice.width > best.width ? slice : best), sized[0])
 
-/** Floor the ideal widths and hand the leftover to the largest fractional remainders. */
-function largestRemainderWidths(ideals: number[], W: number): number[] {
-  const widths = ideals.map(Math.floor)
+/**
+ * Apportion the target fractions into integer widths summing exactly to the band
+ * width (largest-remainder method): floor each ideal, then hand the leftover to
+ * the largest fractional remainders, in eligible (low→high) order.
+ */
+function apportion(sizing: GroundBallSizing): SizedResult[] {
+  const total = bandWidth(sizing.band)
+  const fractions = targetFractions(sizing)
+  const ideals = sizing.eligible.map((r) => (fractions.get(r) ?? 0) * total)
+  const sized: SizedResult[] = sizing.eligible.map((result, i) => ({
+    result,
+    width: Math.floor(ideals[i]),
+  }))
   const byFraction = ideals
-    .map((ideal, i) => ({ i, frac: ideal - widths[i] }))
+    .map((ideal, i) => ({ i, frac: ideal - sized[i].width }))
     .sort((a, b) => b.frac - a.frac)
-  let leftover = W - widths.reduce((a, b) => a + b, 0)
-  for (let k = 0; leftover > 0; k++, leftover--) widths[byFraction[k % byFraction.length].i] += 1
-  return widths
+  let leftover = total - sized.reduce((sum, s) => sum + s.width, 0)
+  for (let k = 0; leftover > 0; k++, leftover--)
+    sized[byFraction[k % byFraction.length].i].width += 1
+  return sized
 }
 
 /**
- * Move one number from the widest slice into `target`. `minDonor` is the smallest
+ * Move one number from the widest slice into `slice`. `minDonor` is the smallest
  * donor width allowed to give: `2` lifts a zero without creating a new one (when
  * there is room for everyone); `1` lets a lower-priority slice be dropped to zero
  * so a higher-priority one (TP) is still seated in a squeeze.
  */
-function liftInto(widths: number[], target: number, minDonor: number): void {
-  const donor = argmax(widths)
-  if (donor !== target && widths[donor] >= minDonor) {
-    widths[donor] -= 1
-    widths[target] += 1
+function seat(sized: SizedResult[], slice: SizedResult, minDonor: number): void {
+  const donor = widest(sized)
+  if (donor !== slice && donor.width >= minDonor) {
+    donor.width -= 1
+    slice.width += 1
   }
 }
 
@@ -112,62 +138,42 @@ function liftInto(widths: number[], target: number, minDonor: number): void {
  * when the band is wide enough, and TP keeps its top-tail number even in a band
  * narrower than the eligible set (dropping the widest lower-priority slice).
  */
-function ensureReachable(widths: number[], eligible: GroundBallResult[], W: number): void {
-  if (W >= eligible.length) {
-    for (let i = 0; i < widths.length; i++) if (widths[i] === 0) liftInto(widths, i, 2)
+function ensureReachable(sized: SizedResult[], band: Band): void {
+  if (bandWidth(band) >= sized.length) {
+    for (const slice of sized) if (slice.width === 0) seat(sized, slice, 2)
     return
   }
-  const tp = eligible.indexOf(GroundBallResult.TP)
-  if (tp >= 0 && widths[tp] === 0) liftInto(widths, tp, 1)
-}
-
-/**
- * Convert the per-result fractions into integer widths summing exactly to `W`
- * (largest-remainder apportionment), then guarantee reachability.
- */
-function allocateWidths(
-  eligible: GroundBallResult[],
-  weights: Map<GroundBallResult, number>,
-  W: number,
-): number[] {
-  const ideals = eligible.map((r) => (weights.get(r) ?? 0) * W)
-  const widths = largestRemainderWidths(ideals, W)
-  ensureReachable(widths, eligible, W)
-  return widths
+  const tp = sized.find((slice) => slice.result === GroundBallResult.TP)
+  if (tp && tp.width === 0) seat(sized, tp, 1)
 }
 
 /**
  * Partition `[band.lo, band.hi]` into contiguous, gapless, non-overlapping
  * sub-bands — one per eligible sub-result, in the given low→high order. TP, when
  * present, is the top slice and is guaranteed at least one number ("top of the GB
- * band"). Deterministic given (eligible, band, speedDiff).
+ * band"). Deterministic given the sizing inputs.
  */
-export function partitionGroundBall(
-  eligible: GroundBallResult[],
-  band: Band,
-  speedDiff: number,
-): GroundBallSubBand[] {
-  const width = band.hi - band.lo + 1
-  const widths = allocateWidths(eligible, targetFractions(eligible, speedDiff), width)
+export function partitionGroundBall(sizing: GroundBallSizing): GroundBallSubBand[] {
+  const sized = apportion(sizing)
+  ensureReachable(sized, sizing.band)
   const subBands: GroundBallSubBand[] = []
-  let cursor = band.lo
-  eligible.forEach((result, i) => {
-    if (widths[i] === 0) return // collapsed in an extreme squeeze — contributes no numbers
-    subBands.push({ result, lo: cursor, hi: cursor + widths[i] - 1 })
-    cursor += widths[i]
-  })
+  let cursor = sizing.band.lo
+  for (const { result, width } of sized) {
+    if (width === 0) continue // collapsed in an extreme squeeze — contributes no numbers
+    subBands.push({ result, lo: cursor, hi: cursor + width - 1 })
+    cursor += width
+  }
   return subBands
 }
 
-/** Select the sub-result whose sub-band contains `difference` (must lie in `band`). */
+/** Select the sub-result whose sub-band contains `difference` (must lie in the band). */
 export function selectGroundBallResult(
+  sizing: GroundBallSizing,
   difference: number,
-  eligible: GroundBallResult[],
-  band: Band,
-  speedDiff: number,
 ): GroundBallResult {
-  const bands = partitionGroundBall(eligible, band, speedDiff)
-  const match = bands.find((sub) => difference >= sub.lo && difference <= sub.hi)
+  const match = partitionGroundBall(sizing).find(
+    (sub) => difference >= sub.lo && difference <= sub.hi,
+  )
   if (!match) throw new RangeError(`difference ${difference} is outside the GB band partition`)
   return match.result
 }

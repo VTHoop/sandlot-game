@@ -57,7 +57,7 @@ export const GIDP_OPPORTUNITY_STATES: OpportunityState[] = [
 /** Width of the DP sub-band for a GB of `gbWidth` in the given state (0 if ineligible). */
 function dpBandWidth(gbWidth: number, bases: BaseState, outs: number, speedDiff: number): number {
   const eligible = eligibleGroundBallResults(bases, outs)
-  const bands = partitionGroundBall(eligible, { lo: 0, hi: gbWidth - 1 }, speedDiff)
+  const bands = partitionGroundBall({ eligible, band: { lo: 0, hi: gbWidth - 1 }, speedDiff })
   const dp = bands.find((band) => band.result === GroundBallResult.DP)
   return dp ? dp.hi - dp.lo + 1 : 0
 }
