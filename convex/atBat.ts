@@ -227,7 +227,8 @@ async function tryResolve(
     basesBefore: game.bases,
     outsBefore: game.outs,
     batter: batter._id, // seated on base when the outcome reaches base (SAN-44)
-    runnerSpeeds: await runnerSpeedsFor(ctx, game.bases), // GB speed axis (SAN-16)
+    // GB speed axis (SAN-16) + the SAN-17 advancement ranges (extra-base, deep-fly)
+    runnerSpeeds: await runnerSpeedsFor(ctx, game.bases),
     swingType,
   })
 
