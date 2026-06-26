@@ -4,10 +4,12 @@ import { assembleBackHalf } from '../rangeFinder/backHalf'
 import type { Band } from '../rangeFinder/frontHalf'
 import { assembleFrontHalf } from '../rangeFinder/frontHalf'
 
-/** A classified outcome plus the elastic GB band — the window SAN-16's GB
- * sub-resolution partitions (it is needed only when `outcome === 'GB'`). */
+/** A classified outcome plus the bands SAN-16/SAN-17 sub-resolutions need: the
+ * matched outcome's own `band` (the window extra-base/deep-fly partition, §3.2)
+ * and the elastic `gbBand` (the window the GB sub-resolution partitions, §2). */
 export interface Classification {
   outcome: OutcomeBandKey
+  band: Band
   gbBand: Band
 }
 
@@ -39,7 +41,8 @@ export function classify(difference: number, diffs: CellDiffs): Classification {
     ['K', back.K],
   ]
   for (const [key, band] of stack) {
-    if (difference >= band.lo && difference <= band.hi) return { outcome: key, gbBand: back.GB }
+    if (difference >= band.lo && difference <= band.hi)
+      return { outcome: key, band, gbBand: back.GB }
   }
   throw new RangeError(`difference ${difference} is outside the assembled 0–499 band range`)
 }

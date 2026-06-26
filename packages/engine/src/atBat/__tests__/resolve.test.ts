@@ -133,3 +133,80 @@ describe('resolveAtBat — end-to-end authoritative resolution', () => {
     )
   })
 })
+
+/**
+ * SAN-17 wiring: resolveAtBat routes the IF1B / FO / 1B / 2B bands through the new
+ * advancement sub-resolutions (§3.2/§3.3) instead of the plain one-base advancers.
+ * Each test sweeps the swing against the neutral matchup until the duel lands in
+ * the target band, then asserts an effect the old `applyOutcome` path could not
+ * produce — proving the dispatch, on top of the exhaustive sub-resolution units.
+ */
+describe('resolveAtBat — SAN-17 advancement routing', () => {
+  const base = {
+    pitch: 1,
+    hitter: HITTER,
+    pitcher: PITCHER,
+    outsBefore: 0,
+    batter: BATTER,
+  }
+
+  function sweepFor(
+    predicate: (r: ReturnType<typeof resolveAtBat>) => boolean,
+    extra: Pick<Parameters<typeof resolveAtBat>[0], 'basesBefore' | 'runnerSpeeds' | 'outsBefore'>,
+  ): ReturnType<typeof resolveAtBat> | undefined {
+    for (let swing = DUEL_MIN; swing <= DUEL_MAX; swing++) {
+      const r = resolveAtBat({ ...base, ...extra, swing })
+      if (predicate(r)) return r
+    }
+    return undefined
+  }
+
+  it('an IF1B holds an unforced runner on second (forced/2-out rule, not a plain single)', () => {
+    const if1b = sweepFor((r) => r.outcome === 'IF1B', {
+      basesBefore: { first: null, second: 'on-second', third: null },
+      runnerSpeeds: { first: null, second: 3, third: null },
+      outsBefore: 0,
+    })
+    expect(if1b).toBeDefined()
+    // old behavior advanced every runner one base (→ third); §3.3 holds the unforced runner
+    expect(if1b?.basesAfter).toEqual({ first: BATTER, second: 'on-second', third: null })
+    expect(if1b?.outsAfter).toBe(0) // a hit records no out
+  })
+
+  it('a deep fly out scores a runner from third (sac fly), which a plain FO never did', () => {
+    const sacFly = sweepFor((r) => r.outcome === 'FO' && r.runsScored === 1, {
+      basesBefore: { first: null, second: null, third: 'on-third' },
+      runnerSpeeds: { first: null, second: null, third: 3 },
+      outsBefore: 0,
+    })
+    expect(sacFly).toBeDefined()
+    expect(sacFly?.rbi).toBe(1)
+    expect(sacFly?.outsAfter).toBe(1) // the batter is out on the fly
+    expect(sacFly?.basesAfter.third).toBeNull() // the runner scored from third
+  })
+
+  it('a single sends a fast runner from first to third (the extra base)', () => {
+    const extraBase = sweepFor((r) => r.outcome === '1B' && r.basesAfter.third === 'on-first', {
+      basesBefore: { first: 'on-first', second: null, third: null },
+      runnerSpeeds: { first: 5, second: null, third: null },
+      outsBefore: 0,
+    })
+    expect(extraBase).toBeDefined()
+    // batter still reaches first; the runner took the extra base to third
+    expect(extraBase?.basesAfter).toEqual({ first: BATTER, second: null, third: 'on-first' })
+  })
+
+  it('a double scores a fast runner all the way from first (the extra base)', () => {
+    // A runner on first always ends on third on a plain double; only the well-hit
+    // 2B sub-resolution scores them, so an empty third proves the `2B` dispatch.
+    const wellHit = sweepFor((r) => r.outcome === '2B' && r.basesAfter.third === null, {
+      basesBefore: { first: 'on-first', second: null, third: null },
+      runnerSpeeds: { first: 5, second: null, third: null },
+      outsBefore: 0,
+    })
+    expect(wellHit).toBeDefined()
+    // applyOutcome('2B') would hold the runner on third with no run
+    expect(wellHit?.runsScored).toBe(1)
+    expect(wellHit?.basesAfter).toEqual({ first: null, second: BATTER, third: null })
+  })
+})

@@ -59,7 +59,9 @@ const double: AdvanceFn = (b, batter) => ({
   outsDelta: 0,
 })
 
-// 1B and IF1B: every runner advances exactly one base, batter to first.
+// 1B and IF1B: every runner advances exactly one base, batter to first. This is
+// the primitive/fallback; resolveAtBat sub-resolves 1B (extra base) and IF1B
+// (forced/2-out, via advanceInfieldSingle) upstream (SAN-17).
 const single: AdvanceFn = (b, batter) => ({
   runsScored: b.third ? 1 : 0,
   basesAfter: { first: batter, second: b.first, third: b.second },
@@ -84,9 +86,9 @@ const walk: AdvanceFn = (b, batter) => {
   }
 }
 
-// FO/PO/GB/K: one out, no runner movement. GB reaches here only as the plain-out
-// fallback — resolveAtBat sub-resolves the GB band upstream (SAN-16). Tag-ups
-// (sac flies) remain deferred.
+// FO/PO/GB/K: one out, no runner movement. GB (SAN-16) and FO (SAN-17) reach here
+// only as the plain-out fallback — resolveAtBat sub-resolves those bands upstream
+// (the GB family; deep-fly/sac-fly tag-ups). PO/K never move runners.
 const fieldOut: AdvanceFn = (b) => ({ runsScored: 0, basesAfter: { ...b }, outsDelta: 1 })
 
 const ADVANCERS = new Map<OutcomeBandKey, AdvanceFn>([
@@ -122,4 +124,24 @@ export function applyOutcome(
   if (!advance) throw new RangeError(`unknown outcome ${outcome}`)
   const { runsScored, basesAfter, outsDelta } = advance(basesBefore, batter)
   return { runsScored, rbi: runsScored, basesAfter, outsAfter: outsBefore + outsDelta }
+}
+
+/**
+ * Infield-single advancement (SAN-17, Rules §3.3). An IF1B is a hit — the batter is
+ * safe at first and no out is recorded — so unlike `applyOutcome('IF1B', …)` (which
+ * keeps the plain one-base `single` as its primitive) this is the authoritative
+ * resolution `resolveAtBat` routes the band through.
+ */
+export function advanceInfieldSingle(
+  bases: BaseState,
+  outs: number,
+  batter: RunnerId,
+): OutcomeApplication {
+  // <2 outs: only forced runners advance — exactly a walk's push (a runner moves
+  // only when every base between it and home is occupied). 2 outs: every runner
+  // advances one base (two-out running), never an extra base — exactly a single.
+  // Both leave the batter safe at first; an IF1B is a hit, so no out is recorded.
+  const advance = outs >= 2 ? single : walk
+  const { runsScored, basesAfter } = advance(bases, batter)
+  return { runsScored, rbi: runsScored, basesAfter, outsAfter: outs }
 }
