@@ -33,16 +33,17 @@ mirroring the GB interception. Two parts, landed across stacked PRs:
   plain advancers remain the primitive/base case (e.g. `applyOutcome('IF1B', …)`
   is still the one-base `single`), exactly as `applyOutcome('GB', …)` stays a plain
   field-out behind the GB sub-resolution.
-- **Extra base (§3.2):** a trailing runner takes one extra base when the folded
-  difference lands in the batter-favorable (low) end of the hit band; the granting
-  range widens with the runner's own speed (and the hitter's power where the tab
-  uses it). A trailing runner never passes the runner ahead (1st→3rd on a single
-  needs 3rd vacated). The no-extra case reduces exactly to the standard
-  single/double.
-- **Deep fly / sac fly (§3.2.6.1):** a deep fly (low end of the `FO` band, share
-  widening with power) with < 2 outs scores the runner from 3rd (sac fly, RBI
-  credited) and tags the runner on 2nd up to 3rd; the batter is always out. A
-  shallow fly, a 2-out fly, or a state with no tagging runner is a plain out.
+- **Extra base (§2.6.15/§2.3):** a single all-or-nothing "well hit" determination
+  off the batter-favorable (low) end of the hit band, sized by a floating share of
+  the **average** of the on-base runners' speeds (hitter power is *not* a hit
+  factor). A well-hit single/double advances **every** runner one extra base —
+  identical to two-out advancement — and the two do not stack. The no-extra case
+  reduces exactly to the standard single/double.
+- **Fly outs (§2.6/§2.6.1):** with < 2 outs a runner on 3rd scores on **any** fly
+  out (a sac fly, RBI credited — not gated on depth); a **deep** fly (low end of the
+  `FO` band, share floating with the runner-on-2nd's speed + hitter power)
+  additionally tags the runner on 2nd up to 3rd. A runner on 1st never advances; the
+  batter is always out; a 2-out fly ends the inning with no movement.
 - **Infield single (§3.3):** structural, no width range — with < 2 outs only forced
   runners advance (a walk's push); with 2 outs every runner advances one base, never
   an extra base. An IF1B is a hit, so no out is recorded.
