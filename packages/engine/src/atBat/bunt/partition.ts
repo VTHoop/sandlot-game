@@ -14,14 +14,22 @@ import { BuntResult } from './result'
  * Best→worst for the batter runs low→high, so the difference orders the families
  * exactly like the RangeFinder band stack. Deterministic; no RNG.
  *
+ * Tail mapping: the rules speak of a 0–500 difference, but the engine folds onto
+ * 0–499 (ring of 999, `fold.ts`), so there is no literal 1:1 correspondence — the
+ * GB triple play (rules "497–500") is likewise a *structural* top tail, not literal
+ * values (ADR-0019/ADR-0006: re-derive structurally, never transcribe). These tails
+ * preserve the rules' value-COUNT at the extremes of the folded range: "0–3" (4
+ * values) → `[0, 3]`; "498–500" (3 values) → the top 3, `[497, 499]`. The exact
+ * one-number width of the top tail is a re-derivation choice, not an off-by-one.
+ *
  * Provenance: the bunt-for-hit and sac widths are structurally re-derived for this
  * engine, NOT transcribed from the reference calculator's Bunts tab (ADR-0006);
  * the per-differential widths are tunable seeds behind the injectable accessor.
  */
 
-/** Inclusive top of the butcher-boy bottom tail ("0–3 difference"). */
+/** Inclusive top of the butcher-boy bottom tail (the folded analogue of "0–3"). */
 const BUTCHER_BOY_HI = 3
-/** Inclusive bottom of the triple-play/double-play top tail ("498–500"). */
+/** Inclusive bottom of the triple/double-play top tail (the folded top-3 of "498–500"). */
 const TOP_TAIL_LO = 497
 /** The elastic middle band, between the two fixed tails. */
 const MIDDLE_LO = BUTCHER_BOY_HI + 1
