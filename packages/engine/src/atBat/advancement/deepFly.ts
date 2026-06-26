@@ -1,39 +1,49 @@
 import type { Band } from '../../rangeFinder/frontHalf'
-import type { BaseState, OutcomeApplication } from '../advance'
+import type { BaseState, OutcomeApplication, RunnerId } from '../advance'
+import type { BaseSpeeds } from '../resolve'
 
 /**
- * Deep-fly / sac-fly sub-resolution of the `FO` band (SAN-17, Rules §3.2.6.1).
- *
- * A fly out is usually a plain out, but a *deep* fly lets runners tag up: the
- * runner on 3rd scores (a sac fly, RBI credited) and the runner on 2nd advances to
- * 3rd. The deep-fly share sits at the batter-favorable (low) end of the `FO` band
- * and widens with the hitter's raw power — more power drives deeper, more
- * productive fly outs. Resolved deterministically off the folded difference; no RNG.
+ * Fly-out runner advancement (SAN-17, Rules §2.6 + §2.6.1/§2.6.16). The batter is
+ * always out. With fewer than two outs:
+ *   - a runner on 3rd **always** scores on a fly out (a sac fly, RBI credited) —
+ *     this is NOT gated on the fly being deep (§2.6);
+ *   - a **deep** fly additionally tags the runner on 2nd up to 3rd (§2.6.1). The
+ *     deep-fly share sits at the batter-favorable (low) end of the `FO` band and
+ *     floats with the runner-on-2nd's speed and the hitter's power (§2.6.16).
+ * A runner on 1st never advances on a fly out. With two outs the fly ends the
+ * inning: no run, no movement. Resolved deterministically off the folded
+ * difference; no RNG.
  *
  * Provenance: the deep-fly share is structurally re-derived for this engine, NOT
- * transcribed from the reference calculator's Deep Fly tab (ADR-0006). The exact
- * per-power widths are tunable seeds behind the injectable accessor.
+ * transcribed from the reference calculator's Deep Fly tab (ADR-0006); the
+ * per-speed/per-power share is a tunable seed behind the injectable accessor.
  */
 
-/** Raw hitter-power clamp bounds (1–5). */
-const POWER_MIN = 1
-const POWER_MAX = 5
+const ATTR_MIN = 1
+const ATTR_MAX = 5
 
-/** Re-derived deep-fly share of the `FO` band, indexed by raw power − 1. */
-const DEEP_FLY_FRACTION_BY_POWER = [0.1, 0.2, 0.3, 0.4, 0.5] as const
+/** Re-derived ~10%-baseline deep-fly contributions, indexed by attribute − 1. */
+const DEEP_FLY_SPEED_TERM = [0.0, 0.02, 0.05, 0.08, 0.1] as const
+const DEEP_FLY_POWER_TERM = [0.0, 0.02, 0.05, 0.08, 0.1] as const
 
 /** Injectable so frozen test tables pin exact boundaries (SAN-15 retune-proof). */
 export interface DeepFlyAccessors {
-  /** Fraction [0,1] of the `FO` band that is a deep (runner-advancing) fly, by power. */
-  deepFlyFraction(power: number): number
+  /** Fraction [0,1] of the `FO` band that is a deep fly, by runner-on-2nd speed + power. */
+  deepFlyFraction(secondRunnerSpeed: number, power: number): number
 }
 
-const clampPower = (power: number): number =>
-  Math.max(POWER_MIN, Math.min(POWER_MAX, Math.round(power)))
+const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n))
+const clampAttr = (a: number): number => clamp(Math.round(a), ATTR_MIN, ATTR_MAX)
 
 /** Exported so the gitignored parity lane can validate the live widths. */
 export const liveDeepFlyAccessors: DeepFlyAccessors = {
-  deepFlyFraction: (power) => DEEP_FLY_FRACTION_BY_POWER[clampPower(power) - 1],
+  deepFlyFraction: (secondRunnerSpeed, power) =>
+    clamp(
+      DEEP_FLY_SPEED_TERM[clampAttr(secondRunnerSpeed) - 1] +
+        DEEP_FLY_POWER_TERM[clampAttr(power) - 1],
+      0,
+      1,
+    ),
 }
 
 export interface FlyOutInput {
@@ -43,45 +53,51 @@ export interface FlyOutInput {
   band: Band
   bases: BaseState
   outsBefore: number
-  /** The hitter's raw power (1–5) — drives the deep-fly share. */
+  /** The hitter's raw power (1–5) — part of the deep-fly axis. */
   power: number
+  /** On-base runner speeds; the runner-on-2nd speed drives the deep-fly tag. */
+  speeds: BaseSpeeds
+}
+
+/** Does the runner on 2nd tag up to 3rd (a deep fly at the low end of the band)? */
+function isDeepFly(input: FlyOutInput, accessors: DeepFlyAccessors): boolean {
+  const speed = input.speeds.second
+  if (input.bases.second === null || speed === null) return false
+  const bandWidth = input.band.hi - input.band.lo + 1
+  const width = clamp(
+    Math.round(accessors.deepFlyFraction(speed, input.power) * bandWidth),
+    0,
+    bandWidth,
+  )
+  return input.difference <= input.band.lo + width - 1
 }
 
 /**
- * Resolve a fly out into a plain out or a deep fly (tag-ups). The batter is always
- * out (+1). A deep fly applies only with < 2 outs and a runner who can tag (2nd or
- * 3rd); otherwise the fly is a plain out with no movement. (SAN-17 RED stub.)
+ * Resolve a fly out: the batter is out (+1). With < 2 outs the runner on 3rd
+ * scores and a deep fly tags the runner on 2nd up to 3rd; with 2 outs the inning
+ * ends with no movement.
  */
 export function resolveFlyOut(
   input: FlyOutInput,
   accessors: DeepFlyAccessors = liveDeepFlyAccessors,
 ): OutcomeApplication {
-  const { difference, band, bases, outsBefore, power } = input
+  const { bases, outsBefore } = input
   const outsAfter = outsBefore + 1
-  const plainOut: OutcomeApplication = {
-    runsScored: 0,
-    rbi: 0,
-    basesAfter: { ...bases },
-    outsAfter,
+  if (outsAfter >= 3) {
+    return { runsScored: 0, rbi: 0, basesAfter: { ...bases }, outsAfter }
   }
 
-  // The fly out is the inning's third out (no run counts), or no runner can tag
-  // (only 1st occupied, or empty) — a plain fly out either way.
-  if (outsAfter >= 3 || (bases.second === null && bases.third === null)) return plainOut
-
-  const bandWidth = band.hi - band.lo + 1
-  const deepWidth = Math.min(bandWidth, Math.round(accessors.deepFlyFraction(power) * bandWidth))
-  const isDeep = difference <= band.lo + deepWidth - 1
-  if (!isDeep) return plainOut
-
-  // Deep fly, < 2 outs: the runner on 3rd tags and scores (RBI); the runner on 2nd
-  // tags up to 3rd; a runner on 1st holds (a fly out is not deep enough to advance
-  // from first without being a hit).
-  const runsScored = bases.third ? 1 : 0
+  const runsScored = bases.third ? 1 : 0 // a runner on 3rd scores on any fly out (§2.6)
+  let second: RunnerId | null = bases.second
+  let third: RunnerId | null = null // the runner on 3rd (if any) has scored
+  if (isDeepFly(input, accessors)) {
+    third = bases.second // the runner on 2nd tags up to 3rd
+    second = null
+  }
   return {
     runsScored,
     rbi: runsScored,
-    basesAfter: { first: bases.first, second: null, third: bases.second },
+    basesAfter: { first: bases.first, second, third },
     outsAfter,
   }
 }

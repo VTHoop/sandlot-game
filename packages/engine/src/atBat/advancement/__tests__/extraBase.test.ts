@@ -5,19 +5,17 @@ import type { BaseState } from '../../advance'
 import type { BaseSpeeds } from '../../resolve'
 import { type ExtraBaseAccessors, liveExtraBaseAccessors, resolveExtraBase } from '../extraBase'
 
-// ─── Frozen test rig ──────────────────────────────────────────────────────────
-// A 20-wide hit band. The frozen accessor grants the extra base to a fast (5)
-// runner over the low half of the band [50,59] and never to a slow (1) runner.
-// Power is held neutral. Never change these — they pin exact boundaries.
+// ─── Frozen test rig (Rules §2.6.15) ──────────────────────────────────────────
+// A well-hit ball advances EVERY runner one extra base (= two-out advancement),
+// off a single floating share of the AVERAGE on-base runner speed (no hitter
+// power). The frozen accessor calls a ball "well hit" over the low half of the
+// band [50,59] when the average speed is fast (≥ 4), never when slow.
 
 const BAND: Band = { lo: 50, hi: 69 }
-const FAST_HALF: ExtraBaseAccessors = {
-  extraBaseFraction: (speed) => (speed >= 5 ? 0.5 : 0),
-}
-const LOW = 50 // batter-favorable end → extra base for a fast runner
-const LOW_EDGE = 59 // last number still inside the fast runner's extra range
-const HIGH = 60 // first number past the extra range → no extra base
-const POWER = 3
+const FAST_AVG: ExtraBaseAccessors = { wellHitFraction: (avg) => (avg >= 4 ? 0.5 : 0) }
+const LOW = 50 // batter-favorable end → well hit for a fast average
+const LOW_EDGE = 59 // last number still inside the well-hit range
+const HIGH = 60 // first number past the well-hit range → a normal hit
 const BATTER = 'batter'
 
 const speeds = (first: number | null, second: number | null, third: number | null): BaseSpeeds => ({
@@ -26,50 +24,23 @@ const speeds = (first: number | null, second: number | null, third: number | nul
   third,
 })
 
-const single = (difference: number, bases: BaseState, s: BaseSpeeds) =>
+const hit = (
+  outcome: '1B' | '2B',
+  difference: number,
+  bases: BaseState,
+  s: BaseSpeeds,
+  outsBefore = 0,
+) =>
   resolveExtraBase(
-    {
-      outcome: '1B',
-      difference,
-      band: BAND,
-      bases,
-      outsBefore: 0,
-      batter: BATTER,
-      speeds: s,
-      power: POWER,
-    },
-    FAST_HALF,
+    { outcome, difference, band: BAND, bases, outsBefore, batter: BATTER, speeds: s },
+    FAST_AVG,
   )
 
-const double = (difference: number, bases: BaseState, s: BaseSpeeds) =>
-  resolveExtraBase(
-    {
-      outcome: '2B',
-      difference,
-      band: BAND,
-      bases,
-      outsBefore: 0,
-      batter: BATTER,
-      speeds: s,
-      power: POWER,
-    },
-    FAST_HALF,
-  )
+// ─── Single ───────────────────────────────────────────────────────────────────
 
-// ─── Single: the standard one-base push is the base case ──────────────────────
-
-describe('resolveExtraBase — single base case (no extra base)', () => {
-  it('a slow runner takes only one base (matches the standard single)', () => {
-    expect(single(LOW, { first: 'r1', second: null, third: null }, speeds(1, null, null))).toEqual({
-      runsScored: 0,
-      rbi: 0,
-      basesAfter: { first: BATTER, second: 'r1', third: null },
-      outsAfter: 0,
-    })
-  })
-
-  it('scores the runner from third and pushes everyone one base when nobody is fast', () => {
-    expect(single(LOW, { first: 'r1', second: 'r2', third: 'r3' }, speeds(1, 1, 1))).toEqual({
+describe('resolveExtraBase — single', () => {
+  it('normal (not well hit): 3rd scores, 2nd→3rd, 1st→2nd, batter to first', () => {
+    expect(hit('1B', LOW, { first: 'r1', second: 'r2', third: 'r3' }, speeds(1, 1, 1))).toEqual({
       runsScored: 1,
       rbi: 1,
       basesAfter: { first: BATTER, second: 'r1', third: 'r2' },
@@ -77,58 +48,35 @@ describe('resolveExtraBase — single base case (no extra base)', () => {
     })
   })
 
-  it('does not grant an extra base outside the batter-favorable range', () => {
-    expect(
-      single(HIGH, { first: 'r1', second: null, third: null }, speeds(5, null, null)).basesAfter,
-    ).toEqual({ first: BATTER, second: 'r1', third: null })
-  })
-})
-
-// ─── Single: the extra base ───────────────────────────────────────────────────
-
-describe('resolveExtraBase — single with the extra base', () => {
-  it('sends a fast runner from first to third', () => {
-    expect(
-      single(LOW_EDGE, { first: 'r1', second: null, third: null }, speeds(5, null, null))
-        .basesAfter,
-    ).toEqual({ first: BATTER, second: null, third: 'r1' })
-  })
-
-  it('scores a fast runner from second', () => {
-    expect(single(LOW, { first: null, second: 'r2', third: null }, speeds(null, 5, null))).toEqual({
-      runsScored: 1,
-      rbi: 1,
-      basesAfter: { first: BATTER, second: null, third: null },
-      outsAfter: 0,
-    })
-  })
-
-  it('lets a fast runner from first reach third only once second has vacated it', () => {
-    // both fast: r2 scores from second, vacating third → r1 reaches third
-    expect(single(LOW, { first: 'r1', second: 'r2', third: null }, speeds(5, 5, null))).toEqual({
-      runsScored: 1,
-      rbi: 1,
+  it('well hit: every runner advances an extra base — 3rd & 2nd score, 1st→3rd', () => {
+    expect(hit('1B', LOW, { first: 'r1', second: 'r2', third: 'r3' }, speeds(5, 5, 5))).toEqual({
+      runsScored: 2,
+      rbi: 2,
       basesAfter: { first: BATTER, second: null, third: 'r1' },
       outsAfter: 0,
     })
   })
 
-  it('caps the trailing runner: a fast runner from first cannot pass a held runner on third', () => {
-    // r2 slow holds at third; r1 fast cannot pass → capped at second
-    expect(single(LOW, { first: 'r1', second: 'r2', third: null }, speeds(5, 1, null))).toEqual({
-      runsScored: 0,
-      rbi: 0,
-      basesAfter: { first: BATTER, second: 'r1', third: 'r2' },
-      outsAfter: 0,
+  it('well hit only inside the batter-favorable range', () => {
+    expect(
+      hit('1B', LOW_EDGE, { first: 'r1', second: null, third: null }, speeds(5, null, null))
+        .basesAfter,
+    ).toEqual({ first: BATTER, second: null, third: 'r1' })
+    expect(
+      hit('1B', HIGH, { first: 'r1', second: null, third: null }, speeds(5, null, null)).basesAfter,
+    ).toEqual({
+      first: BATTER,
+      second: 'r1',
+      third: null,
     })
   })
 })
 
-// ─── Double: base case + extra base ───────────────────────────────────────────
+// ─── Double ───────────────────────────────────────────────────────────────────
 
 describe('resolveExtraBase — double', () => {
-  it('base case: scores 2nd/3rd, sends a slow runner from first to third, batter to second', () => {
-    expect(double(LOW, { first: 'r1', second: 'r2', third: 'r3' }, speeds(1, 1, 1))).toEqual({
+  it('normal: 3rd & 2nd score, 1st→3rd, batter to second', () => {
+    expect(hit('2B', LOW, { first: 'r1', second: 'r2', third: 'r3' }, speeds(1, 1, 1))).toEqual({
       runsScored: 2,
       rbi: 2,
       basesAfter: { first: null, second: BATTER, third: 'r1' },
@@ -136,50 +84,71 @@ describe('resolveExtraBase — double', () => {
     })
   })
 
-  it('scores a fast runner all the way from first', () => {
-    expect(double(LOW, { first: 'r1', second: null, third: null }, speeds(5, null, null))).toEqual({
-      runsScored: 1,
-      rbi: 1,
+  it('well hit: doubles score all runners, batter to second', () => {
+    expect(hit('2B', LOW, { first: 'r1', second: 'r2', third: 'r3' }, speeds(5, 5, 5))).toEqual({
+      runsScored: 3,
+      rbi: 3,
       basesAfter: { first: null, second: BATTER, third: null },
       outsAfter: 0,
     })
   })
+})
 
-  it('holds a slow runner from first at third', () => {
+// ─── A single all-or-nothing determination on the AVERAGE speed ───────────────
+
+describe('resolveExtraBase — keyed on the average of the on-base runners', () => {
+  it('averages mixed runner speeds (a 5 and a 3 average to 4 → well hit)', () => {
+    // runners on 1st (fast) and 2nd (medium); the average crosses the well-hit cut
+    // and BOTH advance the extra base together (not per-runner).
+    expect(hit('1B', LOW, { first: 'r1', second: 'r2', third: null }, speeds(5, 3, null))).toEqual({
+      runsScored: 1, // r2 scores from second
+      rbi: 1,
+      basesAfter: { first: BATTER, second: null, third: 'r1' }, // r1 takes the extra base too
+      outsAfter: 0,
+    })
+  })
+
+  it('an empty-base hit just seats the batter (no runners to advance)', () => {
     expect(
-      double(LOW, { first: 'r1', second: null, third: null }, speeds(1, null, null)).basesAfter,
-    ).toEqual({ first: null, second: BATTER, third: 'r1' })
+      hit('1B', LOW, { first: null, second: null, third: null }, speeds(null, null, null)),
+    ).toEqual({
+      runsScored: 0,
+      rbi: 0,
+      basesAfter: { first: BATTER, second: null, third: null },
+      outsAfter: 0,
+    })
   })
 })
 
-// ─── No out is recorded; outs pass through ────────────────────────────────────
+// ─── Two outs forces the extra base; well-hit + 2 outs do not stack ───────────
 
-describe('resolveExtraBase — a hit records no out', () => {
-  it('passes the pre-state out count straight through', () => {
-    const r = resolveExtraBase(
-      {
-        outcome: '1B',
-        difference: LOW,
-        band: BAND,
-        bases: { first: 'r1', second: null, third: null },
-        outsBefore: 2,
-        batter: BATTER,
-        speeds: speeds(1, null, null),
-        power: POWER,
-      },
-      FAST_HALF,
-    )
-    expect(r.outsAfter).toBe(2)
+describe('resolveExtraBase — two outs', () => {
+  it('advances every runner the extra base even when not well hit', () => {
+    expect(
+      hit('1B', HIGH, { first: 'r1', second: null, third: null }, speeds(1, null, null), 2),
+    ).toEqual({
+      runsScored: 0,
+      rbi: 0,
+      basesAfter: { first: BATTER, second: null, third: 'r1' }, // 1st→3rd, just like a well hit
+      outsAfter: 2,
+    })
+  })
+
+  it('does not stack — a well-hit ball with 2 outs still advances exactly one extra base', () => {
+    expect(
+      hit('1B', LOW, { first: 'r1', second: null, third: null }, speeds(5, null, null), 2)
+        .basesAfter,
+    ).toEqual({ first: BATTER, second: null, third: 'r1' })
   })
 })
 
-// ─── Speed scales the extra-base share (live seed tables) ─────────────────────
+// ─── Well-hit share widens with average speed (live seed tables) ──────────────
 
-describe('resolveExtraBase — extra-base share widens with speed (live tables)', () => {
+describe('resolveExtraBase — well-hit share widens with speed (live tables)', () => {
   const WIDE: Band = { lo: 0, hi: 99 }
   const MID = 30
 
-  it('a fast runner takes the extra base where a slow runner does not', () => {
+  it('a fast average takes the extra base where a slow average does not', () => {
     const slow = resolveExtraBase({
       outcome: '1B',
       difference: MID,
@@ -188,7 +157,6 @@ describe('resolveExtraBase — extra-base share widens with speed (live tables)'
       outsBefore: 0,
       batter: BATTER,
       speeds: speeds(null, 1, null),
-      power: POWER,
     })
     const fast = resolveExtraBase({
       outcome: '1B',
@@ -198,18 +166,16 @@ describe('resolveExtraBase — extra-base share widens with speed (live tables)'
       outsBefore: 0,
       batter: BATTER,
       speeds: speeds(null, 5, null),
-      power: POWER,
     })
     expect(slow.runsScored).toBe(0) // r2 only reaches third
-    expect(fast.runsScored).toBe(1) // r2 scores from second
+    expect(fast.runsScored).toBe(1) // r2 scores from second on the extra base
   })
 })
 
 // ─── Parity lane (local only — skips in CI) ───────────────────────────────────
-// Validates the re-derived extra-base widths against the gitignored ExtraBase-tab
-// fixture (ADR-0006). Power is held neutral (3); the reference band width is the
-// reconciliation knob — scale it to the workbook's own band when filling
-// captureParity.py's `extra_base_high_end` / `extra_base_low_end` row ranges.
+// Validates the re-derived well-hit widths against the gitignored ExtraBase-tab
+// fixture (ADR-0006). The reference band width is the reconciliation knob — scale
+// it to the workbook's own band when filling captureParity.py's row ranges.
 
 const PARITY_FIXTURE = 'packages/engine/reference/extra-base-parity.json'
 
@@ -219,14 +185,13 @@ describe.skipIf(!existsSync(PARITY_FIXTURE))('parity lane (local fixture)', () =
     readFileSync(PARITY_FIXTURE, 'utf-8'),
   )
   const REFERENCE_BAND_WIDTH = 100
-  const NEUTRAL_POWER = 3
 
   it.skipIf(fixture.extra_base_high_end === null)(
-    'high-end extra-base width by speed matches the workbook',
+    'well-hit width by average speed matches the workbook',
     () => {
       for (let speed = 1; speed <= 5; speed++) {
         const width = Math.round(
-          liveExtraBaseAccessors.extraBaseFraction(speed, NEUTRAL_POWER) * REFERENCE_BAND_WIDTH,
+          liveExtraBaseAccessors.wellHitFraction(speed) * REFERENCE_BAND_WIDTH,
         )
         expect(width).toBe(fixture.extra_base_high_end?.[speed - 1])
       }

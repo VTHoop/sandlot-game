@@ -121,6 +121,7 @@ function resolveAdvancement(
         bases: basesBefore,
         outsBefore,
         power: hitter.power,
+        speeds: runnerSpeeds,
       })
     case '1B':
     case '2B':
@@ -132,7 +133,6 @@ function resolveAdvancement(
         outsBefore,
         batter,
         speeds: runnerSpeeds,
-        power: hitter.power,
       })
     default:
       return applyOutcome(outcome, basesBefore, outsBefore, batter)
