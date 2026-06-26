@@ -79,4 +79,21 @@ describe('resolveGroundBall — third-out run suppression (rules §2.9–2.15)',
     expect(r.outsAfter).toBe(3)
     expect(r.runsScored).toBe(0)
   })
+
+  it('a TP at the top of the band records three outs, no runs, and clears the bases', () => {
+    // 1st & 2nd, 0 outs, top of the band → TP (delta=3, unconditional base clear).
+    const r = resolveGroundBall({
+      difference: BAND.hi,
+      gbBand: BAND,
+      basesBefore: FIRST_SECOND,
+      outsBefore: 0,
+      batter: B,
+      speedDiff: 0,
+    })
+    expect(r.result).toBe(GroundBallResult.TP)
+    expect(r.outsAfter).toBe(3)
+    expect(r.runsScored).toBe(0)
+    expect(r.rbi).toBe(0)
+    expect(r.basesAfter).toEqual({ first: null, second: null, third: null })
+  })
 })

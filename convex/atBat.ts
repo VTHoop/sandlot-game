@@ -159,11 +159,14 @@ async function runnerSpeedsFor(
     const player = await ctx.db.get(id)
     return player ? runnerSpeed(player.attributes) : null
   }
-  return {
-    first: await speedAt(bases.first),
-    second: await speedAt(bases.second),
-    third: await speedAt(bases.third),
-  }
+  // Independent lookups — resolve them concurrently rather than serializing
+  // three round-trips on a loaded base.
+  const [first, second, third] = await Promise.all([
+    speedAt(bases.first),
+    speedAt(bases.second),
+    speedAt(bases.third),
+  ])
+  return { first, second, third }
 }
 
 // ─── Commit & resolve ───────────────────────────────────────────────────────

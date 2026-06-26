@@ -38,20 +38,20 @@ const onBase = (first: boolean, second: boolean, third: boolean): BaseState => (
  * far the most common; loaded and 1st&3rd are rarer. The 0-out vs 1-out split
  * leans slightly toward one out. Weights need not sum to 1 (normalized at use).
  */
-export const GIDP_OPPORTUNITY_STATES: OpportunityState[] = [
+const BASE_STATE_FREQUENCY: Array<[BaseState, number]> = [
   [onBase(true, false, false), 0.62],
   [onBase(true, true, false), 0.18],
   [onBase(true, false, true), 0.1],
   [onBase(true, true, true), 0.1],
-].flatMap(([bases, baseWeight]) =>
-  [
-    [0, 0.45],
-    [1, 0.55],
-  ].map(([outs, outWeight]) => ({
-    bases: bases as BaseState,
-    outs: outs as number,
-    weight: (baseWeight as number) * (outWeight as number),
-  })),
+]
+const OUT_FREQUENCY: Array<[number, number]> = [
+  [0, 0.45],
+  [1, 0.55],
+]
+
+export const GIDP_OPPORTUNITY_STATES: OpportunityState[] = BASE_STATE_FREQUENCY.flatMap(
+  ([bases, baseWeight]) =>
+    OUT_FREQUENCY.map(([outs, outWeight]) => ({ bases, outs, weight: baseWeight * outWeight })),
 )
 
 /** Width of the DP sub-band for a GB of `gbWidth` in the given state (0 if ineligible). */
