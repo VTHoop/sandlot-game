@@ -5,8 +5,11 @@ import {
   MLB_2024_RUNS_PER_GAME,
   MLB_2024_RUNS_PER_GAME_TOLERANCE,
   MLB_2024_TOLERANCE,
+  MLB_GIDP_PER_OPPORTUNITY,
+  MLB_GIDP_PER_OPPORTUNITY_TOLERANCE,
 } from '../baselines'
 import { computeCell } from '../computeCell'
+import { gidpPerOpportunity } from '../gidp'
 import {
   aggregateGrid,
   aggregateRunsPerGame,
@@ -538,5 +541,20 @@ describe('SAN-15 — structural integrity', () => {
 
   it('partition completeness and GB ≥ 0 hold across the whole grid', () => {
     expect(validateGridInvariants(GRID).pass).toBe(true)
+  })
+})
+
+describe('SAN-16 — GIDP per opportunity', () => {
+  it('harness-derived GIDP per opportunity matches the MLB baseline within tolerance', () => {
+    const gidp = gidpPerOpportunity(GRID)
+    expect(Math.abs(gidp - MLB_GIDP_PER_OPPORTUNITY)).toBeLessThanOrEqual(
+      MLB_GIDP_PER_OPPORTUNITY_TOLERANCE,
+    )
+  })
+
+  it('rises when runners/batter lose the speed race and falls when they win it', () => {
+    const slow = gidpPerOpportunity(GRID, undefined, undefined, -2)
+    const fast = gidpPerOpportunity(GRID, undefined, undefined, 2)
+    expect(slow).toBeGreaterThan(fast)
   })
 })

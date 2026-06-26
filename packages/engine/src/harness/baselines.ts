@@ -36,3 +36,20 @@ export const MLB_2024_TOLERANCE: ToleranceConfig = {
 /** 2024 MLB runs/game (both teams averaged): 4.39 ± 0.12. */
 export const MLB_2024_RUNS_PER_GAME = 4.39
 export const MLB_2024_RUNS_PER_GAME_TOLERANCE = 0.12
+
+/**
+ * MLB ground-ball double plays per double-play opportunity — a PA with a runner
+ * forced at first and fewer than two outs (SAN-16 GB sub-resolution gate).
+ *
+ * Provenance: re-derived from public 2024 league aggregates (league GIDP totals
+ * over runner-on-first / <2-out opportunity counts, Baseball Reference + Retrosheet
+ * situational splits), retrieved 2026-06-25. Independently transcribed public
+ * aggregates — NOT from any private source workbook (ADR-0006). The reference
+ * calculator's tuned per-stat DP fractions are deliberately never used here.
+ *
+ * The tolerance is deliberately wide: the engine models the DP share as a single
+ * speed-driven fraction of the GB band, so this gate checks the league-average
+ * rate is in the right neighbourhood, not a tight per-state fit.
+ */
+export const MLB_GIDP_PER_OPPORTUNITY = 0.108
+export const MLB_GIDP_PER_OPPORTUNITY_TOLERANCE = 0.015

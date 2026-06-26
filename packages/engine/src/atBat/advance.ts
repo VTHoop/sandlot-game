@@ -84,7 +84,9 @@ const walk: AdvanceFn = (b, batter) => {
   }
 }
 
-// FO/PO/GB/K: one out, no runner movement (GB sub-resolution + tag-ups deferred).
+// FO/PO/GB/K: one out, no runner movement. GB reaches here only as the plain-out
+// fallback — resolveAtBat sub-resolves the GB band upstream (SAN-16). Tag-ups
+// (sac flies) remain deferred.
 const fieldOut: AdvanceFn = (b) => ({ runsScored: 0, basesAfter: { ...b }, outsDelta: 1 })
 
 const ADVANCERS = new Map<OutcomeBandKey, AdvanceFn>([
@@ -105,9 +107,10 @@ const ADVANCERS = new Map<OutcomeBandKey, AdvanceFn>([
  * ADR-0016). Runner ids move between bases and the `batter` is seated as a new
  * on-base runner on reaching base; scored runners' ids drop off (derivable from
  * the play, not persisted here). `rbi` equals `runsScored` in this model — the
- * deferred mechanics (GB double plays, sac flies, errors) are the only places the
- * two diverge. `outsAfter` is recorded raw and may reach 3; the inning transition
- * belongs to the Game-state-machine ticket. Does not mutate `basesBefore`.
+ * GB sub-resolution (which can suppress runs on a third out) happens upstream in
+ * resolveAtBat; the remaining divergences (sac flies, errors) stay deferred.
+ * `outsAfter` is recorded raw and may reach 3; the inning transition belongs to
+ * the Game-state-machine ticket. Does not mutate `basesBefore`.
  */
 export function applyOutcome(
   outcome: OutcomeBandKey,

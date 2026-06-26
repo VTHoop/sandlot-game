@@ -63,8 +63,9 @@ an append-only log + maintained rollups**, not full event sourcing:
   server resolves once both roles are present. The "opponent cannot read your
   number before both lock" test is owned by the Secret at-bat round-trip ticket.
 - **`atBats` — append-only log.** Each row carries complete pre- and post-state
-  (outs/bases before & after, both committed numbers, outcome, runs, RBI) so
-  entries are never mutated. Ordered within a game by `sequence` (`by_game`).
+  (outs/bases before & after, both committed numbers, outcome, the nullable GB
+  `groundBallResult` sub-result, runs, RBI) so entries are never mutated. Ordered
+  within a game by `sequence` (`by_game`).
 - **Rollups:** `standings`, `playerStatLine` (engine `SlashLine` inputs),
   `boxScoreLine` — maintained aggregates kept in sync with the log by later
   tickets, never aggregated from raw events on the client.
@@ -86,6 +87,14 @@ it to `OutcomeBandKey` from `@sandlot/engine/outcomes`, so the persisted outcome
 enum can never drift from what the RangeFinder produces. The engine is the single
 source of truth; the import is type-only, so the Convex bundle carries no engine
 runtime dependency.
+
+`groundBallResult` (SAN-16, ADR-0019) mirrors the engine's `GroundBallResult`
+enum the same way — explicit literals locked to `@sandlot/engine/atBat` by a
+compile-time guard (the engine type is a string enum, so it is coerced to its
+string values for the equality check) and a runtime mirror test. It is recorded
+**nullable** on `atBats` (null for every non-GB outcome); the `outcomeBand` stays
+`GB`. The persisted band taxonomy is unchanged — this records *which* ground-ball
+play a `GB` resolved to.
 
 `baseState` is **runner-aware** (SAN-44, ADR-0018): each base references the
 player standing on it (`Id<'players'>`) or null, mirroring the engine's

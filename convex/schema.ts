@@ -5,6 +5,7 @@ import {
   baseState,
   duelRole,
   gameStatus,
+  groundBallResult,
   half,
   outcomeBand,
   playerSource,
@@ -135,6 +136,9 @@ export default defineSchema({
     batterNumber: v.float64(), // committed swing number, 1–999
     pitchNumber: v.float64(), // committed pitch number, 1–999
     outcome: outcomeBand,
+    // GB sub-result (SAN-16/ADR-0019): null for every non-GB outcome. The
+    // `outcome` band stays GB; this records which ground-ball play it resolved to.
+    groundBallResult: v.union(groundBallResult, v.null()),
     runsScored: v.float64(),
     rbi: v.float64(),
     basesAfter: baseState,

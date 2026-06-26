@@ -119,6 +119,7 @@ describe('secret at-bat round-trip', () => {
     expect(rows[0]).toMatchObject({
       sequence: 0,
       outcome: 'HR',
+      groundBallResult: null, // non-GB outcomes persist a null sub-result (SAN-16)
       pitchNumber: 500,
       batterNumber: 500,
       runsScored: 1,
@@ -344,6 +345,36 @@ describe('secret at-bat round-trip', () => {
       expect(ab.outcome).toBe('K')
       expect(ab.basesBefore).toEqual(onFirst)
       expect(ab.basesAfter).toEqual(onFirst)
+    })
+  })
+
+  describe('ground-ball sub-resolution (SAN-16)', () => {
+    it('persists the GB sub-result and its advancement on the at-bat row', async () => {
+      const { t, gameId } = await setupGame()
+      // Neutral matchup: the GB band spans differences 272–386. pitch 1 / swing 273
+      // lands at the bottom of the band → GO_RA: the batter is out at 1st and the
+      // runner on first advances to second. The persisted band stays GB.
+      const runner = await t.run((ctx) =>
+        ctx.db.insert('players', {
+          name: 'Runner',
+          source: 'custom',
+          role: 'hitter',
+          position: '2B',
+          price: null,
+          attributes: { power: 3, contact: 3, speed: 3, eye: 3 },
+        }),
+      )
+      const onFirst = { first: runner, second: null, third: null }
+      await t.run((ctx) => ctx.db.patch(gameId, { bases: onFirst }))
+
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 1 })
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 273 })
+
+      const [ab] = await atBatRows(t, gameId)
+      expect(ab.outcome).toBe('GB') // the persisted band is unchanged
+      expect(ab.groundBallResult).toBe('GO_RA')
+      expect(ab.outsAfter).toBe(1)
+      expect(ab.basesAfter).toEqual({ first: null, second: runner, third: null })
     })
   })
 })
