@@ -1,7 +1,16 @@
 import type { CellDiffs } from '../harness/types'
 import type { OutcomeBandKey } from '../outcomes'
+import type { Band } from '../rangeFinder/frontHalf'
 import { toAttributeDiff } from '../tables/accessor'
-import { applyOutcome, type BaseState, type OutcomeApplication, type RunnerId } from './advance'
+import {
+  advanceInfieldSingle,
+  applyOutcome,
+  type BaseState,
+  type OutcomeApplication,
+  type RunnerId,
+} from './advance'
+import { resolveFlyOut } from './advancement/deepFly'
+import { resolveExtraBase } from './advancement/extraBase'
 import { classify } from './classify'
 import { foldDifference } from './fold'
 import { resolveGroundBall } from './groundBall/resolve'
@@ -27,8 +36,8 @@ export interface PitcherAttributes {
  * Each on-base runner's 1–5 speed, looked up at the boundary (null where empty),
  * positionally aligned to `basesBefore`. The engine stays roster-free (ADR-0009):
  * the caller resolves ids → speed (a pitcher-as-runner defaults to 1, SAN-16) and
- * passes this block; the engine never holds a roster handle. Consumed only by the
- * GB sub-resolution's speed axis.
+ * passes this block; the engine never holds a roster handle. Consumed by the GB
+ * sub-resolution's speed axis (SAN-16) and the extra-base ranges (SAN-17).
  */
 export interface BaseSpeeds {
   first: number | null
@@ -45,7 +54,7 @@ export interface ResolveInput {
   outsBefore: number
   /** The batter's opaque id, seated on base when the outcome reaches base (SAN-44). */
   batter: RunnerId
-  /** On-base runner speeds for the GB sub-resolution speed axis (SAN-16). */
+  /** On-base runner speeds for the GB speed axis (SAN-16) and extra-base ranges (SAN-17). */
   runnerSpeeds: BaseSpeeds
 }
 
@@ -88,16 +97,59 @@ export function deriveDiffs(hitter: HitterAttributes, pitcher: PitcherAttributes
 }
 
 /**
+ * Apply a non-GB outcome's runner movement. The IF1B / FO / 1B / 2B bands route
+ * through the SAN-17 advancement sub-resolutions (forced/2-out infield single
+ * §3.3, deep-fly/sac-fly §3.2.6.1, extra-base §3.2); every other band applies the
+ * standard one-base advancement (ADR-0016). The matched `band` and folded
+ * `difference` size the deterministic width ranges; runner speeds and hitter power
+ * arrive as caller-supplied inputs (ADR-0009).
+ */
+function resolveAdvancement(
+  outcome: OutcomeBandKey,
+  difference: number,
+  band: Band,
+  input: ResolveInput,
+): OutcomeApplication {
+  const { basesBefore, outsBefore, batter, runnerSpeeds, hitter } = input
+  switch (outcome) {
+    case 'IF1B':
+      return advanceInfieldSingle(basesBefore, outsBefore, batter)
+    case 'FO':
+      return resolveFlyOut({
+        difference,
+        band,
+        bases: basesBefore,
+        outsBefore,
+        power: hitter.power,
+      })
+    case '1B':
+    case '2B':
+      return resolveExtraBase({
+        outcome,
+        difference,
+        band,
+        bases: basesBefore,
+        outsBefore,
+        batter,
+        speeds: runnerSpeeds,
+        power: hitter.power,
+      })
+    default:
+      return applyOutcome(outcome, basesBefore, outsBefore, batter)
+  }
+}
+
+/**
  * Fold, classify, and apply — the authoritative single-at-bat resolution shared
  * by the Convex server (the vault) and the read-only client preview (ADR-0009).
  */
 export function resolveAtBat(input: ResolveInput): ResolvedAtBat {
   const difference = foldDifference(input.pitch, input.swing)
-  const { outcome, gbBand } = classify(difference, deriveDiffs(input.hitter, input.pitcher))
+  const { outcome, band, gbBand } = classify(difference, deriveDiffs(input.hitter, input.pitcher))
 
   // The GB band sub-resolves into a fielder's-choice / double-play / etc. family
-  // (SAN-16, the seam applyOutcome leaves deferred); every other band applies the
-  // standard one-base advancement directly.
+  // (SAN-16, the seam applyOutcome leaves deferred); every other band routes
+  // through resolveAdvancement.
   if (outcome === 'GB') {
     const speedDiff = groundBallSpeedDiff(
       input.hitter.speed,
@@ -123,6 +175,6 @@ export function resolveAtBat(input: ResolveInput): ResolvedAtBat {
     }
   }
 
-  const application = applyOutcome(outcome, input.basesBefore, input.outsBefore, input.batter)
+  const application = resolveAdvancement(outcome, difference, band, input)
   return { difference, outcome, groundBallResult: null, ...application }
 }
