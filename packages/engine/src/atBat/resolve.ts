@@ -101,7 +101,7 @@ export function deriveDiffs(hitter: HitterAttributes, pitcher: PitcherAttributes
 /**
  * Apply a non-GB outcome's runner movement. The IF1B / FO / 1B / 2B bands route
  * through the SAN-17 advancement sub-resolutions (forced/2-out infield single
- * §3.3, deep-fly/sac-fly §3.2.6.1, extra-base §3.2); every other band applies its
+ * §3.3, deep-fly/sac-fly §2.6.1, extra-base §2.6.15); every other band applies its
  * primitive per-band advancement via `applyOutcome` (ADR-0016). The matched `band`
  * and folded `difference` size the deterministic width ranges; runner speeds and
  * hitter power arrive as caller-supplied inputs (ADR-0009).

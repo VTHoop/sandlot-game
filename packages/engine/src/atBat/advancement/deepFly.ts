@@ -1,6 +1,7 @@
 import type { Band } from '../../rangeFinder/frontHalf'
 import type { BaseState, OutcomeApplication, RunnerId } from '../advance'
 import type { BaseSpeeds } from '../resolve'
+import { clamp } from './utils'
 
 /**
  * Fly-out runner advancement (SAN-17, Rules §2.6 + §2.6.1/§2.6.16). The batter is
@@ -32,19 +33,19 @@ export interface DeepFlyAccessors {
   deepFlyFraction(secondRunnerSpeed: number, power: number): number
 }
 
-const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n))
 const clampAttr = (a: number): number => clamp(Math.round(a), ATTR_MIN, ATTR_MAX)
 
-/** Exported so the gitignored parity lane can validate the live widths. */
-export const liveDeepFlyAccessors: DeepFlyAccessors = {
-  deepFlyFraction: (secondRunnerSpeed, power) =>
+/** Exported so the gitignored parity lane can validate the live widths;
+ * `satisfies` enforces the contract while keeping the narrow return type. */
+export const liveDeepFlyAccessors = {
+  deepFlyFraction: (secondRunnerSpeed: number, power: number) =>
     clamp(
       DEEP_FLY_SPEED_TERM[clampAttr(secondRunnerSpeed) - 1] +
         DEEP_FLY_POWER_TERM[clampAttr(power) - 1],
       0,
       1,
     ),
-}
+} satisfies DeepFlyAccessors
 
 export interface FlyOutInput {
   /** The folded 0–499 difference; must lie inside `band`. */
