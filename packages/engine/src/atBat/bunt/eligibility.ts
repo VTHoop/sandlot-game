@@ -9,26 +9,25 @@ export interface BuntEligibility {
   topTail: BuntResult.TP | BuntResult.DP | BuntResult.DUD
 }
 
-/**
- * Structural bunt eligibility (Rules §3.4 + the workbook Bunts tab):
- * - the sacrifice advances the **lead** runner — on 3rd → Sac Home, else on 2nd →
- *   Sac 3rd, else on 1st → Sac 2nd; bases empty → no sacrifice;
- * - the top tail is a triple play when a force is available at every base in play
- *   (runners on 1st **and** 2nd) with 0 outs; otherwise a double play when a force
- *   exists (a runner on 1st) with < 2 outs; otherwise a dud.
- */
+/** The sacrifice that advances the lead runner — on 3rd → Sac Home, else on 2nd →
+ * Sac 3rd, else on 1st → Sac 2nd; bases empty → no sacrifice. */
+function leadSacrifice(bases: BaseState): BuntEligibility['sac'] {
+  if (bases.third) return BuntResult.SAC_HOME
+  if (bases.second) return BuntResult.SAC_3RD
+  if (bases.first) return BuntResult.SAC_2ND
+  return null
+}
+
+/** The 498–500 top tail: a triple play with a force at every base in play (1st &
+ * 2nd) and 0 outs; else a double play with a force (a runner on 1st) and < 2 outs;
+ * else a dud. */
+function topTailResult(bases: BaseState, outs: number): BuntEligibility['topTail'] {
+  if (bases.first !== null && bases.second !== null && outs === 0) return BuntResult.TP
+  if (bases.first !== null && outs < 2) return BuntResult.DP
+  return BuntResult.DUD
+}
+
+/** Structural bunt eligibility (Rules §3.4 + the workbook Bunts tab). */
 export function buntEligibility(bases: BaseState, outs: number): BuntEligibility {
-  const sac = bases.third
-    ? BuntResult.SAC_HOME
-    : bases.second
-      ? BuntResult.SAC_3RD
-      : bases.first
-        ? BuntResult.SAC_2ND
-        : null
-
-  const tripleEligible = bases.first !== null && bases.second !== null && outs === 0
-  const doubleEligible = bases.first !== null && outs < 2
-  const topTail = tripleEligible ? BuntResult.TP : doubleEligible ? BuntResult.DP : BuntResult.DUD
-
-  return { sac, topTail }
+  return { sac: leadSacrifice(bases), topTail: topTailResult(bases, outs) }
 }

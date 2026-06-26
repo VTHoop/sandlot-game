@@ -280,13 +280,27 @@ async function tryResolve(
  * opponent is already on file. Shared by both mutations; `role` fixes which team
  * must own the caller and which seat is being committed.
  */
-async function commit(
-  ctx: MutationCtx,
-  gameId: Id<'games'>,
-  number: number,
+/** The public swing declaration belongs only on a batting commitment — a pitching
+ * commit, or a normal swing, carries none. A helper so `commit` stays under the
+ * complexity gate. */
+function declaredSwingFields(
   role: CommittingRole,
   swingType?: SwingType,
-): Promise<Resolution> {
+): { swingType?: SwingType } {
+  return role === Participant.Batting && swingType ? { swingType } : {}
+}
+
+/** One side's commit details (bundled so `commit` stays within the argument gate). */
+interface CommitArgs {
+  gameId: Id<'games'>
+  number: number
+  role: CommittingRole
+  /** Present only for a batting bunt declaration (SAN-17). */
+  swingType?: SwingType
+}
+
+async function commit(ctx: MutationCtx, args: CommitArgs): Promise<Resolution> {
+  const { gameId, number, role, swingType } = args
   const game = await requireLiveGame(ctx, gameId)
   const user = await authedUser(ctx)
   const { battingTeam, pitchingTeam } = teamsForHalf(game)
@@ -307,8 +321,7 @@ async function commit(
     role,
     player,
     number,
-    // Only a batting commitment carries a declaration; a normal swing omits it.
-    ...(swingType && role === Participant.Batting ? { swingType } : {}),
+    ...declaredSwingFields(role, swingType),
     createdAt: Date.now(),
   })
 
@@ -317,7 +330,8 @@ async function commit(
 
 export const commitPitch = mutation({
   args: { game: v.id('games'), number: v.float64() },
-  handler: (ctx, args) => commit(ctx, args.game, args.number, Participant.Pitching),
+  handler: (ctx, args) =>
+    commit(ctx, { gameId: args.game, number: args.number, role: Participant.Pitching }),
 })
 
 export const commitSwing = mutation({
@@ -326,13 +340,12 @@ export const commitSwing = mutation({
   // ./validators), so the relabel to `SwingType` is sound.
   args: { game: v.id('games'), number: v.float64(), swingType: v.optional(swingTypeValidator) },
   handler: (ctx, args) =>
-    commit(
-      ctx,
-      args.game,
-      args.number,
-      Participant.Batting,
-      args.swingType as SwingType | undefined,
-    ),
+    commit(ctx, {
+      gameId: args.game,
+      number: args.number,
+      role: Participant.Batting,
+      swingType: args.swingType as SwingType | undefined,
+    }),
 })
 
 // ─── Reveal query ───────────────────────────────────────────────────────────
