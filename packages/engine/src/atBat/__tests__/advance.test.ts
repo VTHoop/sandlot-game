@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { OUTCOME_BAND_KEYS } from '../../outcomes'
-import { applyOutcome, type BaseState } from '../advance'
+import { advanceInfieldSingle, applyOutcome, type BaseState } from '../advance'
 
 // Runner-aware bases (SAN-44): each base holds the id of the runner standing on
 // it, or null. Distinct ids per base let us assert *which* runner moved where,
@@ -205,5 +205,104 @@ describe('runner identity is preserved and individually reachable', () => {
     expect(onBase).toEqual(['batter-X', 'r-first']) // batter on first, prior runner on second
     expect(new Set(onBase).size).toBe(onBase.length) // no id on two bases at once
     expect(basesAfter.first).toBe('batter-X')
+  })
+})
+
+/**
+ * Infield single advancement (SAN-17, Rules §3.3). An IF1B is a *hit* — the batter
+ * is safe at first and no out is recorded (outsAfter === outsBefore). Runner
+ * movement is structural, not difference-driven:
+ *   - with < 2 outs only **forced** runners advance one base (identical to a walk's
+ *     push: a runner moves only when every base between it and home is occupied);
+ *   - with 2 outs **every** runner advances exactly one base (two-out running), but
+ *     never an extra (two-base) advance.
+ */
+describe('advanceInfieldSingle — IF1B forced/2-out advancement (§3.3)', () => {
+  const SECOND_ONLY: BaseState = { first: null, second: 'r-second', third: null }
+  const THIRD_ONLY: BaseState = { first: null, second: null, third: 'r-third' }
+  const FIRST_AND_THIRD: BaseState = { first: 'r-first', second: null, third: 'r-third' }
+
+  it('seats the batter on first and records no out (it is a hit)', () => {
+    expect(advanceInfieldSingle(EMPTY, 0, BATTER)).toEqual({
+      runsScored: 0,
+      rbi: 0,
+      basesAfter: { first: BATTER, second: null, third: null },
+      outsAfter: 0,
+    })
+    // the batter is safe even with two already out — the inning continues
+    expect(advanceInfieldSingle(EMPTY, 2, BATTER).outsAfter).toBe(2)
+  })
+
+  describe('fewer than 2 outs: only forced runners advance', () => {
+    it('forces the runner on first to second', () => {
+      expect(advanceInfieldSingle(FIRST_ONLY, 0, BATTER).basesAfter).toEqual({
+        first: BATTER,
+        second: 'r-first',
+        third: null,
+      })
+    })
+
+    it('holds an unforced runner on second', () => {
+      expect(advanceInfieldSingle(SECOND_ONLY, 1, BATTER).basesAfter).toEqual({
+        first: BATTER,
+        second: 'r-second',
+        third: null,
+      })
+    })
+
+    it('holds an unforced runner on third (no run)', () => {
+      expect(advanceInfieldSingle(THIRD_ONLY, 0, BATTER)).toEqual({
+        runsScored: 0,
+        rbi: 0,
+        basesAfter: { first: BATTER, second: null, third: 'r-third' },
+        outsAfter: 0,
+      })
+    })
+
+    it('forces first→second but holds the unforced runner on third', () => {
+      expect(advanceInfieldSingle(FIRST_AND_THIRD, 0, BATTER).basesAfter).toEqual({
+        first: BATTER,
+        second: 'r-first',
+        third: 'r-third',
+      })
+    })
+
+    it('loaded bases force a run home', () => {
+      expect(advanceInfieldSingle(LOADED, 1, BATTER)).toEqual({
+        runsScored: 1,
+        rbi: 1,
+        basesAfter: { first: BATTER, second: 'r-first', third: 'r-second' },
+        outsAfter: 1,
+      })
+    })
+  })
+
+  describe('2 outs: every runner advances one base, never an extra base', () => {
+    it('advances an unforced runner on second to third (not home)', () => {
+      expect(advanceInfieldSingle(SECOND_ONLY, 2, BATTER)).toEqual({
+        runsScored: 0,
+        rbi: 0,
+        basesAfter: { first: BATTER, second: null, third: 'r-second' },
+        outsAfter: 2,
+      })
+    })
+
+    it('scores an unforced runner from third', () => {
+      expect(advanceInfieldSingle(THIRD_ONLY, 2, BATTER)).toEqual({
+        runsScored: 1,
+        rbi: 1,
+        basesAfter: { first: BATTER, second: null, third: null },
+        outsAfter: 2,
+      })
+    })
+
+    it('advances every runner one base with the bases loaded', () => {
+      expect(advanceInfieldSingle(LOADED, 2, BATTER)).toEqual({
+        runsScored: 1,
+        rbi: 1,
+        basesAfter: { first: BATTER, second: 'r-first', third: 'r-second' },
+        outsAfter: 2,
+      })
+    })
   })
 })

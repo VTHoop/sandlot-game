@@ -123,3 +123,17 @@ export function applyOutcome(
   const { runsScored, basesAfter, outsDelta } = advance(basesBefore, batter)
   return { runsScored, rbi: runsScored, basesAfter, outsAfter: outsBefore + outsDelta }
 }
+
+/**
+ * Infield-single advancement (SAN-17, Rules §3.3). An IF1B is a hit — the batter is
+ * safe at first and no out is recorded — so unlike `applyOutcome('IF1B', …)` (which
+ * keeps the plain one-base `single` as its primitive) this is the authoritative
+ * resolution `resolveAtBat` routes the band through. (SAN-17 RED checkpoint stub.)
+ */
+export function advanceInfieldSingle(
+  _bases: BaseState,
+  _outs: number,
+  _batter: RunnerId,
+): OutcomeApplication {
+  throw new Error('advanceInfieldSingle not implemented (SAN-17 RED)')
+}
