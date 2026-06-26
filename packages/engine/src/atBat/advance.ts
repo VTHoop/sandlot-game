@@ -59,7 +59,9 @@ const double: AdvanceFn = (b, batter) => ({
   outsDelta: 0,
 })
 
-// 1B and IF1B: every runner advances exactly one base, batter to first.
+// 1B and IF1B: every runner advances exactly one base, batter to first. This is
+// the primitive/fallback; resolveAtBat sub-resolves 1B (extra base) and IF1B
+// (forced/2-out, via advanceInfieldSingle) upstream (SAN-17).
 const single: AdvanceFn = (b, batter) => ({
   runsScored: b.third ? 1 : 0,
   basesAfter: { first: batter, second: b.first, third: b.second },
@@ -84,9 +86,9 @@ const walk: AdvanceFn = (b, batter) => {
   }
 }
 
-// FO/PO/GB/K: one out, no runner movement. GB reaches here only as the plain-out
-// fallback — resolveAtBat sub-resolves the GB band upstream (SAN-16). Tag-ups
-// (sac flies) remain deferred.
+// FO/PO/GB/K: one out, no runner movement. GB (SAN-16) and FO (SAN-17) reach here
+// only as the plain-out fallback — resolveAtBat sub-resolves those bands upstream
+// (the GB family; deep-fly/sac-fly tag-ups). PO/K never move runners.
 const fieldOut: AdvanceFn = (b) => ({ runsScored: 0, basesAfter: { ...b }, outsDelta: 1 })
 
 const ADVANCERS = new Map<OutcomeBandKey, AdvanceFn>([
