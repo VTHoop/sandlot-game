@@ -7,6 +7,7 @@ import {
   isDuelNumber,
   type PitcherAttributes,
   resolveAtBat,
+  SwingType,
 } from '@sandlot/engine/atBat'
 import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { v } from 'convex/values'
@@ -14,6 +15,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { type MutationCtx, mutation, query } from './_generated/server'
 import { applyResolvedAtBat } from './game'
 import { assertOwns, authedUser, type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
+import { swingType as swingTypeValidator } from './validators'
 
 /**
  * The authoritative secret at-bat round-trip (SAN-20). The server is the vault
@@ -130,8 +132,25 @@ function assertDuelNumber(n: number): void {
   }
 }
 
-function asHitter(attributes: Doc<'players'>['attributes']): HitterAttributes {
+/** Contact a bunting pitcher is granted by the §3.4.3 "bunt bonus". */
+const PITCHER_BUNT_CONTACT = 4
+
+/**
+ * The hitter block the engine sees for this swing. A normal hitter uses their own
+ * block. The "bunt bonus" (Rules §3.4.3) is a boundary INPUT adjustment, not engine
+ * logic (the engine stays roster-free, ADR-0009): a pitcher carries no hitter
+ * block, so when one bunts we synthesize a hitter with contact raised to 4 and the
+ * floor (1) elsewhere. A pitcher swinging normally is still unsupported (out of
+ * SAN-17 scope) — the bonus is the only pitcher-as-batter path wired here.
+ */
+function hitterForSwing(
+  attributes: Doc<'players'>['attributes'],
+  swingType: SwingType,
+): HitterAttributes {
   if ('power' in attributes) return attributes
+  if (swingType === SwingType.Bunt) {
+    return { power: 1, contact: PITCHER_BUNT_CONTACT, speed: 1, eye: 1 }
+  }
   throw new Error('Current batter does not carry a hitter attribute block')
 }
 
@@ -196,15 +215,20 @@ async function tryResolve(
   const pitcher = await ctx.db.get(pitching.player)
   if (!batter || !pitcher) throw new Error('Matchup players not found')
 
+  // The batter's swing declaration is public (announced with the swing, §3.4), so
+  // it travels on the batting commitment; a missing field is a normal swing. The
+  // persisted literal equals the engine enum's value (guarded in ./validators).
+  const swingType = (batting.swingType ?? SwingType.Normal) as SwingType
   const resolved = resolveAtBat({
     pitch: pitching.number,
     swing: batting.number,
-    hitter: asHitter(batter.attributes),
+    hitter: hitterForSwing(batter.attributes, swingType), // applies the §3.4.3 bunt bonus
     pitcher: asPitcher(pitcher.attributes),
     basesBefore: game.bases,
     outsBefore: game.outs,
     batter: batter._id, // seated on base when the outcome reaches base (SAN-44)
     runnerSpeeds: await runnerSpeedsFor(ctx, game.bases), // GB speed axis (SAN-16)
+    swingType,
   })
 
   const atBatId = await ctx.db.insert('atBats', {
@@ -222,6 +246,11 @@ async function tryResolve(
     // GB sub-result (SAN-16) or null for non-GB; the engine enum's string values
     // are exactly the persisted literals, so the relabel is sound (cf. basesAfter).
     groundBallResult: resolved.groundBallResult as Doc<'atBats'>['groundBallResult'],
+    // Bunt swing-mode (SAN-17): the declaration + the bunt sub-result (null for a
+    // normal swing). The engine enum's string values are exactly the persisted
+    // literals, so the relabel is sound (cf. groundBallResult).
+    swingType: swingType as Doc<'atBats'>['swingType'],
+    buntResult: resolved.buntResult as Doc<'atBats'>['buntResult'],
     runsScored: resolved.runsScored,
     rbi: resolved.rbi,
     // Engine bases hold opaque runner ids that all originate from this game's
@@ -255,6 +284,7 @@ async function commit(
   gameId: Id<'games'>,
   number: number,
   role: CommittingRole,
+  swingType?: SwingType,
 ): Promise<Resolution> {
   const game = await requireLiveGame(ctx, gameId)
   const user = await authedUser(ctx)
@@ -276,6 +306,8 @@ async function commit(
     role,
     player,
     number,
+    // Only a batting commitment carries a declaration; a normal swing omits it.
+    ...(swingType && role === Participant.Batting ? { swingType } : {}),
     createdAt: Date.now(),
   })
 
@@ -288,8 +320,18 @@ export const commitPitch = mutation({
 })
 
 export const commitSwing = mutation({
-  args: { game: v.id('games'), number: v.float64() },
-  handler: (ctx, args) => commit(ctx, args.game, args.number, Participant.Batting),
+  // `swingType` is the public bunt declaration (SAN-17); omitted ≡ a normal swing.
+  // The validator literal union equals the engine enum's string values (guarded in
+  // ./validators), so the relabel to `SwingType` is sound.
+  args: { game: v.id('games'), number: v.float64(), swingType: v.optional(swingTypeValidator) },
+  handler: (ctx, args) =>
+    commit(
+      ctx,
+      args.game,
+      args.number,
+      Participant.Batting,
+      args.swingType as SwingType | undefined,
+    ),
 })
 
 // ─── Reveal query ───────────────────────────────────────────────────────────

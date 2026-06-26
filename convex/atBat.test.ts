@@ -134,6 +134,56 @@ describe('secret at-bat round-trip', () => {
     expect(rows[0].createdAt).toBeTypeOf('number')
   })
 
+  describe('bunt swing-mode (SAN-17)', () => {
+    it('persists the declaration and the bunt sub-result, mapped onto a band', async () => {
+      const { t, gameId } = await setupGame()
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      await t
+        .withIdentity(BATTER)
+        .mutation(api.atBat.commitSwing, { game: gameId, number: 500, swingType: 'bunt' })
+
+      const rows = await atBatRows(t, gameId)
+      expect(rows[0]).toMatchObject({
+        swingType: 'bunt',
+        buntResult: 'BUTCHER_BOY', // a 0-difference bunt
+        outcome: '1B', // butcher boy maps onto 1B
+        groundBallResult: null,
+      })
+      // the public declaration also travels on the batting commitment
+      const commitments = await commitmentRows(t, gameId)
+      const batting = commitments.find((c) => c.role === 'batting')
+      expect(batting?.swingType).toBe('bunt')
+    })
+
+    it('applies the §3.4.3 bunt bonus so a pitcher can bunt (no hitter block)', async () => {
+      const { t, gameId } = await setupGame()
+      // Seat the pitcher (a pitcher attribute block, no hitter block) as the batter:
+      // a normal swing would throw, but the bunt bonus synthesizes a hitter input.
+      await t.run(async (ctx) => {
+        const game = await ctx.db.get(gameId)
+        if (game) await ctx.db.patch(gameId, { currentBatter: game.currentPitcher })
+      })
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      await t
+        .withIdentity(BATTER)
+        .mutation(api.atBat.commitSwing, { game: gameId, number: 500, swingType: 'bunt' })
+
+      const rows = await atBatRows(t, gameId)
+      expect(rows).toHaveLength(1) // resolved rather than throwing on the missing hitter block
+      expect(rows[0].buntResult).toBe('BUTCHER_BOY')
+    })
+
+    it('a normal swing persists a null bunt sub-result', async () => {
+      const { t, gameId } = await setupGame()
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
+
+      const rows = await atBatRows(t, gameId)
+      expect(rows[0].swingType).toBe('normal')
+      expect(rows[0].buntResult).toBeNull()
+    })
+  })
+
   describe('secrecy contract', () => {
     it('does not reveal the pitch to the batting-team owner before the swing locks', async () => {
       const { t, gameId } = await setupGame()

@@ -1,7 +1,7 @@
-import { type BaseState, GroundBallResult } from '@sandlot/engine/atBat'
+import { type BaseState, BuntResult, GroundBallResult, SwingType } from '@sandlot/engine/atBat'
 import { OUTCOME_BAND_KEYS } from '@sandlot/engine/outcomes'
 import { describe, expect, it } from 'vitest'
-import { baseState, groundBallResult, outcomeBand } from './validators'
+import { baseState, buntResult, groundBallResult, outcomeBand, swingType } from './validators'
 
 /**
  * Runtime single-source-of-truth backstop: the persisted `outcomeBand` enum must
@@ -27,6 +27,25 @@ describe('groundBallResult validator', () => {
   it('matches the engine GroundBallResult enum values', () => {
     const literals = groundBallResult.members.map((member) => member.value)
     expect(literals).toEqual(Object.values(GroundBallResult))
+  })
+})
+
+/**
+ * Runtime twins of the compile-time guards for the bunt swing-mode (SAN-17): the
+ * persisted `swingType` and `buntResult` literals must equal the engine enum
+ * values, so the boundary relabels in `atBat.ts` are sound.
+ */
+describe('swingType validator', () => {
+  it('matches the engine SwingType enum values', () => {
+    const literals = swingType.members.map((member) => member.value)
+    expect(literals).toEqual(Object.values(SwingType))
+  })
+})
+
+describe('buntResult validator', () => {
+  it('matches the engine BuntResult enum values', () => {
+    const literals = buntResult.members.map((member) => member.value)
+    expect(literals).toEqual(Object.values(BuntResult))
   })
 })
 

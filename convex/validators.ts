@@ -1,4 +1,4 @@
-import type { GroundBallResult } from '@sandlot/engine/atBat'
+import type { BuntResult, GroundBallResult, SwingType } from '@sandlot/engine/atBat'
 import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { type Infer, v } from 'convex/values'
 
@@ -63,6 +63,36 @@ const _groundBallMatchesEngine: AssertEqual<
   `${GroundBallResult}`
 > = true
 void _groundBallMatchesEngine
+
+/**
+ * The batter's swing declaration (SAN-17, ADR-0021). Persisted on each at-bat so a
+ * bunt is recorded as the declaration it was. Mirrors the engine's `SwingType`
+ * enum, locked by the guard below — the engine is the single source of truth.
+ */
+export const swingType = v.union(v.literal('normal'), v.literal('bunt'))
+
+const _swingTypeMatchesEngine: AssertEqual<Infer<typeof swingType>, `${SwingType}`> = true
+void _swingTypeMatchesEngine
+
+/**
+ * Bunt sub-result (SAN-17, ADR-0021). The persisted `outcomeBand` maps a bunt onto
+ * a representative band (1B/FO/GB); this finer taxonomy is recorded alongside it
+ * (nullable — null for every normal swing). Mirrors the engine's `BuntResult` enum,
+ * the same single-source-of-truth discipline as `groundBallResult`.
+ */
+export const buntResult = v.union(
+  v.literal('TP'),
+  v.literal('DP'),
+  v.literal('BUTCHER_BOY'),
+  v.literal('SAC_2ND'),
+  v.literal('SAC_3RD'),
+  v.literal('SAC_HOME'),
+  v.literal('BUNT_HIT'),
+  v.literal('DUD'),
+)
+
+const _buntResultMatchesEngine: AssertEqual<Infer<typeof buntResult>, `${BuntResult}`> = true
+void _buntResultMatchesEngine
 
 /** Roster role: drives which attribute block a player carries. */
 export const role = v.union(v.literal('hitter'), v.literal('pitcher'))

@@ -64,8 +64,9 @@ an append-only log + maintained rollups**, not full event sourcing:
   number before both lock" test is owned by the Secret at-bat round-trip ticket.
 - **`atBats` — append-only log.** Each row carries complete pre- and post-state
   (outs/bases before & after, both committed numbers, outcome, the nullable GB
-  `groundBallResult` sub-result, runs, RBI) so entries are never mutated. Ordered
-  within a game by `sequence` (`by_game`).
+  `groundBallResult` sub-result, the `swingType` declaration + nullable `buntResult`
+  sub-result (SAN-17), runs, RBI) so entries are never mutated. Ordered within a
+  game by `sequence` (`by_game`).
 - **Rollups:** `standings`, `playerStatLine` (engine `SlashLine` inputs),
   `boxScoreLine` — maintained aggregates kept in sync with the log by later
   tickets, never aggregated from raw events on the client.
@@ -95,6 +96,15 @@ string values for the equality check) and a runtime mirror test. It is recorded
 **nullable** on `atBats` (null for every non-GB outcome); the `outcomeBand` stays
 `GB`. The persisted band taxonomy is unchanged — this records *which* ground-ball
 play a `GB` resolved to.
+
+`swingType` and `buntResult` (SAN-17, ADR-0021) follow the same discipline. A bunt
+bypasses the RangeFinder, so its `outcomeBand` is a representative mapping
+(bunt-hit/butcher-boy → `1B`; a successful sacrifice → `FO`; dud/DP/TP → `GB`) and
+the real family is the nullable `buntResult` (null for a normal swing). The
+`swingType` declaration is public (announced with the swing), so it also travels on
+the batting `duelCommitments` row; the "bunt bonus" (a bunting pitcher's contact
+raised to 4) is a boundary input adjustment in `atBat.ts`, never engine logic
+(roster-free, ADR-0009).
 
 `baseState` is **runner-aware** (SAN-44, ADR-0018): each base references the
 player standing on it (`Id<'players'>`) or null, mirroring the engine's

@@ -3,6 +3,7 @@ import { v } from 'convex/values'
 import {
   attributes,
   baseState,
+  buntResult,
   duelRole,
   gameStatus,
   groundBallResult,
@@ -11,6 +12,7 @@ import {
   playerSource,
   position,
   role,
+  swingType,
 } from './validators'
 
 /**
@@ -117,6 +119,9 @@ export default defineSchema({
     role: duelRole,
     player: v.id('players'),
     number: v.float64(), // 1–999; range enforced by the commit mutation
+    // The batter's swing declaration (SAN-17). Public (announced with the swing,
+    // §3.4) and present only on a batting commitment — absent ≡ a normal swing.
+    swingType: v.optional(swingType),
     createdAt: v.float64(),
   }).index('by_game', ['game', 'sequence', 'role']),
 
@@ -139,6 +144,10 @@ export default defineSchema({
     // GB sub-result (SAN-16/ADR-0019): null for every non-GB outcome. The
     // `outcome` band stays GB; this records which ground-ball play it resolved to.
     groundBallResult: v.union(groundBallResult, v.null()),
+    // Bunt swing-mode (SAN-17/ADR-0021): the declaration, and the bunt sub-result
+    // (null for a normal swing). `outcome` carries the mapped band (1B/FO/GB).
+    swingType,
+    buntResult: v.union(buntResult, v.null()),
     runsScored: v.float64(),
     rbi: v.float64(),
     basesAfter: baseState,
