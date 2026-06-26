@@ -40,7 +40,8 @@ export interface PitcherAttributes {
  * positionally aligned to `basesBefore`. The engine stays roster-free (ADR-0009):
  * the caller resolves ids → speed (a pitcher-as-runner defaults to 1, SAN-16) and
  * passes this block; the engine never holds a roster handle. Consumed by the GB
- * sub-resolution's speed axis (SAN-16) and the extra-base ranges (SAN-17).
+ * sub-resolution's speed axis (SAN-16) and, in SAN-17, the extra-base ranges (the
+ * average on-base speed) and the deep-fly tag-up (the runner-on-2nd speed).
  */
 export interface BaseSpeeds {
   first: number | null
@@ -57,7 +58,8 @@ export interface ResolveInput {
   outsBefore: number
   /** The batter's opaque id, seated on base when the outcome reaches base (SAN-44). */
   batter: RunnerId
-  /** On-base runner speeds for the GB speed axis (SAN-16) and extra-base ranges (SAN-17). */
+  /** On-base runner speeds for the GB speed axis (SAN-16) and the SAN-17 extra-base
+   * ranges (1B/2B) and deep-fly tag-up (FO). */
   runnerSpeeds: BaseSpeeds
   /** The swing declaration; defaults to a normal swing when omitted (SAN-17). */
   swingType?: SwingType
@@ -125,10 +127,10 @@ export function deriveDiffs(hitter: HitterAttributes, pitcher: PitcherAttributes
 /**
  * Apply a non-GB outcome's runner movement. The IF1B / FO / 1B / 2B bands route
  * through the SAN-17 advancement sub-resolutions (forced/2-out infield single
- * §3.3, deep-fly/sac-fly §3.2.6.1, extra-base §3.2); every other band applies the
- * standard one-base advancement (ADR-0016). The matched `band` and folded
- * `difference` size the deterministic width ranges; runner speeds and hitter power
- * arrive as caller-supplied inputs (ADR-0009).
+ * §3.3, deep-fly/sac-fly §2.6.1, extra-base §2.6.15); every other band applies its
+ * primitive per-band advancement via `applyOutcome` (ADR-0016). The matched `band`
+ * and folded `difference` size the deterministic width ranges; runner speeds and
+ * hitter power arrive as caller-supplied inputs (ADR-0009).
  */
 function resolveAdvancement(
   outcome: OutcomeBandKey,

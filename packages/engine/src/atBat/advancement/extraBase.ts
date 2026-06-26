@@ -1,6 +1,7 @@
 import type { Band } from '../../rangeFinder/frontHalf'
 import type { BaseState, OutcomeApplication, RunnerId } from '../advance'
 import type { BaseSpeeds } from '../resolve'
+import { clamp } from './utils'
 
 /**
  * Extra-base advancement on a hit (SAN-17, Rules §2.6.15 + §2.3). A "well hit"
@@ -28,13 +29,14 @@ export interface ExtraBaseAccessors {
   wellHitFraction(averageSpeed: number): number
 }
 
-const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n))
 const clampSpeed = (s: number): number => clamp(Math.round(s), SPEED_MIN, SPEED_MAX)
 
-/** Exported so the gitignored parity lane can validate the live widths. */
-export const liveExtraBaseAccessors: ExtraBaseAccessors = {
-  wellHitFraction: (averageSpeed) => WELL_HIT_FRACTION_BY_SPEED[clampSpeed(averageSpeed) - 1],
-}
+/** Exported so the gitignored parity lane can validate the live widths;
+ * `satisfies` enforces the contract while keeping the narrow return type. */
+export const liveExtraBaseAccessors = {
+  wellHitFraction: (averageSpeed: number) =>
+    WELL_HIT_FRACTION_BY_SPEED[clampSpeed(averageSpeed) - 1],
+} satisfies ExtraBaseAccessors
 
 export interface ExtraBaseInput {
   /** The hit band — `1B` or `2B`. */

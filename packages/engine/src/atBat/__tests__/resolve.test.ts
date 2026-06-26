@@ -198,6 +198,20 @@ describe('resolveAtBat — SAN-17 advancement routing', () => {
     // batter still reaches first; the runner took the extra base to third
     expect(extraBase?.basesAfter).toEqual({ first: BATTER, second: null, third: 'on-first' })
   })
+
+  it('a double scores a fast runner all the way from first (the extra base)', () => {
+    // A runner on first always ends on third on a plain double; only the well-hit
+    // 2B sub-resolution scores them, so an empty third proves the `2B` dispatch.
+    const wellHit = sweepFor((r) => r.outcome === '2B' && r.basesAfter.third === null, {
+      basesBefore: { first: 'on-first', second: null, third: null },
+      runnerSpeeds: { first: 5, second: null, third: null },
+      outsBefore: 0,
+    })
+    expect(wellHit).toBeDefined()
+    // applyOutcome('2B') would hold the runner on third with no run
+    expect(wellHit?.runsScored).toBe(1)
+    expect(wellHit?.basesAfter).toEqual({ first: null, second: BATTER, third: null })
+  })
 })
 
 /**
