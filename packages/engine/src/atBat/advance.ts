@@ -131,9 +131,15 @@ export function applyOutcome(
  * resolution `resolveAtBat` routes the band through. (SAN-17 RED checkpoint stub.)
  */
 export function advanceInfieldSingle(
-  _bases: BaseState,
-  _outs: number,
-  _batter: RunnerId,
+  bases: BaseState,
+  outs: number,
+  batter: RunnerId,
 ): OutcomeApplication {
-  throw new Error('advanceInfieldSingle not implemented (SAN-17 RED)')
+  // <2 outs: only forced runners advance — exactly a walk's push (a runner moves
+  // only when every base between it and home is occupied). 2 outs: every runner
+  // advances one base (two-out running), never an extra base — exactly a single.
+  // Both leave the batter safe at first; an IF1B is a hit, so no out is recorded.
+  const advance = outs >= 2 ? single : walk
+  const { runsScored, basesAfter } = advance(bases, batter)
+  return { runsScored, rbi: runsScored, basesAfter, outsAfter: outs }
 }
