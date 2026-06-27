@@ -29,28 +29,20 @@ export interface RosterPlayer {
 export type Roster = ReadonlyMap<string, RosterPlayer>
 
 /** Build a hitter entry. `run` (base-running speed) defaults to the hitter's own
- * speed attribute, the common case. */
+ * speed attribute, the common case. Takes the attribute block as an object so the
+ * arg count stays small and the call sites read as the data they are. */
 function hitter(
   name: string,
-  power: number,
-  contact: number,
-  speed: number,
-  eye: number,
-  run: number = speed,
+  attributes: HitterAttributes,
+  run: number = attributes.speed,
 ): RosterPlayer {
-  return { name, attributes: { power, contact, speed, eye }, speed: run }
+  return { name, attributes, speed: run }
 }
 
 /** Build a pitcher entry. A pitcher-as-runner is always the slowest (1, SAN-16),
  * so its stored base-running speed is 1 — though the adapter forces 1 regardless. */
-function pitcher(
-  name: string,
-  velocity: number,
-  movement: number,
-  awareness: number,
-  command: number,
-): RosterPlayer {
-  return { name, attributes: { velocity, movement, awareness, command }, speed: 1 }
+function pitcher(name: string, attributes: PitcherAttributes): RosterPlayer {
+  return { name, attributes, speed: 1 }
 }
 
 /**
@@ -61,27 +53,27 @@ function pitcher(
  */
 export const ROSTER: Roster = new Map<string, RosterPlayer>([
   // ── Away ("you" — bats the top half) ──
-  ['away-1', hitter('R. VANCE', 3, 3, 3, 5)],
-  ['away-2', hitter('T. JULIEN', 4, 4, 3, 3)],
-  ['away-3', hitter('S. ORTIZ', 5, 3, 2, 3)],
-  ['away-4', hitter('D. MERCER', 5, 2, 1, 2)],
-  ['away-5', hitter('K. ABARA', 3, 4, 4, 4)],
-  ['away-6', hitter('L. FORD', 2, 3, 5, 3)],
-  ['away-7', hitter('N. HALE', 2, 4, 3, 3)],
-  ['away-8', hitter('C. REYES', 1, 3, 4, 2)],
-  ['away-9', hitter('B. KOZN', 1, 2, 3, 2)],
-  ['away-p', pitcher('G. PIKE', 4, 3, 3, 3)],
+  ['away-1', hitter('R. VANCE', { power: 3, contact: 3, speed: 3, eye: 5 })],
+  ['away-2', hitter('T. JULIEN', { power: 4, contact: 4, speed: 3, eye: 3 })],
+  ['away-3', hitter('S. ORTIZ', { power: 5, contact: 3, speed: 2, eye: 3 })],
+  ['away-4', hitter('D. MERCER', { power: 5, contact: 2, speed: 1, eye: 2 })],
+  ['away-5', hitter('K. ABARA', { power: 3, contact: 4, speed: 4, eye: 4 })],
+  ['away-6', hitter('L. FORD', { power: 2, contact: 3, speed: 5, eye: 3 })],
+  ['away-7', hitter('N. HALE', { power: 2, contact: 4, speed: 3, eye: 3 })],
+  ['away-8', hitter('C. REYES', { power: 1, contact: 3, speed: 4, eye: 2 })],
+  ['away-9', hitter('B. KOZN', { power: 1, contact: 2, speed: 3, eye: 2 })],
+  ['away-p', pitcher('G. PIKE', { velocity: 4, movement: 3, awareness: 3, command: 3 })],
   // ── Home (the opponent — takes the mound) ──
-  ['home-1', hitter('J. WHITLOCK', 3, 4, 3, 3)],
-  ['home-2', hitter('Q. BAKER', 4, 3, 2, 3)],
-  ['home-3', hitter('C. DIAZ', 4, 3, 2, 3)],
-  ['home-4', hitter('M. SLOANE', 5, 2, 2, 2)],
-  ['home-5', hitter('A. PARKER', 3, 3, 3, 4)],
-  ['home-6', hitter('F. NGUYEN', 2, 4, 4, 3)],
-  ['home-7', hitter('W. DRAKE', 2, 3, 3, 3)],
-  ['home-8', hitter('E. SOTO', 1, 3, 4, 2)],
-  ['home-9', hitter('P. ELLIS', 1, 2, 3, 2)],
-  ['home-p', pitcher('H. MARSH', 3, 3, 3, 1)],
+  ['home-1', hitter('J. WHITLOCK', { power: 3, contact: 4, speed: 3, eye: 3 })],
+  ['home-2', hitter('Q. BAKER', { power: 4, contact: 3, speed: 2, eye: 3 })],
+  ['home-3', hitter('C. DIAZ', { power: 4, contact: 3, speed: 2, eye: 3 })],
+  ['home-4', hitter('M. SLOANE', { power: 5, contact: 2, speed: 2, eye: 2 })],
+  ['home-5', hitter('A. PARKER', { power: 3, contact: 3, speed: 3, eye: 4 })],
+  ['home-6', hitter('F. NGUYEN', { power: 2, contact: 4, speed: 4, eye: 3 })],
+  ['home-7', hitter('W. DRAKE', { power: 2, contact: 3, speed: 3, eye: 3 })],
+  ['home-8', hitter('E. SOTO', { power: 1, contact: 3, speed: 4, eye: 2 })],
+  ['home-9', hitter('P. ELLIS', { power: 1, contact: 2, speed: 3, eye: 2 })],
+  ['home-p', pitcher('H. MARSH', { velocity: 3, movement: 3, awareness: 3, command: 1 })],
 ])
 
 /** Away lineup: nine hitters in order, plus the designated pitcher. */

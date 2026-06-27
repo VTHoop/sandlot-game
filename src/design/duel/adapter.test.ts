@@ -1,8 +1,8 @@
-import type { BaseState } from '@sandlot/engine/atBat'
+import type { BaseState, HitterAttributes } from '@sandlot/engine/atBat'
 import { GameStatus, Half, type LiveGameState } from '@sandlot/engine/game'
 import { OUTCOME_BAND_KEYS, type OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { describe, expect, it } from 'vitest'
-import { OUTCOME_LADDER } from '../../components/ui/OutcomeLadder'
+import { OUTCOME_LADDER, type OutcomeKey } from '../../components/ui/OutcomeLadder'
 import {
   accumulateHits,
   assembleRunnerSpeeds,
@@ -20,15 +20,9 @@ const HIT_AT_BAT = { pitch: 500, swing: 465 } as const // diff 35 → 1B
 const WALK_AT_BAT = { pitch: 500, swing: 389 } as const // diff 111 → BB
 const OUT_AT_BAT = { pitch: 500, swing: 113 } as const // diff 387 → K
 
-const hit = (
-  power: number,
-  contact: number,
-  speed: number,
-  eye: number,
-  run = speed,
-): RosterPlayer => ({
+const hit = (attributes: HitterAttributes, run = attributes.speed): RosterPlayer => ({
   name: 'H',
-  attributes: { power, contact, speed, eye },
+  attributes,
   speed: run,
 })
 const arm = (run: number): RosterPlayer => ({
@@ -57,8 +51,8 @@ function liveState(overrides: Partial<LiveGameState> = {}): LiveGameState {
 
 describe('assembleRunnerSpeeds', () => {
   const roster: Roster = new Map<string, RosterPlayer>([
-    ['fast', hit(2, 2, 5, 2)],
-    ['slow', hit(2, 2, 2, 2)],
+    ['fast', hit({ power: 2, contact: 2, speed: 5, eye: 2 })],
+    ['slow', hit({ power: 2, contact: 2, speed: 2, eye: 2 })],
     ['pitcher', arm(5)], // stored speed 5, but a pitcher-as-runner is forced to 1
   ])
 
@@ -97,70 +91,62 @@ describe('OutcomeBandKey → OutcomeKey mapping', () => {
 })
 
 describe('deriveScoreline', () => {
-  it('a single: where the batter stands', () => {
-    expect(
-      deriveScoreline({
-        outcome: '1B',
-        basesAfter: { first: 'b', second: null, third: null },
-        runsScored: 0,
-        batter: 'b',
-      }),
-    ).toBe('you stand on 1st')
-  })
+  // One uniform shape (outcome + post-state bases + runs → line), so the cases are
+  // a table rather than near-identical test functions. The batter id is always
+  // 'b'; `basesAfter` is what reaches base after the play.
+  const cases: Array<{
+    name: string
+    outcome: OutcomeKey
+    basesAfter: BaseState
+    runsScored: number
+    expected: string
+  }> = [
+    {
+      name: 'a single: where the batter stands',
+      outcome: '1B',
+      basesAfter: { first: 'b', second: null, third: null },
+      runsScored: 0,
+      expected: 'you stand on 1st',
+    },
+    {
+      name: 'a run-scoring double: runs and landing base',
+      outcome: '2B',
+      basesAfter: { first: null, second: 'b', third: null },
+      runsScored: 1,
+      expected: '1 run scores · you stand on 2nd',
+    },
+    {
+      name: 'a run-scoring triple: the batter ends up on third',
+      outcome: '3B',
+      basesAfter: { first: null, second: null, third: 'b' },
+      runsScored: 2,
+      expected: '2 runs score · you stand on 3rd',
+    },
+    {
+      name: 'a grand slam: pluralized runs, batter cleared the bases',
+      outcome: 'HR',
+      basesAfter: { first: null, second: null, third: null },
+      runsScored: 4,
+      expected: '4 runs score · you go yard',
+    },
+    {
+      name: 'a bases-loaded walk: a forced run plus reaching first',
+      outcome: 'BB',
+      basesAfter: { first: 'b', second: 'x', third: 'y' },
+      runsScored: 1,
+      expected: '1 run scores · you reach 1st',
+    },
+    {
+      name: 'a strikeout: the out phrasing, no runs',
+      outcome: 'K',
+      basesAfter: { first: null, second: null, third: null },
+      runsScored: 0,
+      expected: 'you strike out',
+    },
+  ]
 
-  it('a run-scoring double: runs and landing base', () => {
-    expect(
-      deriveScoreline({
-        outcome: '2B',
-        basesAfter: { first: null, second: 'b', third: null },
-        runsScored: 1,
-        batter: 'b',
-      }),
-    ).toBe('1 run scores · you stand on 2nd')
-  })
-
-  it('a run-scoring triple: the batter ends up on third', () => {
-    expect(
-      deriveScoreline({
-        outcome: '3B',
-        basesAfter: { first: null, second: null, third: 'b' },
-        runsScored: 2,
-        batter: 'b',
-      }),
-    ).toBe('2 runs score · you stand on 3rd')
-  })
-
-  it('a grand slam: pluralized runs, batter cleared the bases', () => {
-    expect(
-      deriveScoreline({
-        outcome: 'HR',
-        basesAfter: { first: null, second: null, third: null },
-        runsScored: 4,
-        batter: 'b',
-      }),
-    ).toBe('4 runs score · you go yard')
-  })
-
-  it('a bases-loaded walk: a forced run plus reaching first', () => {
-    expect(
-      deriveScoreline({
-        outcome: 'BB',
-        basesAfter: { first: 'b', second: 'x', third: 'y' },
-        runsScored: 1,
-        batter: 'b',
-      }),
-    ).toBe('1 run scores · you reach 1st')
-  })
-
-  it('a strikeout: the out phrasing, no runs', () => {
-    expect(
-      deriveScoreline({
-        outcome: 'K',
-        basesAfter: { first: null, second: null, third: null },
-        runsScored: 0,
-        batter: 'b',
-      }),
-    ).toBe('you strike out')
+  it.each(cases)('$name', ({ outcome, basesAfter, runsScored, expected }) => {
+    expect(deriveScoreline({ outcome, basesAfter, runsScored, batter: 'b' })).toBe(expected)
   })
 })
 
@@ -309,11 +295,11 @@ describe('resolveDuelAtBat', () => {
 
 describe('createDuelAdapter', () => {
   // Two identical leadoff-grade batters so the same probed numbers yield a hit twice.
-  const leadoff = (): RosterPlayer => hit(3, 3, 3, 5)
+  const leadoff = (): RosterPlayer => hit({ power: 3, contact: 3, speed: 3, eye: 5 })
   const roster: Roster = new Map<string, RosterPlayer>([
     ['h1', leadoff()],
     ['h2', leadoff()],
-    ['o1', hit(2, 2, 2, 2)],
+    ['o1', hit({ power: 2, contact: 2, speed: 2, eye: 2 })],
     ['P', arm(1)],
   ])
   const context = {
