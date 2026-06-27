@@ -25,9 +25,24 @@ import { isHit } from './scenario'
  * The pure, headless duel adapter (SAN-45): the boundary that bridges the
  * roster-free engine to the UI's data shapes. No React, no I/O — the same
  * resolve → apply → reveal logic the future Convex client reuses.
+ *
+ * PERSPECTIVE — read before touching the reveal. The `RevealScenario` is a
+ * view-model: its `you` / `them` / `opponent` / `scoreBefore` are all relative to
+ * "the side this reveal is rendered FOR". In SAN-45's scope that side is fixed to
+ * the **batter** (a single half-inning reveal — the at-bat is the batter's
+ * moment), so `you` = the batting team throughout this module. This is NOT a
+ * permanent law: when two-sided async multiplayer lands, the logged-in user owns a
+ * team across BOTH halves and "you" becomes *their* side — which is the pitching
+ * team during the opponent's at-bat. The generalization is local to this adapter:
+ * add a `viewer` input and key the three perspective-bearing spots (`you`/`them`,
+ * `scoreBefore`, `opponent`) off it instead of off the batting side. The engine
+ * stays perspective-free and the `RevealScenario` shape does not change. Do not
+ * let downstream UI assume `you === batter` on its own — decide it only here.
  */
 
-/** Running team hit totals (batting team = "you"; the fielding team = "opp"). */
+/** Running hit totals from the reveal's perspective: `you` = the side the reveal
+ * is rendered for (the batter, in SAN-45 — see the module header), `opp` = the
+ * other side. */
 export interface HitTotals {
   you: number
   opp: number
@@ -186,11 +201,13 @@ function halfLabel(half: Half): 'TOP' | 'BOTTOM' {
 }
 
 /**
- * Score-before from the batting team's perspective ("you" = whoever is at bat).
- * The away team bats the top half and the home team the bottom (SAN-21), so the
- * mapping follows `state.half`. Perspective is *fixed* per half-inning — it never
- * flips mid-stream (SAN-45) — but "you" is the batting side either way, so a
- * bottom-half reveal credits the home score, not the away score.
+ * Score-before from the reveal's perspective. In SAN-45's scope the reveal is
+ * rendered for the batter, so "you" = the batting team: the away team bats the top
+ * half and the home team the bottom (SAN-21), and the mapping follows `state.half`
+ * — a bottom-half reveal credits the home score, not the away score. This is one
+ * of the three perspective-bearing spots the module header calls out: when a
+ * `viewer` input lands, key "you"/"opp" off the viewer's team here instead of off
+ * the batting side.
  */
 function scoreBefore(state: LiveGameState): { you: number; opp: number } {
   return state.half === Half.Top
@@ -221,6 +238,9 @@ function buildReveal(params: {
   const { pitch, swing, state, resolved, applied, batter, opponent, hitsBefore } = params
   const outcome = toOutcomeKey(resolved.outcome)
   return {
+    // `you`/`them` are perspective-bearing: the batter's own swing vs. the pitch
+    // they faced (SAN-45 renders for the batter). A `viewer` input would flip these
+    // for the pitching side — see the module header.
     you: swing,
     them: pitch,
     opponent,
@@ -247,6 +267,10 @@ function buildReveal(params: {
  * attributes up in the roster, assembles runner speeds, and resolves — the same
  * boundary the Convex vault runs server-side. `hitsBefore` is the running hit
  * total as of before this at-bat (surfaced as `RevealScenario.hitsBefore`).
+ *
+ * The reveal is built FOR THE BATTER (SAN-45 perspective scope — see the module
+ * header): `opponent` is the pitcher faced, the third perspective-bearing spot a
+ * future `viewer` input would generalize.
  */
 export function resolveDuelAtBat(
   pitch: number,

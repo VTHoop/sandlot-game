@@ -164,8 +164,18 @@ the adapter fills exactly that gap:
 - **`resolveDuelAtBat(pitch, swing, state, roster, hitsBefore?)`** — reads the
   seated batter/pitcher from the live state, resolves through the authoritative
   engine, and returns both an `AppliedAtBat` (for `advance`) and a
-  `RevealScenario` (for the reveal). Perspective is fixed to the batting team as
-  "you" — a single half-inning, no top/bottom flipping.
+  `RevealScenario` (for the reveal).
+- **Perspective (scope, not law).** `RevealScenario` is a view-model: `you` /
+  `them` / `opponent` / `scoreBefore` are relative to *the side the reveal is
+  rendered for*. SAN-45 fixes that side to the **batter** (a single half-inning —
+  the at-bat is the batter's moment), so `you` = the batting team. This is **not**
+  permanent: when two-sided async multiplayer lands, the logged-in user owns a team
+  across both halves and "you" becomes *their* side (the pitching team during the
+  opponent's at-bat). The generalization is local to the adapter — add a `viewer`
+  input and key the three perspective-bearing spots (`you`/`them`, `scoreBefore`,
+  `opponent`) off it instead of off the batting side; the engine stays
+  perspective-free and the `RevealScenario` shape is unchanged. Downstream UI must
+  not assume `you === batter` on its own.
 - **Hit count + scoreline (the engine provides neither).** `accumulateHits`
   credits the batting team on a hit; `deriveScoreline` composes the reveal's line
   from the resolved outcome and base movement (runs in + where the batter landed).
