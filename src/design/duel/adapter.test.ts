@@ -346,4 +346,19 @@ describe('createDuelAdapter', () => {
     const bottom = adapter.playAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing)
     expect(bottom.reveal.hitsBefore).toEqual({ you: 0, opp: 1 })
   })
+
+  it('hands back defensive copies that cannot corrupt internal state', () => {
+    const adapter = createDuelAdapter(roster, context)
+
+    const snapState = adapter.state()
+    snapState.outs = 2
+    snapState.bases.first = 'tamper'
+    const snapHits = adapter.hits()
+    snapHits.you = 99
+
+    // The adapter's own state is untouched by the mutated snapshots.
+    expect(adapter.state().outs).toBe(0)
+    expect(adapter.state().bases.first).toBeNull()
+    expect(adapter.hits()).toEqual({ you: 0, opp: 0 })
+  })
 })

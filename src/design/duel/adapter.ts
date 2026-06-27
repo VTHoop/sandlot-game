@@ -26,6 +26,16 @@ import { isHit } from './scenario'
  * roster-free engine to the UI's data shapes. No React, no I/O — the same
  * resolve → apply → reveal logic the future Convex client reuses.
  *
+ * AUTHORITY — this is NOT the vault. The authoritative at-bat resolution and the
+ * game-state writes are the Convex mutation's job (`convex/atBat.ts`, ADR-0016):
+ * the server reads both secret numbers, resolves, appends the `atBats` log, and
+ * updates the live row in ONE transaction — clients never arbitrate or write
+ * authoritative state (AGENTS.md game integrity). This module is the *read-only*
+ * reuse of that same shared engine call (ADR-0009): it operates on a
+ * `LiveGameState` it is handed and writes nothing authoritative — `createDuelAdapter`
+ * threads an in-memory state for fixtures/previews only. Do not route real game
+ * progression through here; call the mutation and reuse this for the reveal.
+ *
  * PERSPECTIVE — read before touching the reveal. The `RevealScenario` is a
  * view-model: its `you` / `them` / `opponent` / `scoreBefore` are all relative to
  * "the side this reveal is rendered FOR". In SAN-45's scope that side is fixed to
@@ -48,7 +58,10 @@ export interface HitTotals {
   opp: number
 }
 
-const NO_HITS: HitTotals = { you: 0, opp: 0 }
+/** A fresh zeroed hit-total. A factory, NOT a shared singleton: each adapter and
+ * each defaulted call gets its own object, so a caller can never mutate one
+ * snapshot and corrupt another instance (cf. the engine freezing `EMPTY_BASES`). */
+const noHits = (): HitTotals => ({ you: 0, opp: 0 })
 
 /** One resolved at-bat split into its two consumers: the `AppliedAtBat` the
  * engine's `advance` folds in, and the `RevealScenario` the reveal renders. */
@@ -277,7 +290,7 @@ export function resolveDuelAtBat(
   swing: number,
   state: LiveGameState,
   roster: Roster,
-  hitsBefore: HitTotals = NO_HITS,
+  hitsBefore: HitTotals = noHits(),
 ): DuelResolution {
   const batter = seated(roster, state.currentBatter, 'batter')
   const pitcher = seated(roster, state.currentPitcher, 'pitcher')
@@ -337,10 +350,13 @@ function rollHitTotals(hits: HitTotals, outcome: OutcomeKey, before: Half, after
  */
 export function createDuelAdapter(roster: Roster, context: GameContext): DuelAdapter {
   let liveState = startGame(context)
-  let hitTotals: HitTotals = NO_HITS
+  let hitTotals: HitTotals = noHits()
   return {
-    state: () => liveState,
-    hits: () => hitTotals,
+    // Hand back defensive copies — a caller must not be able to mutate a snapshot
+    // and corrupt a future at-bat. `bases` is the one nested mutable that feeds
+    // back into resolution, so copy it too.
+    state: () => ({ ...liveState, bases: { ...liveState.bases } }),
+    hits: () => ({ ...hitTotals }),
     playAtBat(pitch, swing) {
       const resolution = resolveDuelAtBat(pitch, swing, liveState, roster, hitTotals)
       const nextState = advance(liveState, resolution.applied, context)
