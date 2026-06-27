@@ -305,10 +305,10 @@ export function resolveDuelAtBat(
   return { applied, reveal }
 }
 
-// ── Stateful single-half-inning adapter ─────────────────────────────────────
+// ── Stateful adapter ─────────────────────────────────────────────────────────
 
 /** A pure (no I/O) adapter that threads the live state through `advance` and
- * tracks the running hit count across a half-inning of at-bats. */
+ * tracks the running hit count from the batting side's perspective. */
 export interface DuelAdapter {
   state(): LiveGameState
   hits(): HitTotals
@@ -316,10 +316,24 @@ export interface DuelAdapter {
 }
 
 /**
+ * Roll the running hit totals forward for the next at-bat: credit the side that
+ * just batted, then — if the third out flipped the half — swap `you`↔`opp` so the
+ * incoming batting side's own total is "you". The two teams alternate, so a side's
+ * total is never lost, it just moves between the two slots. This keeps `hitsBefore`
+ * consistent with the half-based `scoreBefore` (see `buildReveal`); within a single
+ * half-inning (SAN-45's scope) the half never changes and this is a plain credit.
+ */
+function rollHitTotals(hits: HitTotals, outcome: OutcomeKey, before: Half, after: Half): HitTotals {
+  const credited = accumulateHits(hits, outcome)
+  return before === after ? credited : { you: credited.opp, opp: credited.you }
+}
+
+/**
  * Create a duel adapter seeded from the lineups. Each `playAtBat` resolves the
  * current matchup, folds the result into the live state via the engine's
- * `advance`, and accumulates the hit count — so successive at-bats carry the
- * correct `hitsBefore` and base state.
+ * `advance`, and rolls the hit count forward — so successive at-bats carry the
+ * correct `hitsBefore` and base state, and the totals follow the batting side if
+ * a third out flips the half.
  */
 export function createDuelAdapter(roster: Roster, context: GameContext): DuelAdapter {
   let liveState = startGame(context)
@@ -329,8 +343,14 @@ export function createDuelAdapter(roster: Roster, context: GameContext): DuelAda
     hits: () => hitTotals,
     playAtBat(pitch, swing) {
       const resolution = resolveDuelAtBat(pitch, swing, liveState, roster, hitTotals)
-      liveState = advance(liveState, resolution.applied, context)
-      hitTotals = accumulateHits(hitTotals, resolution.reveal.outcome)
+      const nextState = advance(liveState, resolution.applied, context)
+      hitTotals = rollHitTotals(
+        hitTotals,
+        resolution.reveal.outcome,
+        liveState.half,
+        nextState.half,
+      )
+      liveState = nextState
       return resolution
     },
   }

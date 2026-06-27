@@ -301,6 +301,7 @@ describe('createDuelAdapter', () => {
     ['h2', leadoff()],
     ['o1', hit({ power: 2, contact: 2, speed: 2, eye: 2 })],
     ['P', arm(1)],
+    ['apx', arm(2)], // away pitcher — faced once the home side bats the bottom
   ])
   const context = {
     away: { battingOrder: ['h1', 'h2'], pitcher: 'apx' },
@@ -324,5 +325,25 @@ describe('createDuelAdapter', () => {
     // State advanced through the engine: two at-bats folded in, runner aboard.
     expect(adapter.state().lastResolvedSequence).toBe(1)
     expect(adapter.state().bases.first).toBeTruthy()
+  })
+
+  it('swaps the hit totals to the new batting side when the third out flips the half', () => {
+    const adapter = createDuelAdapter(roster, context)
+
+    // Top half: the away side singles (its running hits → 1), then strikes out
+    // three times to end the half.
+    adapter.playAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing)
+    expect(adapter.hits()).toEqual({ you: 1, opp: 0 })
+    adapter.playAtBat(OUT_AT_BAT.pitch, OUT_AT_BAT.swing)
+    adapter.playAtBat(OUT_AT_BAT.pitch, OUT_AT_BAT.swing)
+    adapter.playAtBat(OUT_AT_BAT.pitch, OUT_AT_BAT.swing)
+
+    // The half flipped: the home side now bats, so its own total is "you" (0) and
+    // the away team's hit carries as "opp" — not stale away "you".
+    expect(adapter.state().half).toBe(Half.Bottom)
+    expect(adapter.hits()).toEqual({ you: 0, opp: 1 })
+
+    const bottom = adapter.playAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing)
+    expect(bottom.reveal.hitsBefore).toEqual({ you: 0, opp: 1 })
   })
 })
