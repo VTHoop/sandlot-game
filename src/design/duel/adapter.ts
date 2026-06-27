@@ -180,11 +180,22 @@ export function accumulateHits(hits: HitTotals, outcome: OutcomeKey): HitTotals 
 
 // ── Resolve → apply → reveal ────────────────────────────────────────────────
 
-/** The reveal's half label. Total over the two-valued `Half` enum, so no
- * defensive fallback. Perspective is fixed to the batting team as "you" (SAN-45),
- * so this only labels the strip — it never flips whose runs are "yours". */
+/** The reveal's half label, total over the two-valued `Half` enum. */
 function halfLabel(half: Half): 'TOP' | 'BOTTOM' {
   return half === Half.Top ? 'TOP' : 'BOTTOM'
+}
+
+/**
+ * Score-before from the batting team's perspective ("you" = whoever is at bat).
+ * The away team bats the top half and the home team the bottom (SAN-21), so the
+ * mapping follows `state.half`. Perspective is *fixed* per half-inning — it never
+ * flips mid-stream (SAN-45) — but "you" is the batting side either way, so a
+ * bottom-half reveal credits the home score, not the away score.
+ */
+function scoreBefore(state: LiveGameState): { you: number; opp: number } {
+  return state.half === Half.Top
+    ? { you: state.awayScore, opp: state.homeScore }
+    : { you: state.homeScore, opp: state.awayScore }
 }
 
 function buildApplied(state: LiveGameState, resolved: ResolvedAtBat): AppliedAtBat {
@@ -218,7 +229,7 @@ function buildReveal(params: {
     half: halfLabel(state.half),
     outs: applied.outsAfter,
     runsScored: resolved.runsScored,
-    scoreBefore: { you: state.awayScore, opp: state.homeScore },
+    scoreBefore: scoreBefore(state),
     hitsBefore,
     scoreline: deriveScoreline({
       outcome,

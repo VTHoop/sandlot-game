@@ -252,6 +252,27 @@ describe('resolveDuelAtBat', () => {
     expect(reveal.scoreBefore).toEqual({ you: 0, opp: 0 })
   })
 
+  it('fixes "you" to the batting team — the home side bats the bottom half', () => {
+    // Bottom half: the home team is at bat against the away pitcher, so "you" is
+    // the home score (2), not the away score (5). Perspective follows the batting
+    // team, not a hardcoded side.
+    const { reveal } = resolveDuelAtBat(
+      HIT_AT_BAT.pitch,
+      HIT_AT_BAT.swing,
+      liveState({
+        half: Half.Bottom,
+        currentBatter: 'home-1',
+        currentPitcher: 'away-p',
+        homeScore: 2,
+        awayScore: 5,
+      }),
+      ROSTER,
+    )
+    expect(reveal.half).toBe('BOTTOM')
+    expect(reveal.scoreBefore).toEqual({ you: 2, opp: 5 })
+    expect(reveal.opponent).toBe('G. PIKE')
+  })
+
   it('throws when no batter is seated', () => {
     expect(() =>
       resolveDuelAtBat(
