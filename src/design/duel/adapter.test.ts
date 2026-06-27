@@ -119,6 +119,17 @@ describe('deriveScoreline', () => {
     ).toBe('1 run scores · you stand on 2nd')
   })
 
+  it('a run-scoring triple: the batter ends up on third', () => {
+    expect(
+      deriveScoreline({
+        outcome: '3B',
+        basesAfter: { first: null, second: null, third: 'b' },
+        runsScored: 2,
+        batter: 'b',
+      }),
+    ).toBe('2 runs score · you stand on 3rd')
+  })
+
   it('a grand slam: pluralized runs, batter cleared the bases', () => {
     expect(
       deriveScoreline({
@@ -227,6 +238,18 @@ describe('resolveDuelAtBat', () => {
       opp: 2,
     })
     expect(reveal.hitsBefore).toEqual({ you: 3, opp: 2 })
+  })
+
+  it('labels the half from the live state without flipping perspective', () => {
+    const { reveal } = resolveDuelAtBat(
+      HIT_AT_BAT.pitch,
+      HIT_AT_BAT.swing,
+      liveState({ half: Half.Bottom }),
+      ROSTER,
+    )
+    expect(reveal.half).toBe('BOTTOM')
+    // Perspective stays the batting team as "you": runs still credit your score side.
+    expect(reveal.scoreBefore).toEqual({ you: 0, opp: 0 })
   })
 
   it('throws when no batter is seated', () => {
