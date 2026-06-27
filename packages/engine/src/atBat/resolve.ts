@@ -11,10 +11,13 @@ import {
 } from './advance'
 import { resolveFlyOut } from './advancement/deepFly'
 import { resolveExtraBase } from './advancement/extraBase'
+import { resolveBunt } from './bunt/resolve'
+import { BuntResult } from './bunt/result'
 import { classify } from './classify'
 import { foldDifference } from './fold'
 import { resolveGroundBall } from './groundBall/resolve'
 import type { GroundBallResult } from './groundBall/result'
+import { SwingType } from './swingType'
 
 /** Hitter 1–5 attribute block (Convex-free; the caller maps its own shape onto this). */
 export interface HitterAttributes {
@@ -58,6 +61,8 @@ export interface ResolveInput {
   /** On-base runner speeds for the GB speed axis (SAN-16) and the SAN-17 extra-base
    * ranges (1B/2B) and deep-fly tag-up (FO). */
   runnerSpeeds: BaseSpeeds
+  /** The swing declaration; defaults to a normal swing when omitted (SAN-17). */
+  swingType?: SwingType
 }
 
 export interface ResolvedAtBat extends OutcomeApplication {
@@ -65,7 +70,28 @@ export interface ResolvedAtBat extends OutcomeApplication {
   outcome: OutcomeBandKey
   /** The GB sub-result when `outcome === 'GB'`, else null (SAN-16). */
   groundBallResult: GroundBallResult | null
+  /** The bunt sub-result when `swingType === Bunt`, else null (SAN-17). */
+  buntResult: BuntResult | null
 }
+
+/**
+ * Map a bunt sub-result onto a representative persisted outcome band (SAN-17,
+ * ADR-0021): a bunt bypasses the RangeFinder, so it has no native band. Bunt-hit
+ * and butcher-boy reach base like a single (`1B`); a successful sacrifice is a
+ * productive out (`FO`); a dud / DP / TP is an unproductive out (`GB`). The finer
+ * `buntResult` carries the real detail. A Map keeps the lookup off the
+ * object-injection sink.
+ */
+const BUNT_OUTCOME_BAND = new Map<BuntResult, OutcomeBandKey>([
+  [BuntResult.BUNT_HIT, '1B'],
+  [BuntResult.BUTCHER_BOY, '1B'],
+  [BuntResult.SAC_2ND, 'FO'],
+  [BuntResult.SAC_3RD, 'FO'],
+  [BuntResult.SAC_HOME, 'FO'],
+  [BuntResult.DUD, 'GB'],
+  [BuntResult.DP, 'GB'],
+  [BuntResult.TP, 'GB'],
+])
 
 /** Clamp bounds for the speed − awareness axis (avg speed 1–5 vs awareness 1–5). */
 const SPEED_AXIS_MIN = -4
@@ -147,7 +173,34 @@ function resolveAdvancement(
  */
 export function resolveAtBat(input: ResolveInput): ResolvedAtBat {
   const difference = foldDifference(input.pitch, input.swing)
-  const { outcome, band, gbBand } = classify(difference, deriveDiffs(input.hitter, input.pitcher))
+  const diffs = deriveDiffs(input.hitter, input.pitcher)
+
+  // A bunt bypasses the RangeFinder entirely: its outcome family emerges from the
+  // folded difference + base state in the bunt sub-resolution (SAN-17, §3.4).
+  if (input.swingType === SwingType.Bunt) {
+    const bunt = resolveBunt({
+      difference,
+      basesBefore: input.basesBefore,
+      outsBefore: input.outsBefore,
+      batter: input.batter,
+      contactMovDiff: diffs.contactMov,
+      speedAwaDiff: diffs.speedAwa,
+    })
+    const outcome = BUNT_OUTCOME_BAND.get(bunt.result)
+    if (!outcome) throw new RangeError(`unmapped bunt result ${bunt.result}`)
+    return {
+      difference,
+      outcome,
+      groundBallResult: null,
+      buntResult: bunt.result,
+      runsScored: bunt.runsScored,
+      rbi: bunt.rbi,
+      basesAfter: bunt.basesAfter,
+      outsAfter: bunt.outsAfter,
+    }
+  }
+
+  const { outcome, band, gbBand } = classify(difference, diffs)
 
   // The GB band sub-resolves into a fielder's-choice / double-play / etc. family
   // (SAN-16, the seam applyOutcome leaves deferred); every other band routes
@@ -170,6 +223,7 @@ export function resolveAtBat(input: ResolveInput): ResolvedAtBat {
       difference,
       outcome,
       groundBallResult: gb.result,
+      buntResult: null,
       runsScored: gb.runsScored,
       rbi: gb.rbi,
       basesAfter: gb.basesAfter,
@@ -178,5 +232,5 @@ export function resolveAtBat(input: ResolveInput): ResolvedAtBat {
   }
 
   const application = resolveAdvancement(outcome, difference, band, input)
-  return { difference, outcome, groundBallResult: null, ...application }
+  return { difference, outcome, groundBallResult: null, buntResult: null, ...application }
 }

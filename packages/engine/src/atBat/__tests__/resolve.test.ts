@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import type { BaseState } from '../advance'
+import { BuntResult } from '../bunt/result'
 import { DUEL_MAX, DUEL_MIN } from '../fold'
 import { GroundBallResult } from '../groundBall/result'
 import {
@@ -8,6 +10,7 @@ import {
   type PitcherAttributes,
   resolveAtBat,
 } from '../resolve'
+import { SwingType } from '../swingType'
 
 const HITTER: HitterAttributes = { power: 3, contact: 3, speed: 3, eye: 3 }
 const PITCHER: PitcherAttributes = { velocity: 3, movement: 3, awareness: 3, command: 3 }
@@ -208,5 +211,69 @@ describe('resolveAtBat — SAN-17 advancement routing', () => {
     // applyOutcome('2B') would hold the runner on third with no run
     expect(wellHit?.runsScored).toBe(1)
     expect(wellHit?.basesAfter).toEqual({ first: null, second: BATTER, third: null })
+  })
+})
+
+/**
+ * SAN-17 bunt swing-mode: `swingType: Bunt` bypasses the RangeFinder and resolves
+ * the bunt family off the folded difference + base state, mapping onto a
+ * representative persisted band (bunt-hit/butcher-boy → 1B; sac → FO; dud/DP/TP →
+ * GB) while carrying the real `buntResult`. A normal swing carries a null bunt.
+ */
+describe('resolveAtBat — bunt swing-mode routing (§3.4)', () => {
+  const buntInput = (
+    pitch: number,
+    swing: number,
+    basesBefore: BaseState = EMPTY,
+    outsBefore = 0,
+  ) => ({
+    pitch,
+    swing,
+    hitter: HITTER,
+    pitcher: PITCHER,
+    basesBefore,
+    outsBefore,
+    batter: BATTER,
+    runnerSpeeds: EMPTY_SPEEDS,
+    swingType: SwingType.Bunt,
+  })
+
+  it('a 0-difference bunt is a butcher boy mapped onto 1B', () => {
+    const r = resolveAtBat(buntInput(500, 500))
+    expect(r.difference).toBe(0)
+    expect(r.buntResult).toBe(BuntResult.BUTCHER_BOY)
+    expect(r.outcome).toBe('1B')
+    expect(r.groundBallResult).toBeNull()
+  })
+
+  it('a successful sacrifice maps onto FO and records the batter out', () => {
+    const r = resolveAtBat(buntInput(1, 101, { first: 'on-first', second: null, third: null }))
+    expect(r.buntResult).toBe(BuntResult.SAC_2ND)
+    expect(r.outcome).toBe('FO')
+    expect(r.outsAfter).toBe(1)
+    expect(r.basesAfter).toEqual({ first: null, second: 'on-first', third: null })
+  })
+
+  it('a dud maps onto GB', () => {
+    const r = resolveAtBat(buntInput(1, 401, { first: 'on-first', second: null, third: null }))
+    expect(r.buntResult).toBe(BuntResult.DUD)
+    expect(r.outcome).toBe('GB')
+  })
+
+  it('a normal swing (default / explicit) carries a null buntResult', () => {
+    const omitted = resolveAtBat({
+      pitch: 500,
+      swing: 500,
+      hitter: HITTER,
+      pitcher: PITCHER,
+      basesBefore: EMPTY,
+      outsBefore: 0,
+      batter: BATTER,
+      runnerSpeeds: EMPTY_SPEEDS,
+    })
+    const explicit = resolveAtBat({ ...buntInput(500, 500), swingType: SwingType.Normal })
+    expect(omitted.buntResult).toBeNull()
+    expect(omitted.outcome).toBe('HR') // a normal exact match is still a home run
+    expect(explicit.buntResult).toBeNull()
   })
 })

@@ -1,12 +1,10 @@
 import type { Band } from '../../rangeFinder/frontHalf'
 import type { BaseState, RunnerId } from '../advance'
+import { OUTS_PER_INNING } from '../constants'
 import { advanceGroundBall } from './advance'
 import { eligibleGroundBallResults } from './eligibility'
 import { selectGroundBallResult } from './partition'
 import type { GroundBallResult } from './result'
-
-/** Outs that always end the half-inning, after which no run on the play counts. */
-const OUTS_PER_INNING = 3
 
 export interface GroundBallInput {
   /** The folded 0–499 difference; must lie inside `gbBand`. */
