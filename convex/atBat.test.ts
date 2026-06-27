@@ -182,6 +182,21 @@ describe('secret at-bat round-trip', () => {
       expect(rows[0].swingType).toBe('normal')
       expect(rows[0].buntResult).toBeNull()
     })
+
+    it('omits the commitment swingType for an explicitly-declared normal swing', async () => {
+      // Only an actual bunt marks the commitment; a normal declaration carries
+      // none, so a present field unambiguously means a bunt was declared.
+      const { t, gameId } = await setupGame()
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      await t
+        .withIdentity(BATTER)
+        .mutation(api.atBat.commitSwing, { game: gameId, number: 500, swingType: 'normal' })
+
+      const batting = (await commitmentRows(t, gameId)).find((c) => c.role === 'batting')
+      expect(batting?.swingType).toBeUndefined()
+      const rows = await atBatRows(t, gameId)
+      expect(rows[0].swingType).toBe('normal') // still recorded on the at-bat row
+    })
   })
 
   describe('secrecy contract', () => {

@@ -120,7 +120,8 @@ export default defineSchema({
     player: v.id('players'),
     number: v.float64(), // 1–999; range enforced by the commit mutation
     // The batter's swing declaration (SAN-17). Public (announced with the swing,
-    // §3.4) and present only on a batting commitment — absent ≡ a normal swing.
+    // §3.4). Written only when a batting commitment declares a bunt — a normal
+    // swing is stripped (declaredSwingFields), so presence ⟺ a declared bunt.
     swingType: v.optional(swingType),
     createdAt: v.float64(),
   }).index('by_game', ['game', 'sequence', 'role']),

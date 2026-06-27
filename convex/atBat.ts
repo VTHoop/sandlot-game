@@ -280,14 +280,15 @@ async function tryResolve(
  * opponent is already on file. Shared by both mutations; `role` fixes which team
  * must own the caller and which seat is being committed.
  */
-/** The public swing declaration belongs only on a batting commitment — a pitching
- * commit, or a normal swing, carries none. A helper so `commit` stays under the
+/** The public swing declaration belongs only on a batting commitment, and only for
+ * an actual bunt — a pitching commit or a normal swing carries none, so the field's
+ * presence unambiguously marks a declared bunt. A helper so `commit` stays under the
  * complexity gate. */
 function declaredSwingFields(
   role: CommittingRole,
   swingType?: SwingType,
 ): { swingType?: SwingType } {
-  return role === Participant.Batting && swingType ? { swingType } : {}
+  return role === Participant.Batting && swingType === SwingType.Bunt ? { swingType } : {}
 }
 
 /** One side's commit details (bundled so `commit` stays within the argument gate). */
