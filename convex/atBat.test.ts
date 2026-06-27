@@ -197,6 +197,21 @@ describe('secret at-bat round-trip', () => {
       const rows = await atBatRows(t, gameId)
       expect(rows[0].swingType).toBe('normal') // still recorded on the at-bat row
     })
+
+    it('reveals a resolved bunt via getActiveDuel without surfacing the declaration', async () => {
+      // The reveal view exposes the mapped outcome but not the swing declaration —
+      // pinning the boundary so a later DuelView change is a deliberate one.
+      const { t, gameId } = await setupGame()
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      await t
+        .withIdentity(BATTER)
+        .mutation(api.atBat.commitSwing, { game: gameId, number: 500, swingType: 'bunt' })
+
+      const view = await t.withIdentity(PITCHER).query(api.atBat.getActiveDuel, { game: gameId })
+      expect(view?.status).toBe('resolved')
+      expect(view?.outcome).toBe('1B') // butcher boy mapped onto 1B
+      expect(view).not.toHaveProperty('swingType')
+    })
   })
 
   describe('secrecy contract', () => {

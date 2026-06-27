@@ -219,16 +219,21 @@ async function tryResolve(
   // it travels on the batting commitment; a missing field is a normal swing. The
   // persisted literal equals the engine enum's value (guarded in ./validators).
   const swingType = (batting.swingType ?? SwingType.Normal) as SwingType
+  // A bunt resolves off the Cnt-vs-Mov / Spe-vs-Awa diffs, not runner speeds, so
+  // skip the per-runner lookups (GB axis + SAN-17 extra-base/deep-fly) for a bunt.
+  const runnerSpeeds =
+    swingType === SwingType.Bunt
+      ? { first: null, second: null, third: null }
+      : await runnerSpeedsFor(ctx, game.bases)
   const resolved = resolveAtBat({
     pitch: pitching.number,
     swing: batting.number,
-    hitter: hitterForSwing(batter.attributes, swingType), // applies the §3.4.3 bunt bonus
+    hitter: hitterForSwing(batter.attributes, swingType),
     pitcher: asPitcher(pitcher.attributes),
     basesBefore: game.bases,
     outsBefore: game.outs,
     batter: batter._id, // seated on base when the outcome reaches base (SAN-44)
-    // GB speed axis (SAN-16) + the SAN-17 advancement ranges (extra-base, deep-fly)
-    runnerSpeeds: await runnerSpeedsFor(ctx, game.bases),
+    runnerSpeeds,
     swingType,
   })
 
@@ -275,11 +280,6 @@ async function tryResolve(
   return { atBatId, outcome: resolved.outcome }
 }
 
-/**
- * Seal one side's secret number for the current at-bat, then resolve if the
- * opponent is already on file. Shared by both mutations; `role` fixes which team
- * must own the caller and which seat is being committed.
- */
 /** The public swing declaration belongs only on a batting commitment, and only for
  * an actual bunt — a pitching commit or a normal swing carries none, so the field's
  * presence unambiguously marks a declared bunt. A helper so `commit` stays under the
@@ -300,6 +300,11 @@ interface CommitArgs {
   swingType?: SwingType
 }
 
+/**
+ * Seal one side's secret number for the current at-bat, then resolve if the
+ * opponent is already on file. Shared by both mutations; `role` fixes which team
+ * must own the caller and which seat is being committed.
+ */
 async function commit(ctx: MutationCtx, args: CommitArgs): Promise<Resolution> {
   const { gameId, number, role, swingType } = args
   const game = await requireLiveGame(ctx, gameId)

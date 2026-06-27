@@ -1,11 +1,9 @@
 import type { AttributeDiff } from '../../tables/accessor'
 import type { BaseState, RunnerId } from '../advance'
+import { OUTS_PER_INNING } from '../constants'
 import { advanceBunt } from './advance'
 import { type BuntAccessors, liveBuntAccessors, selectBuntResult } from './partition'
 import type { BuntResult } from './result'
-
-/** Outs that always end the half-inning, after which no run on the play counts. */
-const OUTS_PER_INNING = 3
 
 export interface BuntInput {
   /** The folded 0–499 difference. */

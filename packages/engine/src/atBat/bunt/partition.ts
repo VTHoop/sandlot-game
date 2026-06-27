@@ -47,12 +47,15 @@ export interface BuntAccessors {
   sacWidth(speedAwaDiff: AttributeDiff): number
 }
 
-/** Exported so the gitignored parity lane can validate the live widths. */
-export const liveBuntAccessors: BuntAccessors = {
-  buntHitWidth: (contactMovDiff) => BUNT_HIT_WIDTH_BY_CNT_MOV[contactMovDiff + 5],
-  sacWidth: (speedAwaDiff) => SAC_WIDTH_BY_SPE_AWA[speedAwaDiff + 5],
-}
+/** Exported so the gitignored parity lane can validate the live widths;
+ * `satisfies` enforces the contract while keeping the narrow return type. */
+export const liveBuntAccessors = {
+  buntHitWidth: (contactMovDiff: AttributeDiff) => BUNT_HIT_WIDTH_BY_CNT_MOV[contactMovDiff + 5],
+  sacWidth: (speedAwaDiff: AttributeDiff) => SAC_WIDTH_BY_SPE_AWA[speedAwaDiff + 5],
+} satisfies BuntAccessors
 
+/** Part of the exported `selectBuntResult` signature (the difference + base/out
+ * state + the two differentials that size the middle band). */
 export interface BuntSizing {
   difference: number
   bases: BaseState
