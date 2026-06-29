@@ -259,37 +259,26 @@ describe('resolveDuelAtBat', () => {
     expect(reveal.opponent).toBe('G. PIKE')
   })
 
-  it('throws when no batter is seated', () => {
-    expect(() =>
-      resolveDuelAtBat(
-        HIT_AT_BAT.pitch,
-        HIT_AT_BAT.swing,
-        liveState({ currentBatter: null }),
-        ROSTER,
-      ),
-    ).toThrow(/No batter/)
-  })
-
-  it('throws when the seated batter carries no hitter block', () => {
-    expect(() =>
-      resolveDuelAtBat(
-        HIT_AT_BAT.pitch,
-        HIT_AT_BAT.swing,
-        liveState({ currentBatter: 'home-p' }),
-        ROSTER,
-      ),
-    ).toThrow(/hitter attribute block/)
-  })
-
-  it('throws when the seated pitcher carries no pitcher block', () => {
-    expect(() =>
-      resolveDuelAtBat(
-        HIT_AT_BAT.pitch,
-        HIT_AT_BAT.swing,
-        liveState({ currentPitcher: 'away-1' }),
-        ROSTER,
-      ),
-    ).toThrow(/pitcher attribute block/)
+  // Each rejection is the same shape (a live state that can't seat the matchup →
+  // a thrown error), so the cases are a table rather than near-identical functions.
+  it.each([
+    {
+      name: 'throws when no batter is seated',
+      state: liveState({ currentBatter: null }),
+      error: /No batter/,
+    },
+    {
+      name: 'throws when the seated batter carries no hitter block',
+      state: liveState({ currentBatter: 'home-p' }),
+      error: /hitter attribute block/,
+    },
+    {
+      name: 'throws when the seated pitcher carries no pitcher block',
+      state: liveState({ currentPitcher: 'away-1' }),
+      error: /pitcher attribute block/,
+    },
+  ])('$name', ({ state, error }) => {
+    expect(() => resolveDuelAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing, state, ROSTER)).toThrow(error)
   })
 })
 
