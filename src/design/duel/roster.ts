@@ -76,8 +76,10 @@ export const ROSTER: Roster = new Map<string, RosterPlayer>([
   ['home-p', pitcher('H. MARSH', { velocity: 3, movement: 3, awareness: 3, command: 1 })],
 ])
 
-/** Away lineup: nine hitters in order, plus the designated pitcher. */
-export const AWAY_LINEUP: TeamLineup = {
+/** Away lineup: nine hitters in order, plus the designated pitcher. Composed into
+ * {@link GAME_CONTEXT} below; not exported separately — real callers supply their
+ * own lineups, and tests reach these through `GAME_CONTEXT.away` / `.home`. */
+const AWAY_LINEUP: TeamLineup = {
   battingOrder: [
     'away-1',
     'away-2',
@@ -92,8 +94,9 @@ export const AWAY_LINEUP: TeamLineup = {
   pitcher: 'away-p',
 }
 
-/** Home lineup: nine hitters in order, plus the designated pitcher. */
-export const HOME_LINEUP: TeamLineup = {
+/** Home lineup: nine hitters in order, plus the designated pitcher. Module-local
+ * for the same reason as {@link AWAY_LINEUP}. */
+const HOME_LINEUP: TeamLineup = {
   battingOrder: [
     'home-1',
     'home-2',

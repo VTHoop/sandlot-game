@@ -1,6 +1,6 @@
 import { GameStatus, Half, startGame } from '@sandlot/engine/game'
 import { describe, expect, it } from 'vitest'
-import { AWAY_LINEUP, GAME_CONTEXT, HOME_LINEUP, ROSTER, type RosterPlayer } from './roster'
+import { GAME_CONTEXT, ROSTER, type RosterPlayer } from './roster'
 
 const isRating = (n: number): boolean => Number.isInteger(n) && n >= 1 && n <= 5
 
@@ -33,7 +33,7 @@ describe('synthetic roster', () => {
   })
 
   it('seats every lineup slot — batters as hitters, pitchers as pitchers', () => {
-    for (const lineup of [AWAY_LINEUP, HOME_LINEUP]) {
+    for (const lineup of [GAME_CONTEXT.away, GAME_CONTEXT.home]) {
       for (const id of lineup.battingOrder) {
         const player = ROSTER.get(id)
         expect(player).toBeDefined()

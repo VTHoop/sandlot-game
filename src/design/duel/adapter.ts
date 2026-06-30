@@ -100,10 +100,17 @@ export function assembleRunnerSpeeds(bases: BaseState, roster: Roster): BaseSpee
   }
 }
 
+/** Which seat `seated` is resolving — labels the "nobody seated" error. A TS enum
+ * per the project's finite-value-set convention (cf. `Half`, `SwingType`). */
+enum SeatedRole {
+  Batter = 'batter',
+  Pitcher = 'pitcher',
+}
+
 function seated(
   roster: Roster,
   id: string | null,
-  role: 'batter' | 'pitcher',
+  role: SeatedRole,
 ): { id: string; player: RosterPlayer } {
   const player = id ? roster.get(id) : undefined
   if (!id || !player) throw new Error(`No ${role} is seated in the current live state`)
@@ -126,10 +133,11 @@ function pitcherAttributes(player: RosterPlayer): PitcherAttributes {
  * Engine `OutcomeBandKey` → UI `OutcomeKey`. Today the two enums are identical
  * (the ladder is sourced from the engine), so this is an explicit identity map —
  * but listing it exhaustively means a future UI rename fails loudly here and in
- * the mirror test rather than silently mis-displaying. The `Record` type forces
- * all ten band keys at compile time; the `Map` keeps lookups injection-safe.
+ * the mirror test rather than silently mis-displaying. `satisfies` forces all ten
+ * band keys at compile time while keeping the literal entry types; the `Map` keeps
+ * lookups injection-safe.
  */
-export const OUTCOME_KEY_BY_BAND: Record<OutcomeBandKey, OutcomeKey> = {
+export const OUTCOME_KEY_BY_BAND = {
   HR: 'HR',
   '3B': '3B',
   '2B': '2B',
@@ -140,10 +148,12 @@ export const OUTCOME_KEY_BY_BAND: Record<OutcomeBandKey, OutcomeKey> = {
   PO: 'PO',
   GB: 'GB',
   K: 'K',
-}
+} satisfies Record<OutcomeBandKey, OutcomeKey>
 
-const OUTCOME_KEY_LOOKUP: ReadonlyMap<OutcomeBandKey, OutcomeKey> = new Map(
-  Object.entries(OUTCOME_KEY_BY_BAND) as [OutcomeBandKey, OutcomeKey][],
+// `satisfies` keeps the literal value types, so `Object.entries` already yields
+// `[string, OutcomeKey]` — no tuple cast needed to build the lookup.
+const OUTCOME_KEY_LOOKUP: ReadonlyMap<string, OutcomeKey> = new Map(
+  Object.entries(OUTCOME_KEY_BY_BAND),
 )
 
 /** Map an engine outcome band to its UI key, throwing on an unmapped band so a
@@ -292,8 +302,8 @@ export function resolveDuelAtBat(
   roster: Roster,
   hitsBefore: HitTotals = noHits(),
 ): DuelResolution {
-  const batter = seated(roster, state.currentBatter, 'batter')
-  const pitcher = seated(roster, state.currentPitcher, 'pitcher')
+  const batter = seated(roster, state.currentBatter, SeatedRole.Batter)
+  const pitcher = seated(roster, state.currentPitcher, SeatedRole.Pitcher)
   const resolved = resolveAtBat({
     pitch,
     swing,

@@ -50,7 +50,7 @@ function liveState(overrides: Partial<LiveGameState> = {}): LiveGameState {
 }
 
 describe('assembleRunnerSpeeds', () => {
-  const roster: Roster = new Map<string, RosterPlayer>([
+  const roster: Roster = new Map([
     ['fast', hit({ power: 2, contact: 2, speed: 5, eye: 2 })],
     ['slow', hit({ power: 2, contact: 2, speed: 2, eye: 2 })],
     ['pitcher', arm(5)], // stored speed 5, but a pitcher-as-runner is forced to 1
@@ -69,6 +69,11 @@ describe('assembleRunnerSpeeds', () => {
   it('defaults a pitcher-as-runner to speed 1 regardless of stored speed', () => {
     const bases: BaseState = { first: 'slow', second: 'pitcher', third: null }
     expect(assembleRunnerSpeeds(bases, roster)).toEqual({ first: 2, second: 1, third: null })
+  })
+
+  it('defaults an occupied base whose id is absent from the roster to speed 1', () => {
+    const bases: BaseState = { first: 'ghost', second: null, third: null }
+    expect(assembleRunnerSpeeds(bases, roster)).toEqual({ first: 1, second: null, third: null })
   })
 })
 
@@ -142,6 +147,27 @@ describe('deriveScoreline', () => {
       basesAfter: { first: null, second: null, third: null },
       runsScored: 0,
       expected: 'you strike out',
+    },
+    {
+      name: 'a fly out: its out phrasing',
+      outcome: 'FO',
+      basesAfter: { first: null, second: null, third: null },
+      runsScored: 0,
+      expected: 'you fly out',
+    },
+    {
+      name: 'a pop out: its out phrasing',
+      outcome: 'PO',
+      basesAfter: { first: null, second: null, third: null },
+      runsScored: 0,
+      expected: 'you pop out',
+    },
+    {
+      name: 'a groundout: its out phrasing',
+      outcome: 'GB',
+      basesAfter: { first: null, second: null, third: null },
+      runsScored: 0,
+      expected: 'you ground out',
     },
   ]
 
@@ -285,7 +311,7 @@ describe('resolveDuelAtBat', () => {
 describe('createDuelAdapter', () => {
   // Two identical leadoff-grade batters so the same probed numbers yield a hit twice.
   const leadoff = (): RosterPlayer => hit({ power: 3, contact: 3, speed: 3, eye: 5 })
-  const roster: Roster = new Map<string, RosterPlayer>([
+  const roster: Roster = new Map([
     ['h1', leadoff()],
     ['h2', leadoff()],
     ['o1', hit({ power: 2, contact: 2, speed: 2, eye: 2 })],
