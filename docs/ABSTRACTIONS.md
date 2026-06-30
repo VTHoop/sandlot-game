@@ -142,6 +142,51 @@ defense at each score / pointer / seating step.
 two server paths. No client mutation writes them directly — the same vault
 discipline as the secret pitch, extended to the whole envelope.
 
+## Duel adapter (`src/design/duel/adapter.ts` + `roster.ts`)
+
+The pure, headless boundary (SAN-45) that bridges the roster-free engine to the
+UI's data shapes — no React, no I/O, the same resolve → apply → reveal logic the
+future Convex client reuses. The engine resolves a single at-bat and advances
+game state but is roster-free and produces neither a hit count nor display text;
+the adapter fills exactly that gap:
+
+- **`roster.ts` — synthetic fixtures (committed, no MLB data).** A `Roster`
+  (`ReadonlyMap<string, RosterPlayer>`) maps each id → a display name, a single
+  role-appropriate attribute block (hitter **xor** pitcher, the same shape the
+  Convex `players` table models), and a 1–5 base-running speed. `AWAY_LINEUP` /
+  `HOME_LINEUP` compose into `GAME_CONTEXT`, which `startGame` accepts; the away
+  leadoff and home pitcher carry the blocks the tests probe for deterministic
+  hit/walk/out outcomes.
+- **`assembleRunnerSpeeds(bases, roster)`** — derives the engine's `BaseSpeeds`
+  from a `LiveGameState.bases` plus the roster, defaulting a pitcher-as-runner to
+  speed 1 (SAN-16) by detecting the block — the pure twin of `atBat.ts`'s
+  `runnerSpeedsFor`.
+- **`resolveDuelAtBat(pitch, swing, state, roster, hitsBefore?)`** — reads the
+  seated batter/pitcher from the live state, resolves through the authoritative
+  engine, and returns both an `AppliedAtBat` (for `advance`) and a
+  `RevealScenario` (for the reveal).
+- **Perspective (scope, not law).** `RevealScenario` is a view-model: `you` /
+  `them` / `opponent` / `scoreBefore` are relative to *the side the reveal is
+  rendered for*. SAN-45 fixes that side to the **batter** (a single half-inning —
+  the at-bat is the batter's moment), so `you` = the batting team. This is **not**
+  permanent: when two-sided async multiplayer lands, the logged-in user owns a team
+  across both halves and "you" becomes *their* side (the pitching team during the
+  opponent's at-bat). The generalization is local to the adapter — add a `viewer`
+  input and key the three perspective-bearing spots (`you`/`them`, `scoreBefore`,
+  `opponent`) off it instead of off the batting side; the engine stays
+  perspective-free and the `RevealScenario` shape is unchanged. Downstream UI must
+  not assume `you === batter` on its own.
+- **Hit count + scoreline (the engine provides neither).** `accumulateHits`
+  credits the batting team on a hit; `deriveScoreline` composes the reveal's line
+  from the resolved outcome and base movement (runs in + where the batter landed).
+  `createDuelAdapter(roster, context)` threads the live state through `advance`
+  and tracks the running hit count across at-bats.
+- **`OUTCOME_KEY_BY_BAND` / `toOutcomeKey`** — maps engine `OutcomeBandKey` → UI
+  `OutcomeKey`. The two enums are identical today (the ladder is sourced from the
+  engine), so it is an explicit identity map, but a `Record` forces all ten keys
+  at compile time and a mirror test asserts coverage, so an unmapped outcome fails
+  loudly rather than silently mis-displaying.
+
 ---
 
 _Components, hooks, and game-logic abstractions are added here as they land._
