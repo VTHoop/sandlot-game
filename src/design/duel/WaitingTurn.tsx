@@ -1,20 +1,22 @@
 import { Scoreboard } from '../../components/ui/Scoreboard'
 import { DuelChrome } from './DuelChrome'
 import { FieldDiagram } from './FieldDiagram'
-import { SHOWCASE_SCENARIO } from './fixture'
-import { formatInning } from './scenario'
+import { type DuelSituation, formatInning } from './scenario'
+
+interface WaitingTurnProps {
+  situation: DuelSituation
+}
 
 /** The async between-turns state: calm, ambient, no actions to take. */
-export function WaitingTurn() {
-  const scenario = SHOWCASE_SCENARIO
+export function WaitingTurn({ situation }: WaitingTurnProps) {
   return (
     <DuelChrome
       situation={
         <>
-          <b className="text-consequence">{scenario.opponent}</b> is picking her pitch
+          <b className="text-consequence">{situation.opponent}</b> is picking her pitch
         </>
       }
-      opponent={scenario.opponent}
+      opponent={situation.opponent}
       opponentOnline
     >
       <div className="relative flex flex-1 flex-col items-center gap-6 px-5 pt-6 pb-5">
@@ -23,21 +25,21 @@ export function WaitingTurn() {
         <span className="duel-firefly bottom-24 left-14" style={{ animationDelay: '6s' }} />
         <Scoreboard
           away={{
-            label: scenario.opponent.slice(0, 3).toUpperCase(),
-            runs: scenario.scoreBefore.opp,
-            hits: scenario.hitsBefore.opp,
+            label: situation.opponent.slice(0, 3).toUpperCase(),
+            runs: situation.scoreBefore.opp,
+            hits: situation.hitsBefore.opp,
           }}
           home={{
             label: 'YOU',
-            runs: scenario.scoreBefore.you,
-            hits: scenario.hitsBefore.you,
+            runs: situation.scoreBefore.you,
+            hits: situation.hitsBefore.you,
           }}
-          inning={formatInning(scenario)}
-          outs={scenario.outs}
+          inning={formatInning(situation)}
+          outs={situation.outs}
         />
         <FieldDiagram />
         <p className="font-display text-xl tracking-wider text-chalk">
-          IT&rsquo;S {scenario.opponent.toUpperCase()}&rsquo;S TURN
+          IT&rsquo;S {situation.opponent.toUpperCase()}&rsquo;S TURN
         </p>
         <p className="flex items-center gap-2 text-center font-body text-sm text-muted">
           <span className="duel-waiting-pulse size-2 rounded-full bg-consequence" />

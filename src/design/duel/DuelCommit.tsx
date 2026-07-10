@@ -7,13 +7,20 @@ import { ScoreTileInput } from '../../components/ui/ScoreTileInput'
 import { DuelChrome } from './DuelChrome'
 import { isValidDuelNumber } from './duelNumber'
 import { FieldDiagram } from './FieldDiagram'
-import { SHOWCASE_MATCHUP, SHOWCASE_SCENARIO } from './fixture'
-import { MatchupCard } from './MatchupCard'
-import { formatInning } from './scenario'
+import { type DuelMatchup, MatchupCard } from './MatchupCard'
+import { type DuelSituation, formatInning } from './scenario'
 
 interface DuelCommitProps {
   /** Which seat the viewer holds; the screen is otherwise identical. */
   seat: 'pitcher' | 'batter'
+  /** Both managers' players; the screen orients them for this seat. */
+  matchup: DuelMatchup
+  /**
+   * The non-secret situation (scoreboard + inning + outs). Typed as
+   * `DuelSituation` precisely because it CANNOT carry either duel number —
+   * see the secret-state note on `opponentLocked`.
+   */
+  situation: DuelSituation
   /**
    * SECRET-STATE LAW: this component may only ever know THAT the opponent has
    * committed — never the number. Do not add a prop carrying it; the status
@@ -21,33 +28,106 @@ interface DuelCommitProps {
    */
   opponentLocked: boolean
   opponentOnline: boolean
+  /** Surfaces this seat's committed number to the parent when it locks. */
+  onLock?: (committed: number) => void
   onReveal?: () => void
 }
 
+/**
+ * Orient the two-sided matchup + half for the seat the viewer holds. The viewer
+ * is cast as the home team: they bat in the bottom half and pitch in the top, so
+ * the two seats depict different half-innings and flip who throws vs. swings.
+ */
+function orientSeat(seat: DuelCommitProps['seat'], players: DuelMatchup, situation: DuelSituation) {
+  if (seat === 'batter') {
+    return {
+      half: situation.half,
+      matchup: {
+        pitcher: players.opponent.pitcher,
+        batter: players.you.batter,
+        dueUp: players.you.dueUp,
+      },
+    }
+  }
+  return {
+    half: 'TOP' as const,
+    matchup: {
+      pitcher: players.you.pitcher,
+      batter: players.opponent.batter,
+      dueUp: players.opponent.dueUp,
+    },
+  }
+}
+
+/** The persistent status chip: THAT the opponent has locked, never the number. */
+function OpponentNumberChip({ opponent, locked }: { opponent: string; locked: boolean }) {
+  return (
+    <Card className="flex items-center justify-between px-4 py-2">
+      <span className="font-body text-[11px] tracking-[0.22em] text-muted uppercase">
+        {opponent}&rsquo;s number
+      </span>
+      <span className="font-display text-sm tracking-wider text-chalk">
+        {locked ? '🔒 LOCKED' : 'NOT YET ENTERED'}
+      </span>
+    </Card>
+  )
+}
+
+interface CommitActionProps {
+  locked: boolean
+  bothLocked: boolean
+  opponent: string
+  canLock: boolean
+  onLock: () => void
+  onReveal?: () => void
+}
+
+/** The blind commit's call to action: lock the number, then wait / reveal. */
+function CommitAction({
+  locked,
+  bothLocked,
+  opponent,
+  canLock,
+  onLock,
+  onReveal,
+}: CommitActionProps) {
+  if (!locked) {
+    return (
+      <Button variant="consequence" className="py-3.5 text-lg" disabled={!canLock} onClick={onLock}>
+        LOCK IT IN
+      </Button>
+    )
+  }
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <p role="status" className="text-center font-body text-sm text-muted">
+        <span className="text-consequence">NUMBER LOCKED</span>
+        {bothLocked ? ' — both numbers are in' : ` — waiting on ${opponent}`}
+      </p>
+      {bothLocked && (
+        <Button variant="ghost" className="px-4 py-1.5 text-sm" onClick={onReveal}>
+          PLAY THE REVEAL →
+        </Button>
+      )}
+    </div>
+  )
+}
+
 /** The single commit screen: situation, matchup, and the blind number. */
-export function DuelCommit({ seat, opponentLocked, opponentOnline, onReveal }: DuelCommitProps) {
+export function DuelCommit({
+  seat,
+  matchup: players,
+  situation,
+  opponentLocked,
+  opponentOnline,
+  onLock,
+  onReveal,
+}: DuelCommitProps) {
   const [number, setNumber] = useState('')
   const [locked, setLocked] = useState(false)
 
-  const scenario = SHOWCASE_SCENARIO
-  const opponent = scenario.opponent
-  // The fixture casts the viewer as the home team: they bat in the bottom
-  // half and pitch in the top, so the two seats depict different half-innings.
-  const half = seat === 'batter' ? scenario.half : 'TOP'
-  const bothLocked = locked && opponentLocked
-
-  const matchup =
-    seat === 'batter'
-      ? {
-          pitcher: SHOWCASE_MATCHUP.opponent.pitcher,
-          batter: SHOWCASE_MATCHUP.you.batter,
-          dueUp: SHOWCASE_MATCHUP.you.dueUp,
-        }
-      : {
-          pitcher: SHOWCASE_MATCHUP.you.pitcher,
-          batter: SHOWCASE_MATCHUP.opponent.batter,
-          dueUp: SHOWCASE_MATCHUP.opponent.dueUp,
-        }
+  const opponent = situation.opponent
+  const { half, matchup } = orientSeat(seat, players, situation)
 
   return (
     <DuelChrome opponent={opponent} opponentOnline={opponentOnline}>
@@ -55,25 +135,18 @@ export function DuelCommit({ seat, opponentLocked, opponentOnline, onReveal }: D
         <Scoreboard
           away={{
             label: opponent.slice(0, 3).toUpperCase(),
-            runs: scenario.scoreBefore.opp,
-            hits: scenario.hitsBefore.opp,
+            runs: situation.scoreBefore.opp,
+            hits: situation.hitsBefore.opp,
           }}
-          home={{ label: 'YOU', runs: scenario.scoreBefore.you, hits: scenario.hitsBefore.you }}
-          inning={formatInning({ inning: scenario.inning, half })}
-          outs={scenario.outs}
+          home={{ label: 'YOU', runs: situation.scoreBefore.you, hits: situation.hitsBefore.you }}
+          inning={formatInning({ inning: situation.inning, half })}
+          outs={situation.outs}
         />
         <div className="flex items-stretch gap-3">
           <FieldDiagram className="h-36 w-36 shrink-0 self-center" />
           <MatchupCard {...matchup} />
         </div>
-        <Card className="flex items-center justify-between px-4 py-2">
-          <span className="font-body text-[11px] tracking-[0.22em] text-muted uppercase">
-            {opponent}&rsquo;s number
-          </span>
-          <span className="font-display text-sm tracking-wider text-chalk">
-            {opponentLocked ? '🔒 LOCKED' : 'NOT YET ENTERED'}
-          </span>
-        </Card>
+        <OpponentNumberChip opponent={opponent} locked={opponentLocked} />
         <div className="text-center">
           <ScoreTileInput
             label={locked ? 'your number · locked' : 'your number'}
@@ -82,30 +155,17 @@ export function DuelCommit({ seat, opponentLocked, opponentOnline, onReveal }: D
             disabled={locked}
           />
         </div>
-        {locked ? (
-          <div className="flex flex-col items-center gap-1.5">
-            <p role="status" className="text-center font-body text-sm text-muted">
-              <span className="text-consequence">NUMBER LOCKED</span>
-              {bothLocked ? ' — both numbers are in' : ` — waiting on ${opponent}`}
-            </p>
-            {bothLocked && (
-              <Button variant="ghost" className="px-4 py-1.5 text-sm" onClick={onReveal}>
-                PLAY THE REVEAL →
-              </Button>
-            )}
-          </div>
-        ) : (
-          <Button
-            variant="consequence"
-            className="py-3.5 text-lg"
-            disabled={!isValidDuelNumber(number)}
-            onClick={() => {
-              setLocked(true)
-            }}
-          >
-            LOCK IT IN
-          </Button>
-        )}
+        <CommitAction
+          locked={locked}
+          bothLocked={locked && opponentLocked}
+          opponent={opponent}
+          canLock={isValidDuelNumber(number)}
+          onLock={() => {
+            onLock?.(Number(number))
+            setLocked(true)
+          }}
+          onReveal={onReveal}
+        />
         <div className="mt-auto">
           <OutcomeLadder />
         </div>

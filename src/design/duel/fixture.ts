@@ -1,11 +1,6 @@
-import type { RevealScenario } from './scenario'
+import type { DuelMatchup } from './MatchupCard'
+import type { DuelSituation, RevealScenario } from './scenario'
 
-/**
- * Fake fixture data for the parked showcase: bottom 8th, tie game — a double
- * that scores the runner from 2nd stacks RBI + lead change + late-and-close.
- * The batter seat receives only `pitcherLocked` — never `them`
- * (secret-state law, AGENTS.md Game integrity).
- */
 /**
  * Player-level matchup context for the commit screen (managers duel; players
  * match up). Names are first initial + last name.
@@ -21,7 +16,7 @@ export const SHOWCASE_MATCHUP = {
     batter: { name: 'C. DIAZ', attrs: { PWR: 4, CON: 3, SPD: 2, EYE: 3 } },
     dueUp: ['J. WHITLOCK', 'Q. BAKER'],
   },
-} as const
+} satisfies DuelMatchup
 
 export const SHOWCASE_SCENARIO: RevealScenario = {
   you: 472,
@@ -36,3 +31,17 @@ export const SHOWCASE_SCENARIO: RevealScenario = {
   hitsBefore: { you: 7, opp: 6 },
   scoreline: 'Your runner scores from 2nd · you stand on 2nd',
 }
+
+/**
+ * The commit/waiting view of the showcase scenario, built by naming only the
+ * non-secret fields — the derived object literally has no `you`/`them` slot to
+ * leak the pitch through (secret-state law, ADR-0014).
+ */
+export const SHOWCASE_SITUATION = {
+  opponent: SHOWCASE_SCENARIO.opponent,
+  inning: SHOWCASE_SCENARIO.inning,
+  half: SHOWCASE_SCENARIO.half,
+  outs: SHOWCASE_SCENARIO.outs,
+  scoreBefore: SHOWCASE_SCENARIO.scoreBefore,
+  hitsBefore: SHOWCASE_SCENARIO.hitsBefore,
+} satisfies DuelSituation

@@ -7,6 +7,19 @@ export interface MatchupSide {
   attrs: Readonly<Record<string, number>>
 }
 
+/** One side's players in the two-sided matchup; `DuelCommit` orients it by seat. */
+interface DuelSeatPlayers {
+  pitcher: MatchupSide
+  batter: MatchupSide
+  dueUp: readonly string[]
+}
+
+/** Both managers' players. The commit screen flips which side pitches vs. swings. */
+export interface DuelMatchup {
+  you: DuelSeatPlayers
+  opponent: DuelSeatPlayers
+}
+
 interface MatchupCardProps {
   pitcher: MatchupSide
   batter: MatchupSide
