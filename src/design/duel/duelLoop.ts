@@ -1,7 +1,8 @@
-import type { DuelAdapter } from './adapter'
+import { GameStatus, type LiveGameState } from '@sandlot/engine/game'
+import { type DuelAdapter, deriveSituation } from './adapter'
 import type { Roster } from './roster'
-import type { RevealScenario } from './scenario'
-import type { DuelSeat, SeatAgent } from './seatAgent'
+import { isHit, type RevealScenario } from './scenario'
+import { DuelSeat, type SeatAgent } from './seatAgent'
 
 /** A completed half-inning, reduced to the two numbers the summary shows. */
 export interface HalfSummary {
@@ -26,12 +27,54 @@ export interface RevealGate {
 /** Both seats' agents for a hotseat half-inning (one human fills both). */
 export type SeatAgents = Record<DuelSeat, SeatAgent>
 
-// TODO(SAN-47): implemented in the green commit.
+const emptyHalfSummary = (): HalfSummary => ({ half: 'TOP', inning: 1, runs: 0, hits: 0 })
+
+/** Fold one reveal into the running half summary (batting side runs + hits). */
+function accrueHalf(summary: HalfSummary, reveal: RevealScenario): HalfSummary {
+  return {
+    half: reveal.half,
+    inning: reveal.inning,
+    runs: summary.runs + reveal.runsScored,
+    hits: summary.hits + (isHit(reveal.outcome) ? 1 : 0),
+  }
+}
+
+/** Still the same live half-inning we opened on — the loop's continuation guard. */
+function sameHalf(state: LiveGameState, start: LiveGameState): boolean {
+  return (
+    state.status === GameStatus.Live && state.half === start.half && state.inning === start.inning
+  )
+}
+
+/**
+ * Play one hotseat half-inning to the third out (SAN-47). Each at-bat: the pitcher
+ * seat commits, then the batter seat commits from the SAME non-secret situation —
+ * the pitch is a local here and is never passed to the batter agent, so the secret
+ * lives only in this loop and the adapter it resolves through. The resolved reveal
+ * is handed to the gate; the loop waits for the advance, then the engine's already-
+ * folded state seats the next batter. The half ends when the third out flips it.
+ *
+ * The loop never inspects the concrete `SeatAgent`, so a non-human agent slots into
+ * either seat with no change here — only its `requestNumber` differs.
+ */
 export async function playHalfInning(
-  _adapter: DuelAdapter,
-  _roster: Roster,
-  _agents: SeatAgents,
-  _gate: RevealGate,
+  adapter: DuelAdapter,
+  roster: Roster,
+  agents: SeatAgents,
+  gate: RevealGate,
 ): Promise<HalfSummary> {
-  throw new Error('SAN-47 playHalfInning not implemented')
+  const start = adapter.state()
+  let summary = emptyHalfSummary()
+  while (sameHalf(adapter.state(), start)) {
+    const situation = deriveSituation(adapter.state(), adapter.hits(), roster)
+    const pitch = await agents[DuelSeat.Pitcher].requestNumber({
+      seat: DuelSeat.Pitcher,
+      situation,
+    })
+    const swing = await agents[DuelSeat.Batter].requestNumber({ seat: DuelSeat.Batter, situation })
+    const { reveal } = adapter.playAtBat(pitch, swing)
+    summary = accrueHalf(summary, reveal)
+    await gate.present(reveal, !sameHalf(adapter.state(), start))
+  }
+  return summary
 }

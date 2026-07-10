@@ -90,6 +90,11 @@ describe('DuelPlay', () => {
     for (let out = 0; out < 3; out += 1) {
       await commitPitch(PITCH)
       await commitSwing(K_SWING)
+      if (out === 0) {
+        // The reveal can be replayed without advancing the at-bat.
+        await screen.findByRole('button', { name: '↺ REPLAY' })
+        fireEvent.click(screen.getByRole('button', { name: '↺ REPLAY' }))
+      }
       await advancePastReveal()
     }
 
@@ -99,5 +104,22 @@ describe('DuelPlay', () => {
     expect(screen.getByText('HITS')).toBeTruthy()
     const values = screen.getAllByText('0')
     expect(values.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('restarts a fresh half-inning from the end-of-half summary', async () => {
+    render(<DuelPlay roster={roster} context={context} />)
+
+    for (let out = 0; out < 3; out += 1) {
+      await commitPitch(PITCH)
+      await commitSwing(K_SWING)
+      await advancePastReveal()
+    }
+
+    fireEvent.click(await screen.findByRole('button', { name: 'PLAY AGAIN' }))
+
+    // Back to the top of the half: the pitcher seat is on the clock with a fresh entry.
+    const input = await screen.findByLabelText<HTMLInputElement>(/your number/i)
+    expect(input.value).toBe('')
+    expect(screen.queryByText('END OF HALF')).toBeNull()
   })
 })

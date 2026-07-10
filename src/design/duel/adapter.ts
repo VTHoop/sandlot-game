@@ -14,10 +14,11 @@ import {
   Half,
   type LiveGameState,
   startGame,
+  type TeamLineup,
 } from '@sandlot/engine/game'
 import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
-import type { DuelMatchup } from './MatchupCard'
+import type { DuelMatchup, MatchupSide } from './MatchupCard'
 import type { Roster, RosterPlayer } from './roster'
 import type { DuelSituation, RevealScenario } from './scenario'
 import { isHit } from './scenario'
@@ -361,22 +362,81 @@ function rollHitTotals(hits: HitTotals, outcome: OutcomeKey, before: Half, after
  */
 // ── Non-secret situation + matchup derivation (commit-screen inputs) ─────────
 
-// TODO(SAN-47): implemented in the green commit.
+/**
+ * Project the non-secret situation for the seat about to commit — the whole input
+ * a commit screen (and a seat agent) is allowed to see. The return type
+ * `DuelSituation` structurally excludes both duel numbers, and `opponent` is the
+ * pitcher faced (matching the reveal's perspective). `scoreBefore` is the third
+ * perspective-bearing spot the module header calls out — it already keys "you" off
+ * the batting side via {@link scoreBefore}.
+ */
 export function deriveSituation(
-  _state: LiveGameState,
-  _hits: HitTotals,
-  _roster: Roster,
+  state: LiveGameState,
+  hits: HitTotals,
+  roster: Roster,
 ): DuelSituation {
-  throw new Error('SAN-47 deriveSituation not implemented')
+  const pitcher = seated(roster, state.currentPitcher, SeatedRole.Pitcher)
+  return {
+    opponent: pitcher.player.name,
+    inning: state.inning,
+    half: halfLabel(state.half),
+    outs: state.outs,
+    scoreBefore: scoreBefore(state),
+    hitsBefore: { you: hits.you, opp: hits.opp },
+  }
 }
 
-// TODO(SAN-47): implemented in the green commit.
+/** Engine hitter attributes → the UI's pip labels. */
+function displayHitter(attrs: HitterAttributes): MatchupSide['attrs'] {
+  return { PWR: attrs.power, CON: attrs.contact, SPD: attrs.speed, EYE: attrs.eye }
+}
+
+/** Engine pitcher attributes → the UI's pip labels (awareness is not shown). */
+function displayPitcher(attrs: PitcherAttributes): MatchupSide['attrs'] {
+  return { VEL: attrs.velocity, MOV: attrs.movement, CMD: attrs.command }
+}
+
+/** The batting side's order and pointer for the current half (top = away). */
+function battingLineup(
+  state: LiveGameState,
+  context: GameContext,
+): { order: TeamLineup['battingOrder']; index: number } {
+  return state.half === Half.Top
+    ? { order: context.away.battingOrder, index: state.awayBattingIndex }
+    : { order: context.home.battingOrder, index: state.homeBattingIndex }
+}
+
+/** The next two hitters due up after the current batter, by display name. */
+function dueUp(state: LiveGameState, context: GameContext, roster: Roster): string[] {
+  const { order, index } = battingLineup(state, context)
+  return [1, 2]
+    .map((offset) => roster.get(order[(index + offset) % order.length])?.name)
+    .filter((name): name is string => name !== undefined)
+}
+
+/**
+ * Build the commit screen's two-sided matchup from live state. Hotseat casts the
+ * currently-batting side as "you", so both seats depict the SAME real pitcher-vs-
+ * batter matchup — `DuelCommit.orientSeat` flips which side throws vs. swings per
+ * seat. Attribute blocks are mapped from the engine domain to the UI's pip labels
+ * here (the components never see the engine shapes).
+ */
 export function deriveMatchup(
-  _state: LiveGameState,
-  _roster: Roster,
-  _context: GameContext,
+  state: LiveGameState,
+  roster: Roster,
+  context: GameContext,
 ): DuelMatchup {
-  throw new Error('SAN-47 deriveMatchup not implemented')
+  const pitcher = seated(roster, state.currentPitcher, SeatedRole.Pitcher)
+  const batter = seated(roster, state.currentBatter, SeatedRole.Batter)
+  const side = {
+    pitcher: {
+      name: pitcher.player.name,
+      attrs: displayPitcher(pitcherAttributes(pitcher.player)),
+    },
+    batter: { name: batter.player.name, attrs: displayHitter(hitterAttributes(batter.player)) },
+    dueUp: dueUp(state, context, roster),
+  }
+  return { you: side, opponent: side }
 }
 
 export function createDuelAdapter(roster: Roster, context: GameContext): DuelAdapter {

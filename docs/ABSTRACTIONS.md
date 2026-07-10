@@ -186,6 +186,44 @@ the adapter fills exactly that gap:
   engine), so it is an explicit identity map, but a `Record` forces all ten keys
   at compile time and a mirror test asserts coverage, so an unmapped outcome fails
   loudly rather than silently mis-displaying.
+- **`deriveSituation(state, hits, roster)` / `deriveMatchup(state, roster, context)`
+  (SAN-47).** The commit screen's inputs, read from `LiveGameState` rather than
+  fixtures. `deriveSituation` returns a `DuelSituation` — the non-secret subset that
+  structurally excludes both duel numbers (secret-state law). `deriveMatchup` mirrors
+  the live pitcher-vs-batter matchup for both seats (hotseat casts the batting side as
+  "you"; `DuelCommit.orientSeat` flips it per seat) and maps engine attribute blocks
+  to the UI's pip labels. Both live in the adapter because they are perspective-bearing
+  (see above) — the UI never decides `you`.
+
+## Hotseat half-inning (SAN-47)
+
+Ticket 1's adapter and Ticket 2's props-driven components wired into a playable
+single half-inning, hotseat (one person enters both seats), ending at the third out.
+Surfaced as the **PLAY** tab of the `/design` showcase — no new route.
+
+- **`seatAgent.ts` — the seat-agent seam.** `SeatAgent.requestNumber(request)` names
+  *who* supplies a seat's committed number. `SeatCommitRequest` carries the `DuelSeat`
+  and the non-secret `DuelSituation` only — an agent (human or otherwise) can never see
+  the opposing seat's number through it (secret-state law holds at the seam, not just
+  the UI). Only the human agent ships; a computed agent slots into either seat by
+  implementing the same method, and the loop is unchanged.
+- **`duelLoop.ts` — `playHalfInning(adapter, roster, agents, gate)`.** The pure,
+  headless loop that sequences each at-bat: pitcher commits → batter commits → resolve
+  → present reveal → seat the next batter, until the third out flips the half. The pitch
+  is a local here and is **never** passed to the batter agent, so the secret lives only
+  in this loop and the adapter it resolves through. The `RevealGate` seam lets the caller
+  present each reveal and await the advance; `HalfSummary` accrues the batting side's
+  runs/hits for the end-of-half card.
+- **`useDuelPlay(roster, context)` — the human seam (React).** Bridges the loop's
+  promise-based agents/gate to React state: `requestNumber` parks a resolver and shows
+  the commit screen; `present` parks a resolver and shows the reveal; a lock or an
+  advance resolves the parked promise so the loop steps forward. The pitch never enters
+  React state.
+- **`DuelPlay` / `HalfSummaryCard`.** `DuelPlay` renders the loop's current `PlayView`
+  through the existing `DuelCommit` / `RevealMotion` screens (now driven from live state)
+  plus the end-of-half `HalfSummaryCard`; restart remounts a fresh half-inning by keying
+  on an epoch. `RevealMotion` gained an optional advance affordance
+  (`onAdvance` / `advanceLabel`) so the container can drive the sequence.
 
 ---
 
