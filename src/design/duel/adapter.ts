@@ -17,8 +17,9 @@ import {
 } from '@sandlot/engine/game'
 import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
+import type { DuelMatchup } from './MatchupCard'
 import type { Roster, RosterPlayer } from './roster'
-import type { RevealScenario } from './scenario'
+import type { DuelSituation, RevealScenario } from './scenario'
 import { isHit } from './scenario'
 
 /**
@@ -358,6 +359,26 @@ function rollHitTotals(hits: HitTotals, outcome: OutcomeKey, before: Half, after
  * correct `hitsBefore` and base state, and the totals follow the batting side if
  * a third out flips the half.
  */
+// ── Non-secret situation + matchup derivation (commit-screen inputs) ─────────
+
+// TODO(SAN-47): implemented in the green commit.
+export function deriveSituation(
+  _state: LiveGameState,
+  _hits: HitTotals,
+  _roster: Roster,
+): DuelSituation {
+  throw new Error('SAN-47 deriveSituation not implemented')
+}
+
+// TODO(SAN-47): implemented in the green commit.
+export function deriveMatchup(
+  _state: LiveGameState,
+  _roster: Roster,
+  _context: GameContext,
+): DuelMatchup {
+  throw new Error('SAN-47 deriveMatchup not implemented')
+}
+
 export function createDuelAdapter(roster: Roster, context: GameContext): DuelAdapter {
   let liveState = startGame(context)
   let hitTotals: HitTotals = noHits()

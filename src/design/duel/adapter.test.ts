@@ -7,12 +7,14 @@ import {
   accumulateHits,
   assembleRunnerSpeeds,
   createDuelAdapter,
+  deriveMatchup,
   deriveScoreline,
+  deriveSituation,
   OUTCOME_KEY_BY_BAND,
   resolveDuelAtBat,
   toOutcomeKey,
 } from './adapter'
-import { ROSTER, type Roster, type RosterPlayer } from './roster'
+import { GAME_CONTEXT, ROSTER, type Roster, type RosterPlayer } from './roster'
 
 // Probed against away-1 (R. VANCE) vs home-p (H. MARSH), bases empty, 0 outs:
 // the folded difference lands these bands. Keep those two attribute blocks stable.
@@ -375,5 +377,63 @@ describe('createDuelAdapter', () => {
     expect(adapter.state().outs).toBe(0)
     expect(adapter.state().bases.first).toBeNull()
     expect(adapter.hits()).toEqual({ you: 0, opp: 0 })
+  })
+})
+
+describe('deriveSituation', () => {
+  it('projects the non-secret situation for the seat on the clock', () => {
+    const situation = deriveSituation(
+      liveState({ awayScore: 2, homeScore: 1, outs: 1 }),
+      { you: 3, opp: 4 },
+      ROSTER,
+    )
+    expect(situation).toEqual({
+      opponent: 'H. MARSH',
+      inning: 1,
+      half: 'TOP',
+      outs: 1,
+      scoreBefore: { you: 2, opp: 1 },
+      hitsBefore: { you: 3, opp: 4 },
+    })
+  })
+
+  it('is structurally free of either duel number (secret-state law)', () => {
+    const situation = deriveSituation(liveState(), { you: 0, opp: 0 }, ROSTER)
+    expect(situation).not.toHaveProperty('you')
+    expect(situation).not.toHaveProperty('them')
+  })
+
+  it('credits the home score as “you” once the home side bats the bottom half', () => {
+    const situation = deriveSituation(
+      liveState({ half: Half.Bottom, awayScore: 5, homeScore: 3, currentPitcher: 'away-p' }),
+      { you: 0, opp: 0 },
+      ROSTER,
+    )
+    expect(situation.scoreBefore).toEqual({ you: 3, opp: 5 })
+  })
+})
+
+describe('deriveMatchup', () => {
+  it('mirrors the live pitcher-vs-batter matchup for both seats, mapping attrs to pips', () => {
+    const matchup = deriveMatchup(liveState(), ROSTER, GAME_CONTEXT)
+    // Both seats depict the SAME real matchup; DuelCommit orients it per seat.
+    expect(matchup.you).toBe(matchup.opponent)
+    expect(matchup.you.pitcher).toEqual({ name: 'H. MARSH', attrs: { VEL: 3, MOV: 3, CMD: 1 } })
+    expect(matchup.you.batter).toEqual({
+      name: 'R. VANCE',
+      attrs: { PWR: 3, CON: 3, SPD: 3, EYE: 5 },
+    })
+    expect(matchup.you.dueUp).toEqual(['T. JULIEN', 'S. ORTIZ'])
+  })
+
+  it('reads the home batting order when the home side bats the bottom half', () => {
+    const matchup = deriveMatchup(
+      liveState({ half: Half.Bottom, currentBatter: 'home-1', currentPitcher: 'away-p' }),
+      ROSTER,
+      GAME_CONTEXT,
+    )
+    expect(matchup.you.batter.name).toBe('J. WHITLOCK')
+    expect(matchup.you.pitcher.name).toBe('G. PIKE')
+    expect(matchup.you.dueUp).toEqual(['Q. BAKER', 'C. DIAZ'])
   })
 })
