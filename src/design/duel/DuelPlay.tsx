@@ -1,11 +1,12 @@
 import type { GameContext } from '@sandlot/engine/game'
 import { useState } from 'react'
+import { Button } from '../../components/ui/Button'
 import { DuelCommit } from './DuelCommit'
 import { HalfSummaryCard } from './HalfSummaryCard'
 import { RevealMotion } from './RevealMotion'
 import { GAME_CONTEXT, ROSTER, type Roster } from './roster'
 import { DuelSeat } from './seatAgent'
-import { type PlayView, useDuelPlay } from './useDuelPlay'
+import { type PlayView, PlayViewKind, useDuelPlay } from './useDuelPlay'
 
 const seatLabel = (seat: DuelSeat): 'pitcher' | 'batter' =>
   seat === DuelSeat.Pitcher ? 'pitcher' : 'batter'
@@ -14,7 +15,7 @@ function CommitView({
   view,
   onLock,
 }: {
-  view: Extract<PlayView, { kind: 'commit' }>
+  view: Extract<PlayView, { kind: PlayViewKind.Commit }>
   onLock: (n: number) => void
 }) {
   return (
@@ -31,6 +32,19 @@ function CommitView({
   )
 }
 
+function ErrorView({ message, onRestart }: { message: string; onRestart: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-6 px-6 text-center">
+      <p role="alert" className="font-body text-sm text-consequence">
+        {message}
+      </p>
+      <Button variant="consequence" className="px-6 py-3 text-sm" onClick={onRestart}>
+        PLAY AGAIN
+      </Button>
+    </div>
+  )
+}
+
 interface HalfInningProps {
   roster: Roster
   context: GameContext
@@ -43,8 +57,8 @@ function DuelHalfInning({ roster, context, onRestart }: HalfInningProps) {
   const [replayKey, setReplayKey] = useState(0)
 
   if (!view) return null
-  if (view.kind === 'commit') return <CommitView view={view} onLock={submitNumber} />
-  if (view.kind === 'reveal') {
+  if (view.kind === PlayViewKind.Commit) return <CommitView view={view} onLock={submitNumber} />
+  if (view.kind === PlayViewKind.Reveal) {
     return (
       <RevealMotion
         key={replayKey}
@@ -57,6 +71,8 @@ function DuelHalfInning({ roster, context, onRestart }: HalfInningProps) {
       />
     )
   }
+  if (view.kind === PlayViewKind.Error)
+    return <ErrorView message={view.message} onRestart={onRestart} />
   return <HalfSummaryCard summary={view.summary} onRestart={onRestart} />
 }
 

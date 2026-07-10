@@ -69,13 +69,14 @@ function fakeAdapter(reveals: RevealScenario[]): {
 } {
   const commits: Array<{ pitch: number; swing: number }> = []
   const hits: HitTotals = { you: 0, opp: 0 }
-  let played = 0
+  // Consume from a copy so the loop drains reveals in order without a computed
+  // index (which would trip the object-injection sink) or mutating the argument.
+  const queue = [...reveals]
   const adapter: DuelAdapter = {
-    state: () => (played >= reveals.length ? { ...liveTop(), half: Half.Bottom } : liveTop()),
+    state: () => (queue.length === 0 ? { ...liveTop(), half: Half.Bottom } : liveTop()),
     hits: () => ({ ...hits }),
     playAtBat: (pitch, swing) => {
-      const reveal = reveals[played] ?? fakeReveal('K')
-      played += 1
+      const reveal = queue.shift() ?? fakeReveal('K')
       commits.push({ pitch, swing })
       return { applied: APPLIED, reveal }
     },

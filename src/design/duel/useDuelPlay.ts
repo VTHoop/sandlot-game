@@ -7,18 +7,29 @@ import type { Roster } from './roster'
 import type { DuelSituation, RevealScenario } from './scenario'
 import { DuelSeat, type SeatAgent } from './seatAgent'
 
+/** The kind of screen the container is currently showing — the discriminant of
+ * {@link PlayView}. An enum (not a literal union) per the project's finite-value-set
+ * convention; this is internal view state, not a Convex schema boundary. */
+export enum PlayViewKind {
+  Commit = 'commit',
+  Reveal = 'reveal',
+  Summary = 'summary',
+  Error = 'error',
+}
+
 /** What the container is currently showing — the projection the loop drives. */
 export type PlayView =
   | {
-      kind: 'commit'
+      kind: PlayViewKind.Commit
       seat: DuelSeat
       situation: DuelSituation
       matchup: DuelMatchup
       /** Whether the opposing seat has already locked (never the number). */
       opponentLocked: boolean
     }
-  | { kind: 'reveal'; scenario: RevealScenario; isFinalOfHalf: boolean }
-  | { kind: 'summary'; summary: HalfSummary }
+  | { kind: PlayViewKind.Reveal; scenario: RevealScenario; isFinalOfHalf: boolean }
+  | { kind: PlayViewKind.Summary; summary: HalfSummary }
+  | { kind: PlayViewKind.Error; message: string }
 
 export interface DuelPlayController {
   view: PlayView | null
@@ -55,7 +66,7 @@ export function useDuelPlay(roster: Roster, context: GameContext): DuelPlayContr
         new Promise<number>((resolve) => {
           numberResolver.current = resolve
           setView({
-            kind: 'commit',
+            kind: PlayViewKind.Commit,
             seat,
             situation,
             matchup: deriveMatchup(adapter.state(), roster, context),
@@ -68,13 +79,21 @@ export function useDuelPlay(roster: Roster, context: GameContext): DuelPlayContr
       present: (scenario, isFinalOfHalf) =>
         new Promise<void>((resolve) => {
           revealResolver.current = resolve
-          setView({ kind: 'reveal', scenario, isFinalOfHalf })
+          setView({ kind: PlayViewKind.Reveal, scenario, isFinalOfHalf })
         }),
     }
     const agents: SeatAgents = { [DuelSeat.Pitcher]: humanSeat, [DuelSeat.Batter]: humanSeat }
-    void playHalfInning(adapter, roster, agents, gate).then((summary) => {
-      setView({ kind: 'summary', summary })
-    })
+    playHalfInning(adapter, roster, agents, gate)
+      .then((summary) => {
+        setView({ kind: PlayViewKind.Summary, summary })
+      })
+      .catch((error: unknown) => {
+        // A loop failure must surface, not silently freeze the UI on the last view.
+        setView({
+          kind: PlayViewKind.Error,
+          message: error instanceof Error ? error.message : 'The half-inning could not continue.',
+        })
+      })
   }, [roster, context])
 
   const submitNumber = useCallback((n: number) => {

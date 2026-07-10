@@ -122,4 +122,18 @@ describe('DuelPlay', () => {
     expect(input.value).toBe('')
     expect(screen.queryByText('END OF HALF')).toBeNull()
   })
+
+  it('surfaces a loop failure instead of freezing on the last view', async () => {
+    // The home pitcher id is absent from the roster, so the loop's first
+    // situation derivation throws — the container must report it, not hang.
+    const broken: GameContext = {
+      away: { battingOrder: ['a1'], pitcher: 'ap' },
+      home: { battingOrder: ['h1'], pitcher: 'no-such-pitcher' },
+    }
+    render(<DuelPlay roster={roster} context={broken} />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toMatch(/pitcher/i)
+    expect(screen.getByRole('button', { name: 'PLAY AGAIN' })).toBeTruthy()
+  })
 })
