@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button } from '../components/ui/Button'
 import { DuelCommit } from './duel/DuelCommit'
-import { SHOWCASE_SCENARIO } from './duel/fixture'
+import { SHOWCASE_MATCHUP, SHOWCASE_SCENARIO, SHOWCASE_SITUATION } from './duel/fixture'
 import { RevealMotion } from './duel/RevealMotion'
 import { WaitingTurn } from './duel/WaitingTurn'
 import './duel.css'
@@ -46,11 +46,19 @@ export default function DesignShowcase() {
       </nav>
       <div className="mx-auto flex h-[680px] w-85 flex-col overflow-hidden rounded-3xl border-4 border-black/60 bg-linear-to-b from-canvas-high to-canvas shadow-2xl">
         {tab === 'pitcher' && (
-          <DuelCommit seat="pitcher" opponentLocked={false} opponentOnline={false} />
+          <DuelCommit
+            seat="pitcher"
+            matchup={SHOWCASE_MATCHUP}
+            situation={SHOWCASE_SITUATION}
+            opponentLocked={false}
+            opponentOnline={false}
+          />
         )}
         {tab === 'batter' && (
           <DuelCommit
             seat="batter"
+            matchup={SHOWCASE_MATCHUP}
+            situation={SHOWCASE_SITUATION}
             opponentLocked
             opponentOnline
             onReveal={() => {
@@ -67,7 +75,7 @@ export default function DesignShowcase() {
             }}
           />
         )}
-        {tab === 'waiting' && <WaitingTurn />}
+        {tab === 'waiting' && <WaitingTurn scenario={SHOWCASE_SITUATION} />}
       </div>
     </main>
   )

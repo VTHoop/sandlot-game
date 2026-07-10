@@ -1,12 +1,10 @@
 import { Scoreboard } from '../../components/ui/Scoreboard'
 import { DuelChrome } from './DuelChrome'
 import { FieldDiagram } from './FieldDiagram'
-import { SHOWCASE_SCENARIO } from './fixture'
-import { formatInning } from './scenario'
+import { type DuelSituation, formatInning } from './scenario'
 
 /** The async between-turns state: calm, ambient, no actions to take. */
-export function WaitingTurn() {
-  const scenario = SHOWCASE_SCENARIO
+export function WaitingTurn({ scenario }: { scenario: DuelSituation }) {
   return (
     <DuelChrome
       situation={

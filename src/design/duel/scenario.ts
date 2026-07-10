@@ -16,6 +16,18 @@ export interface RevealScenario {
   scoreline: string
 }
 
+/**
+ * The non-secret situation shown on the commit and waiting screens: a deliberate
+ * subset of `RevealScenario` that EXCLUDES `you`/`them` (and the resolved
+ * `outcome`/`scoreline`). The commit screen must be structurally incapable of
+ * carrying either duel number — the pitch is the vault's secret (ADR-0014,
+ * AGENTS.md game integrity).
+ */
+export type DuelSituation = Pick<
+  RevealScenario,
+  'opponent' | 'inning' | 'half' | 'outs' | 'scoreBefore' | 'hitsBefore'
+>
+
 export const OUTCOME_NAMES: Record<OutcomeKey, string> = {
   HR: 'HOME RUN!',
   '3B': 'TRIPLE!',
