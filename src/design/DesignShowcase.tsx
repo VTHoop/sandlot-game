@@ -75,7 +75,7 @@ export default function DesignShowcase() {
             }}
           />
         )}
-        {tab === 'waiting' && <WaitingTurn scenario={SHOWCASE_SITUATION} />}
+        {tab === 'waiting' && <WaitingTurn situation={SHOWCASE_SITUATION} />}
       </div>
     </main>
   )

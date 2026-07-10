@@ -7,8 +7,7 @@ import { ScoreTileInput } from '../../components/ui/ScoreTileInput'
 import { DuelChrome } from './DuelChrome'
 import { isValidDuelNumber } from './duelNumber'
 import { FieldDiagram } from './FieldDiagram'
-import type { DuelMatchup } from './fixture'
-import { MatchupCard } from './MatchupCard'
+import { type DuelMatchup, MatchupCard } from './MatchupCard'
 import { type DuelSituation, formatInning } from './scenario'
 
 interface DuelCommitProps {
