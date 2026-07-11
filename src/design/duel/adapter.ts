@@ -360,6 +360,30 @@ function rollHitTotals(hits: HitTotals, outcome: OutcomeKey, before: Half, after
  * correct `hitsBefore` and base state, and the totals follow the batting side if
  * a third out flips the half.
  */
+export function createDuelAdapter(roster: Roster, context: GameContext): DuelAdapter {
+  let liveState = startGame(context)
+  let hitTotals: HitTotals = noHits()
+  return {
+    // Hand back defensive copies — a caller must not be able to mutate a snapshot
+    // and corrupt a future at-bat. `bases` is the one nested mutable that feeds
+    // back into resolution, so copy it too.
+    state: () => ({ ...liveState, bases: { ...liveState.bases } }),
+    hits: () => ({ ...hitTotals }),
+    playAtBat(pitch, swing) {
+      const resolution = resolveDuelAtBat(pitch, swing, liveState, roster, hitTotals)
+      const nextState = advance(liveState, resolution.applied, context)
+      hitTotals = rollHitTotals(
+        hitTotals,
+        resolution.reveal.outcome,
+        liveState.half,
+        nextState.half,
+      )
+      liveState = nextState
+      return resolution
+    },
+  }
+}
+
 // ── Non-secret situation + matchup derivation (commit-screen inputs) ─────────
 
 /**
@@ -411,7 +435,7 @@ function dueUp(state: LiveGameState, context: GameContext, roster: Roster): stri
   const { order, index } = battingLineup(state, context)
   return [1, 2]
     .map((offset) => roster.get(order[(index + offset) % order.length])?.name)
-    .filter((name): name is string => name !== undefined)
+    .filter((name) => name !== undefined)
 }
 
 /**
@@ -437,28 +461,4 @@ export function deriveMatchup(
     dueUp: dueUp(state, context, roster),
   }
   return { you: side, opponent: side }
-}
-
-export function createDuelAdapter(roster: Roster, context: GameContext): DuelAdapter {
-  let liveState = startGame(context)
-  let hitTotals: HitTotals = noHits()
-  return {
-    // Hand back defensive copies — a caller must not be able to mutate a snapshot
-    // and corrupt a future at-bat. `bases` is the one nested mutable that feeds
-    // back into resolution, so copy it too.
-    state: () => ({ ...liveState, bases: { ...liveState.bases } }),
-    hits: () => ({ ...hitTotals }),
-    playAtBat(pitch, swing) {
-      const resolution = resolveDuelAtBat(pitch, swing, liveState, roster, hitTotals)
-      const nextState = advance(liveState, resolution.applied, context)
-      hitTotals = rollHitTotals(
-        hitTotals,
-        resolution.reveal.outcome,
-        liveState.half,
-        nextState.half,
-      )
-      liveState = nextState
-      return resolution
-    },
-  }
 }

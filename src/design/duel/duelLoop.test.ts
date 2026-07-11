@@ -139,6 +139,26 @@ describe('playHalfInning', () => {
 
     expect(finals).toEqual([false, false, true])
   })
+
+  it('throws rather than hanging when a broken adapter never ends the half', async () => {
+    // A non-terminating adapter: its state stays in the top half forever, so the
+    // loop's half-over guard never fires. The iteration cap must break the hang.
+    let played = 0
+    const stuck: DuelAdapter = {
+      state: () => liveTop(),
+      hits: () => ({ you: 0, opp: 0 }),
+      playAtBat: () => {
+        played += 1
+        return { applied: APPLIED, reveal: fakeReveal('K') }
+      },
+    }
+
+    await expect(playHalfInning(stuck, ROSTER, flatAgents(1, 2), silentGate)).rejects.toThrow(
+      /exceeded/i,
+    )
+    // It stopped at the cap, not somewhere unbounded.
+    expect(played).toBe(200)
+  })
 })
 
 /** Two non-human agents that answer with fixed numbers — proves the loop drives a

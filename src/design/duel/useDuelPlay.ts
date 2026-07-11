@@ -31,7 +31,7 @@ export type PlayView =
   | { kind: PlayViewKind.Summary; summary: HalfSummary }
   | { kind: PlayViewKind.Error; message: string }
 
-export interface DuelPlayController {
+interface DuelPlayController {
   view: PlayView | null
   /** The human seat hands its committed number to the waiting loop. */
   submitNumber: (n: number) => void
@@ -54,18 +54,25 @@ export function useDuelPlay(roster: Roster, context: GameContext): DuelPlayContr
   const [view, setView] = useState<PlayView | null>(null)
   const numberResolver = useRef<((n: number) => void) | null>(null)
   const revealResolver = useRef<(() => void) | null>(null)
-  const started = useRef(false)
+  // Rejects whichever commit/reveal promise is currently parked, so an unmount can
+  // unwind the awaiting loop instead of leaking it (see the cleanup below).
+  const cancelParked = useRef<((reason: unknown) => void) | null>(null)
 
   useEffect(() => {
-    if (started.current) return
-    started.current = true
+    // This effect owns one loop run. `active` gates every setView so a resolution
+    // that lands after unmount is a no-op; the cleanup unwinds the parked loop.
+    let active = true
+    const show = (next: PlayView) => {
+      if (active) setView(next)
+    }
     const adapter = createDuelAdapter(roster, context)
 
     const humanSeat: SeatAgent = {
       requestNumber: ({ seat, situation }) =>
-        new Promise<number>((resolve) => {
+        new Promise<number>((resolve, reject) => {
           numberResolver.current = resolve
-          setView({
+          cancelParked.current = reject
+          show({
             kind: PlayViewKind.Commit,
             seat,
             situation,
@@ -77,33 +84,47 @@ export function useDuelPlay(roster: Roster, context: GameContext): DuelPlayContr
     }
     const gate: RevealGate = {
       present: (scenario, isFinalOfHalf) =>
-        new Promise<void>((resolve) => {
+        new Promise<void>((resolve, reject) => {
           revealResolver.current = resolve
-          setView({ kind: PlayViewKind.Reveal, scenario, isFinalOfHalf })
+          cancelParked.current = reject
+          show({ kind: PlayViewKind.Reveal, scenario, isFinalOfHalf })
         }),
     }
     const agents: SeatAgents = { [DuelSeat.Pitcher]: humanSeat, [DuelSeat.Batter]: humanSeat }
     playHalfInning(adapter, roster, agents, gate)
       .then((summary) => {
-        setView({ kind: PlayViewKind.Summary, summary })
+        show({ kind: PlayViewKind.Summary, summary })
       })
       .catch((error: unknown) => {
-        // A loop failure must surface, not silently freeze the UI on the last view.
-        setView({
+        // A real failure surfaces; an unmount cancellation is swallowed by `show`
+        // (active === false), so it never flashes an error view on the way out.
+        show({
           kind: PlayViewKind.Error,
           message: error instanceof Error ? error.message : 'The half-inning could not continue.',
         })
       })
+
+    return () => {
+      active = false
+      // Reject the parked commit/reveal promise so the awaiting loop unwinds and
+      // releases its adapter/roster/context closures rather than parking forever.
+      cancelParked.current?.(new Error('half-inning unmounted'))
+      cancelParked.current = null
+      numberResolver.current = null
+      revealResolver.current = null
+    }
   }, [roster, context])
 
   const submitNumber = useCallback((n: number) => {
     const resolve = numberResolver.current
     numberResolver.current = null
+    cancelParked.current = null
     resolve?.(n)
   }, [])
   const advanceReveal = useCallback(() => {
     const resolve = revealResolver.current
     revealResolver.current = null
+    cancelParked.current = null
     resolve?.()
   }, [])
 

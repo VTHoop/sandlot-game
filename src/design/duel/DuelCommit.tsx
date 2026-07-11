@@ -31,6 +31,9 @@ interface DuelCommitProps {
   /** Surfaces this seat's committed number to the parent when it locks. */
   onLock?: (committed: number) => void
   onReveal?: () => void
+  /** Focus the number entry on mount — set when a seat-transition remount should
+   * hand the keyboard straight to this seat (see `ScoreTileInput.focusOnMount`). */
+  focusOnMount?: boolean
 }
 
 /**
@@ -122,6 +125,7 @@ export function DuelCommit({
   opponentOnline,
   onLock,
   onReveal,
+  focusOnMount = false,
 }: DuelCommitProps) {
   const [number, setNumber] = useState('')
   const [locked, setLocked] = useState(false)
@@ -153,6 +157,7 @@ export function DuelCommit({
             value={number}
             onChange={setNumber}
             disabled={locked}
+            focusOnMount={focusOnMount}
           />
         </div>
         <CommitAction

@@ -19,7 +19,8 @@ function CommitView({
   onLock: (n: number) => void
 }) {
   return (
-    // Key by seat so each seat opens on a fresh, empty number entry.
+    // Key by seat so each seat opens on a fresh, empty number entry; the remount
+    // hands keyboard focus to that entry (focusOnMount) instead of the body.
     <DuelCommit
       key={view.seat}
       seat={seatLabel(view.seat)}
@@ -28,6 +29,7 @@ function CommitView({
       opponentLocked={view.opponentLocked}
       opponentOnline={false}
       onLock={onLock}
+      focusOnMount
     />
   )
 }

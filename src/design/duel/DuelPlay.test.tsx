@@ -77,6 +77,10 @@ describe('DuelPlay', () => {
   it('never shows the batter seat the pitch after the pitcher commits (secret-state law)', async () => {
     render(<DuelPlay roster={roster} context={context} />)
 
+    // Pitcher seat is up first: the opponent (batter) has not committed yet.
+    await screen.findByLabelText(/your number/i)
+    expect(screen.getByText('NOT YET ENTERED')).toBeTruthy()
+
     await commitPitch(PITCH)
 
     // The batter seat is now on the clock and knows only THAT the pitch is locked.

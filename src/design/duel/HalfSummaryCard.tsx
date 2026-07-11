@@ -9,9 +9,9 @@ interface HalfSummaryCardProps {
 
 function StatBlock({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="font-display text-5xl text-consequence">{value}</span>
-      <span className="font-body text-[11px] tracking-[0.22em] text-muted uppercase">{label}</span>
+    <div className="flex flex-col-reverse items-center gap-1">
+      <dt className="font-body text-[11px] tracking-[0.22em] text-muted uppercase">{label}</dt>
+      <dd className="font-display text-5xl text-consequence">{value}</dd>
     </div>
   )
 }
@@ -24,10 +24,10 @@ export function HalfSummaryCard({ summary, onRestart }: HalfSummaryCardProps) {
         {formatInning(summary)} · in the books
       </p>
       <h2 className="font-display text-3xl tracking-wider text-chalk">END OF HALF</h2>
-      <div className="flex gap-10">
+      <dl className="flex gap-10">
         <StatBlock label="RUNS" value={summary.runs} />
         <StatBlock label="HITS" value={summary.hits} />
-      </div>
+      </dl>
       <Button variant="consequence" className="px-6 py-3 text-sm" onClick={onRestart}>
         PLAY AGAIN
       </Button>

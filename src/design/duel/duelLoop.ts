@@ -47,6 +47,13 @@ function sameHalf(state: LiveGameState, start: LiveGameState): boolean {
 }
 
 /**
+ * A real half-inning ends at the third out, so its at-bat count is small. This cap
+ * exists only to keep a non-terminating adapter (a bug — one whose state never
+ * flips the half) from hanging the loop; it sits far above any plausible inning.
+ */
+const MAX_AT_BATS_PER_HALF = 200
+
+/**
  * Play one hotseat half-inning to the third out (SAN-47). Each at-bat: the pitcher
  * seat commits, then the batter seat commits from the SAME non-secret situation —
  * the pitch is a local here and is never passed to the batter agent, so the secret
@@ -65,7 +72,12 @@ export async function playHalfInning(
 ): Promise<HalfSummary> {
   const start = adapter.state()
   let summary = emptyHalfSummary()
+  let atBats = 0
   while (sameHalf(adapter.state(), start)) {
+    atBats += 1
+    if (atBats > MAX_AT_BATS_PER_HALF) {
+      throw new Error(`Half-inning exceeded ${MAX_AT_BATS_PER_HALF} at-bats without ending`)
+    }
     const situation = deriveSituation(adapter.state(), adapter.hits(), roster)
     const pitch = await agents[DuelSeat.Pitcher].requestNumber({
       seat: DuelSeat.Pitcher,
