@@ -159,10 +159,19 @@ function FieldPlay({ outcome: _outcome, hit, fieldAt, tracerAt, runnersAt }: Fie
 interface RevealMotionProps {
   scenario: RevealScenario
   onReplay?: () => void
+  /** Advance past the reveal to the next at-bat (or the end-of-half hand-off). */
+  onAdvance?: () => void
+  /** Label for the advance control; ignored when `onAdvance` is absent. */
+  advanceLabel?: string
 }
 
 /** The reveal beat: springs, drama-scaled pacing, and the scoreboard as consequence echo. */
-export function RevealMotion({ scenario, onReplay }: RevealMotionProps) {
+export function RevealMotion({
+  scenario,
+  onReplay,
+  onAdvance,
+  advanceLabel = 'NEXT →',
+}: RevealMotionProps) {
   const reduceMotion = useReducedMotion() ?? false
   const drama = deriveDrama(scenario)
 
@@ -233,6 +242,11 @@ export function RevealMotion({ scenario, onReplay }: RevealMotionProps) {
           {scenario.scoreline}
         </motion.p>
         <div className="mt-auto flex w-full flex-col gap-2">
+          {onAdvance && (
+            <Button variant="consequence" className="px-4 py-2 text-sm" onClick={onAdvance}>
+              {advanceLabel}
+            </Button>
+          )}
           <Button variant="ghost" className="px-4 py-1.5 text-xs" onClick={onReplay}>
             ↺ REPLAY
           </Button>

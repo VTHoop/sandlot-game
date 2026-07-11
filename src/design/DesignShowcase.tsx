@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button } from '../components/ui/Button'
 import { DuelCommit } from './duel/DuelCommit'
+import { DuelPlay } from './duel/DuelPlay'
 import { SHOWCASE_MATCHUP, SHOWCASE_SCENARIO, SHOWCASE_SITUATION } from './duel/fixture'
 import { RevealMotion } from './duel/RevealMotion'
 import { WaitingTurn } from './duel/WaitingTurn'
@@ -13,6 +14,7 @@ const TABS = [
   { id: 'batter', label: 'BATTER' },
   { id: 'reveal', label: 'REVEAL' },
   { id: 'waiting', label: 'WAITING' },
+  { id: 'play', label: 'PLAY' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -76,6 +78,7 @@ export default function DesignShowcase() {
           />
         )}
         {tab === 'waiting' && <WaitingTurn situation={SHOWCASE_SITUATION} />}
+        {tab === 'play' && <DuelPlay />}
       </div>
     </main>
   )
