@@ -127,6 +127,34 @@ describe('DuelPlay', () => {
     expect(screen.queryByText('END OF HALF')).toBeNull()
   })
 
+  it('sets a seat to bot so the human never fills it (human-vs-bot)', async () => {
+    render(<DuelPlay roster={roster} context={context} />)
+
+    // Default hotseat: the pitcher seat is up first.
+    await screen.findByLabelText(/your number/i)
+
+    // Hand the pitcher seat to a bot; the half re-seeds.
+    fireEvent.click(screen.getByRole('button', { name: /set pitcher to bot/i }))
+
+    // The human is only ever the batter now: the pitch is already locked (supplied
+    // by the bot) and the human is never asked to enter one.
+    await screen.findByText('🔒 LOCKED')
+    expect(numberInput()).toBeTruthy()
+  })
+
+  it('plays a bot-vs-bot half-inning to completion with no human input', async () => {
+    render(<DuelPlay roster={roster} context={context} />)
+    await screen.findByLabelText(/your number/i)
+
+    // Set BOTH seats to bot; the half then runs itself to the summary.
+    fireEvent.click(screen.getByRole('button', { name: /set pitcher to bot/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set batter to bot/i }))
+
+    await screen.findByText('END OF HALF')
+    // No commit screen was ever shown for the bot-vs-bot half.
+    expect(screen.queryByLabelText(/your number/i)).toBeNull()
+  })
+
   it('surfaces a loop failure instead of freezing on the last view', async () => {
     // The home pitcher id is absent from the roster, so the loop's first
     // situation derivation throws — the container must report it, not hang.
