@@ -109,12 +109,11 @@ function startHalfInning({
       }),
   }
   // A bot resolves its own number (no commit screen); a human parks on the screen.
-  const bots: SeatAgents = {
-    [DuelSeat.Pitcher]: createBotAgent(),
-    [DuelSeat.Batter]: createBotAgent(),
-  }
-  const agentFor = (seat: DuelSeat): SeatAgent =>
-    seats[seat] === SeatKind.Bot ? bots[seat] : humanSeat
+  // Resolve by the seat's kind rather than indexing a map with the seat as a variable
+  // key, so no computed member access sits on the object-injection sink (cf. the
+  // roster's Map convention). A bot is created only for a seat that is a bot.
+  const agentFor = (kind: SeatKind): SeatAgent =>
+    kind === SeatKind.Bot ? createBotAgent() : humanSeat
   // Bot-vs-bot has no human to advance: the gate resolves at once so the loop runs
   // straight through to the summary. With a human present it parks on each reveal.
   // The automated loop only ever awaits already-resolved promises (a bot's number and
@@ -133,8 +132,8 @@ function startHalfInning({
           }),
       }
   const agents: SeatAgents = {
-    [DuelSeat.Pitcher]: agentFor(DuelSeat.Pitcher),
-    [DuelSeat.Batter]: agentFor(DuelSeat.Batter),
+    [DuelSeat.Pitcher]: agentFor(seats[DuelSeat.Pitcher]),
+    [DuelSeat.Batter]: agentFor(seats[DuelSeat.Batter]),
   }
   playHalfInning(adapter, roster, agents, gate)
     .then((summary) => {
