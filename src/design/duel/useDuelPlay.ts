@@ -105,6 +105,11 @@ export function useDuelPlay(
       seats[seat] === SeatKind.Bot ? bots[seat] : humanSeat
     // Bot-vs-bot has no human to advance: the gate resolves at once so the loop runs
     // straight through to the summary. With a human present it parks on each reveal.
+    // The automated loop only ever awaits already-resolved promises (a bot's number
+    // and this gate), so it never suspends across a macrotask — it completes within
+    // this effect's own tick, before any user-triggered unmount can interleave. It is
+    // therefore never "parked" at unmount; the `active` gate below is what neutralizes
+    // it (any late setView is a no-op). See the cleanup note.
     const gate: RevealGate = automated
       ? { present: async () => {} }
       : {
@@ -134,8 +139,11 @@ export function useDuelPlay(
 
     return () => {
       active = false
-      // Reject the parked commit/reveal promise so the awaiting loop unwinds and
-      // releases its adapter/roster/context closures rather than parking forever.
+      // A human loop parks on a commit/reveal promise: reject it so the awaiting loop
+      // unwinds and releases its adapter/roster/context closures rather than parking
+      // forever. A bot-vs-bot loop is never parked (it has already run to completion
+      // within the effect tick — see the gate note), so `cancelParked` is null and the
+      // `active = false` above is what makes it a no-op; both paths are covered.
       cancelParked.current?.(new Error('half-inning unmounted'))
       cancelParked.current = null
       numberResolver.current = null
