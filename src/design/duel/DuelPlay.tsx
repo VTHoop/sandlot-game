@@ -5,7 +5,8 @@ import { DuelCommit } from './DuelCommit'
 import { HalfSummaryCard } from './HalfSummaryCard'
 import { RevealMotion } from './RevealMotion'
 import { GAME_CONTEXT, ROSTER, type Roster } from './roster'
-import { DuelSeat } from './seatAgent'
+import { SeatControls } from './SeatControls'
+import { DuelSeat, SeatKind, type SeatKinds } from './seatAgent'
 import { type PlayView, PlayViewKind, useDuelPlay } from './useDuelPlay'
 
 const seatLabel = (seat: DuelSeat): 'pitcher' | 'batter' =>
@@ -50,12 +51,13 @@ function ErrorView({ message, onRestart }: { message: string; onRestart: () => v
 interface HalfInningProps {
   roster: Roster
   context: GameContext
+  seats: SeatKinds
   onRestart: () => void
 }
 
 /** One live half-inning: the loop's current view rendered by the shared screens. */
-function DuelHalfInning({ roster, context, onRestart }: HalfInningProps) {
-  const { view, submitNumber, advanceReveal } = useDuelPlay(roster, context)
+function DuelHalfInning({ roster, context, seats, onRestart }: HalfInningProps) {
+  const { view, submitNumber, advanceReveal } = useDuelPlay(roster, context, seats)
   const [replayKey, setReplayKey] = useState(0)
 
   if (!view) return null
@@ -83,22 +85,39 @@ interface DuelPlayProps {
   context?: GameContext
 }
 
+const BOTH_HUMAN: SeatKinds = {
+  [DuelSeat.Pitcher]: SeatKind.Human,
+  [DuelSeat.Batter]: SeatKind.Human,
+}
+
 /**
- * The playable hotseat half-inning (SAN-47): one person enters both seats, at-bats
- * sequence through the live adapter, and the half ends at the third out. Restart
- * remounts a fresh half-inning by keying on an epoch — the loop's one-shot effect
- * re-seeds cleanly.
+ * The playable half-inning (SAN-47, SAN-48): each seat is set to human or bot
+ * independently, at-bats sequence through the live adapter, and the half ends at
+ * the third out. Both seats default to human (the hotseat). Changing a seat or
+ * restarting bumps an epoch that remounts a fresh half-inning — the loop's one-shot
+ * effect re-seeds cleanly with the current seat fills.
  */
 export function DuelPlay({ roster = ROSTER, context = GAME_CONTEXT }: DuelPlayProps = {}) {
+  const [seats, setSeats] = useState<SeatKinds>(BOTH_HUMAN)
   const [epoch, setEpoch] = useState(0)
+  const setSeat = (seat: DuelSeat, kind: SeatKind) => {
+    setSeats((prev) => ({ ...prev, [seat]: kind }))
+    setEpoch((e) => e + 1)
+  }
   return (
-    <DuelHalfInning
-      key={epoch}
-      roster={roster}
-      context={context}
-      onRestart={() => {
-        setEpoch((e) => e + 1)
-      }}
-    />
+    <div className="flex h-full flex-col">
+      <SeatControls seats={seats} onChange={setSeat} />
+      <div className="min-h-0 flex-1">
+        <DuelHalfInning
+          key={epoch}
+          roster={roster}
+          context={context}
+          seats={seats}
+          onRestart={() => {
+            setEpoch((e) => e + 1)
+          }}
+        />
+      </div>
+    </div>
   )
 }

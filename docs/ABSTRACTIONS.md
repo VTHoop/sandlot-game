@@ -203,10 +203,10 @@ Surfaced as the **PLAY** tab of the `/design` showcase — no new route.
 
 - **`seatAgent.ts` — the seat-agent seam.** `SeatAgent.requestNumber(request)` names
   *who* supplies a seat's committed number. `SeatCommitRequest` carries the `DuelSeat`
-  and the non-secret `DuelSituation` only — an agent (human or otherwise) can never see
+  and the non-secret `DuelSituation` only — an agent (human or bot) can never see
   the opposing seat's number through it (secret-state law holds at the seam, not just
-  the UI). Only the human agent ships; a computed agent slots into either seat by
-  implementing the same method, and the loop is unchanged.
+  the UI). `SeatKind` (`Human` / `Bot`) and `SeatKinds` name each seat's fill; a bot
+  slots into either seat by implementing the same method, and the loop is unchanged.
 - **`duelLoop.ts` — `playHalfInning(adapter, roster, agents, gate)`.** The pure,
   headless loop that sequences each at-bat: pitcher commits → batter commits → resolve
   → present reveal → seat the next batter, until the third out flips the half. The pitch
@@ -214,16 +214,34 @@ Surfaced as the **PLAY** tab of the `/design` showcase — no new route.
   in this loop and the adapter it resolves through. The `RevealGate` seam lets the caller
   present each reveal and await the advance; `HalfSummary` accrues the batting side's
   runs/hits for the end-of-half card.
-- **`useDuelPlay(roster, context)` — the human seam (React).** Bridges the loop's
-  promise-based agents/gate to React state: `requestNumber` parks a resolver and shows
-  the commit screen; `present` parks a resolver and shows the reveal; a lock or an
-  advance resolves the parked promise so the loop steps forward. The pitch never enters
-  React state.
-- **`DuelPlay` / `HalfSummaryCard`.** `DuelPlay` renders the loop's current `PlayView`
-  through the existing `DuelCommit` / `RevealMotion` screens (now driven from live state)
-  plus the end-of-half `HalfSummaryCard`; restart remounts a fresh half-inning by keying
-  on an epoch. `RevealMotion` gained an optional advance affordance
-  (`onAdvance` / `advanceLabel`) so the container can drive the sequence.
+- **`useDuelPlay(roster, context, seats)` — the React seam.** Bridges the loop's
+  promise-based agents/gate to React state and builds each seat's agent from `seats`:
+  a **human** seat's `requestNumber` parks a resolver and shows the commit screen; a
+  **bot** seat is `createBotAgent`, which resolves its number with no screen. The
+  `RevealGate` parks a resolver and shows the reveal for a human to advance — unless the
+  half is bot-vs-bot, where it resolves at once so the inning runs to completion with no
+  human input. A lock or an advance resolves the parked promise so the loop steps
+  forward. The pitch never enters React state.
+- **`DuelPlay` / `SeatControls` / `HalfSummaryCard`.** `DuelPlay` renders the loop's
+  current `PlayView` through the existing `DuelCommit` / `RevealMotion` screens (driven
+  from live state) plus the end-of-half `HalfSummaryCard`, above a `SeatControls` bar
+  that sets each seat to human/bot independently. Changing a seat or restarting bumps an
+  epoch that remounts a fresh half-inning. `RevealMotion` carries an optional advance
+  affordance (`onAdvance` / `advanceLabel`) so the container can drive the sequence.
+
+## Bot seat agent (SAN-48)
+
+A non-human seat agent that makes the seat-agent seam concrete for automated play,
+enabling human-vs-bot and bot-vs-bot on the mock half-inning.
+
+- **`botAgent.ts` — `createBotAgent(rng = Math.random)`.** Implements `SeatAgent` by
+  drawing its seat's number **uniformly at random** over the valid duel range
+  `[DUEL_MIN, DUEL_MAX]`. Uniform is the strategically-sound blind-duel baseline (the
+  opponent's number is unknown, so expected outcome is pick-invariant — attributes size
+  the bands, the number only sets the difference), not a placeholder; situational
+  tendencies are a future enhancement. It ignores the request, so a bot seat carries no
+  secret exactly as the seam guarantees. `rng` is injectable for deterministic tests.
+  This is the seed of a future bot-vs-bot balance simulator (ADR-0010/0015).
 
 ---
 
