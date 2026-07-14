@@ -24,7 +24,8 @@ export interface RevealGate {
   present(reveal: RevealScenario, isFinalOfHalf: boolean): Promise<void>
 }
 
-/** Both seats' agents for a hotseat half-inning (one human fills both). */
+/** Both seats' agents for a half-inning. Each seat is filled independently by a human
+ * or a bot (SAN-48) — the loop drives whatever `SeatAgent` each slot holds. */
 export type SeatAgents = Record<DuelSeat, SeatAgent>
 
 const emptyHalfSummary = (): HalfSummary => ({ half: 'TOP', inning: 1, runs: 0, hits: 0 })
@@ -54,15 +55,16 @@ function sameHalf(state: LiveGameState, start: LiveGameState): boolean {
 const MAX_AT_BATS_PER_HALF = 200
 
 /**
- * Play one hotseat half-inning to the third out (SAN-47). Each at-bat: the pitcher
+ * Play one half-inning to the third out (SAN-47, SAN-48). Each at-bat: the pitcher
  * seat commits, then the batter seat commits from the SAME non-secret situation —
  * the pitch is a local here and is never passed to the batter agent, so the secret
  * lives only in this loop and the adapter it resolves through. The resolved reveal
  * is handed to the gate; the loop waits for the advance, then the engine's already-
  * folded state seats the next batter. The half ends when the third out flips it.
  *
- * The loop never inspects the concrete `SeatAgent`, so a non-human agent slots into
- * either seat with no change here — only its `requestNumber` differs.
+ * The loop never inspects the concrete `SeatAgent`, so either seat can be a human or
+ * a bot with no change here — only its `requestNumber` differs. (A fully-automated
+ * bot-vs-bot half runs to completion through an auto-advancing gate — see the caller.)
  */
 export async function playHalfInning(
   adapter: DuelAdapter,

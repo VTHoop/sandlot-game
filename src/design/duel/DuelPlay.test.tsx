@@ -155,6 +155,29 @@ describe('DuelPlay', () => {
     expect(screen.queryByLabelText(/your number/i)).toBeNull()
   })
 
+  it('plays a human-vs-bot half-inning through to the end-of-half summary', async () => {
+    render(<DuelPlay roster={roster} context={context} />)
+    await screen.findByLabelText(/your number/i)
+
+    // Bot pitches, human bats. The bot's pitch is random, so outcomes (and thus the
+    // number of at-bats to three outs) vary — drive the human batter until the reveal
+    // reports the half ended, rather than assuming a fixed count.
+    fireEvent.click(screen.getByRole('button', { name: /set pitcher to bot/i }))
+
+    for (let guard = 0; guard < 100; guard += 1) {
+      // Only the human batter ever commits — the bot pitch is already locked.
+      await commitSwing(K_SWING)
+      await screen.findByRole('button', { name: '↺ REPLAY' })
+      // The advance label tells us whether this at-bat's third out ended the half.
+      const advance = screen.getByRole('button', { name: /(NEXT BATTER|END OF HALF) →/ })
+      const endsHalf = /END OF HALF/.test(advance.textContent ?? '')
+      fireEvent.click(advance)
+      if (endsHalf) break
+    }
+
+    await screen.findByText('END OF HALF')
+  })
+
   it('surfaces a loop failure instead of freezing on the last view', async () => {
     // The home pitcher id is absent from the roster, so the loop's first
     // situation derivation throws — the container must report it, not hang.

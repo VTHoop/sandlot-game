@@ -85,10 +85,10 @@ interface DuelPlayProps {
   context?: GameContext
 }
 
-const BOTH_HUMAN: SeatKinds = {
+const BOTH_HUMAN = {
   [DuelSeat.Pitcher]: SeatKind.Human,
   [DuelSeat.Batter]: SeatKind.Human,
-}
+} satisfies SeatKinds
 
 /**
  * The playable half-inning (SAN-47, SAN-48): each seat is set to human or bot
