@@ -127,6 +127,57 @@ describe('DuelPlay', () => {
     expect(screen.queryByText('END OF HALF')).toBeNull()
   })
 
+  it('sets a seat to bot so the human never fills it (human-vs-bot)', async () => {
+    render(<DuelPlay roster={roster} context={context} />)
+
+    // Default hotseat: the pitcher seat is up first.
+    await screen.findByLabelText(/your number/i)
+
+    // Hand the pitcher seat to a bot; the half re-seeds.
+    fireEvent.click(screen.getByRole('button', { name: /set pitcher to bot/i }))
+
+    // The human is only ever the batter now: the pitch is already locked (supplied
+    // by the bot) and the human is never asked to enter one.
+    await screen.findByText('🔒 LOCKED')
+    expect(numberInput()).toBeTruthy()
+  })
+
+  it('plays a bot-vs-bot half-inning to completion with no human input', async () => {
+    render(<DuelPlay roster={roster} context={context} />)
+    await screen.findByLabelText(/your number/i)
+
+    // Set BOTH seats to bot; the half then runs itself to the summary.
+    fireEvent.click(screen.getByRole('button', { name: /set pitcher to bot/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set batter to bot/i }))
+
+    await screen.findByText('END OF HALF')
+    // No commit screen was ever shown for the bot-vs-bot half.
+    expect(screen.queryByLabelText(/your number/i)).toBeNull()
+  })
+
+  it('plays a human-vs-bot half-inning through to the end-of-half summary', async () => {
+    render(<DuelPlay roster={roster} context={context} />)
+    await screen.findByLabelText(/your number/i)
+
+    // Bot pitches, human bats. The bot's pitch is random, so outcomes (and thus the
+    // number of at-bats to three outs) vary — drive the human batter until the reveal
+    // reports the half ended, rather than assuming a fixed count.
+    fireEvent.click(screen.getByRole('button', { name: /set pitcher to bot/i }))
+
+    for (let guard = 0; guard < 100; guard += 1) {
+      // Only the human batter ever commits — the bot pitch is already locked.
+      await commitSwing(K_SWING)
+      await screen.findByRole('button', { name: '↺ REPLAY' })
+      // The advance label tells us whether this at-bat's third out ended the half.
+      const advance = screen.getByRole('button', { name: /(NEXT BATTER|END OF HALF) →/ })
+      const endsHalf = /END OF HALF/.test(advance.textContent ?? '')
+      fireEvent.click(advance)
+      if (endsHalf) break
+    }
+
+    await screen.findByText('END OF HALF')
+  })
+
   it('surfaces a loop failure instead of freezing on the last view', async () => {
     // The home pitcher id is absent from the roster, so the loop's first
     // situation derivation throws — the container must report it, not hang.

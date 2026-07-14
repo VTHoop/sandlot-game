@@ -16,6 +16,18 @@ export enum DuelSeat {
   Batter = 'batter',
 }
 
+/** Who fills a seat: a human at the commit screen, or an automated bot agent that
+ * supplies the number itself (SAN-48). A TS enum per the project's finite-value-set
+ * convention; the PLAY tab sets each seat's kind independently. */
+export enum SeatKind {
+  Human = 'human',
+  Bot = 'bot',
+}
+
+/** Each seat's fill (human or bot) for a half-inning — the PLAY-tab configuration
+ * the container turns into concrete {@link SeatAgent}s. */
+export type SeatKinds = Record<DuelSeat, SeatKind>
+
 /**
  * Everything a seat agent is shown when asked for its number: the seat and the
  * NON-SECRET situation, nothing else. `DuelSituation` structurally excludes both

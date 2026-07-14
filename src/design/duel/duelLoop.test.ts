@@ -1,8 +1,10 @@
+import { isDuelNumber } from '@sandlot/engine/atBat'
 import type { AppliedAtBat } from '@sandlot/engine/game'
 import { GameStatus, Half, type LiveGameState } from '@sandlot/engine/game'
 import { describe, expect, it } from 'vitest'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import type { DuelAdapter, HitTotals } from './adapter'
+import { createBotAgent } from './botAgent'
 import { playHalfInning, type RevealGate, type SeatAgents } from './duelLoop'
 import type { Roster } from './roster'
 import type { RevealScenario } from './scenario'
@@ -138,6 +140,35 @@ describe('playHalfInning', () => {
     await playHalfInning(adapter, ROSTER, agents, gate)
 
     expect(finals).toEqual([false, false, true])
+  })
+
+  it('drives a bot seat without ever handing it the opponent’s number (secret-state law)', async () => {
+    // A bot fills the batter seat; a recording wrapper captures every request the
+    // seam hands it so we can assert what it was — and was not — shown.
+    const received: SeatCommitRequest[] = []
+    const bot = createBotAgent(() => 0.42)
+    const batter: SeatAgent = {
+      requestNumber: (request) => {
+        received.push(request)
+        return bot.requestNumber(request)
+      },
+    }
+    const pitcher: SeatAgent = { requestNumber: async () => 731 }
+    const agents: SeatAgents = { [DuelSeat.Pitcher]: pitcher, [DuelSeat.Batter]: batter }
+    const { adapter, commits } = fakeAdapter([fakeReveal('K'), fakeReveal('K'), fakeReveal('K')])
+
+    await playHalfInning(adapter, ROSTER, agents, silentGate)
+
+    expect(received).toHaveLength(3)
+    for (const request of received) {
+      expect(request.seat).toBe(DuelSeat.Batter)
+      // The pitch (731) lives only in the loop: it never reaches the bot seat.
+      expect(JSON.stringify(request)).not.toContain('731')
+    }
+    // Every number the bot committed into resolution is a valid duel number.
+    for (const { swing } of commits) {
+      expect(isDuelNumber(swing)).toBe(true)
+    }
   })
 
   it('throws rather than hanging when a broken adapter never ends the half', async () => {
