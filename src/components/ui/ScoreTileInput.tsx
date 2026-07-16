@@ -1,12 +1,13 @@
-import { useEffect, useRef } from 'react'
+import { type KeyboardEventHandler, useEffect, useRef } from 'react'
 
-const sanitize = (raw: string) => raw.replace(/\D/g, '').replace(/^0+/, '').slice(0, 4)
+const sanitize = (raw: string) => raw.replace(/\D/g, '').replace(/^0+/, '').slice(0, 3)
 
 interface ScoreTileInputProps {
   value: string
   onChange: (next: string) => void
   label: string
   disabled?: boolean
+  onKeyDown?: KeyboardEventHandler<HTMLInputElement>
   /**
    * Move focus to this entry when it mounts — used when a seat-transition remount
    * should hand the keyboard to the fresh entry so keyboard users aren't dropped
@@ -26,6 +27,7 @@ export function ScoreTileInput({
   label,
   disabled = false,
   focusOnMount = false,
+  onKeyDown,
 }: ScoreTileInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -47,6 +49,7 @@ export function ScoreTileInput({
         onChange={(event) => {
           onChange(sanitize(event.target.value))
         }}
+        onKeyDown={onKeyDown}
         className="w-36 appearance-none rounded-(--radius-tile) border border-edge bg-surface px-3 py-1 text-center font-display text-4xl tracking-wider text-chalk transition-colors placeholder:text-muted focus:border-chalk focus:outline-none disabled:opacity-40"
       />
     </label>

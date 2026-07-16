@@ -23,11 +23,20 @@ describe('ScoreTileInput', () => {
     expect(onChange).toHaveBeenCalledWith('472')
   })
 
-  it('caps at four digits', () => {
+  it.each([['10009', '100']])('caps at three digits — sanitizes "%s" to "%s"', (raw, expected) => {
     const onChange = vi.fn()
     render(<ScoreTileInput label="your number" value="100" onChange={onChange} />)
-    type('10009')
-    expect(onChange).toHaveBeenCalledWith('1000')
+    type(raw)
+    expect(onChange).toHaveBeenCalledWith(expected)
+  })
+
+  it('forwards onKeyDown to the input', () => {
+    const onKeyDown = vi.fn()
+    render(
+      <ScoreTileInput label="your number" value="" onChange={() => {}} onKeyDown={onKeyDown} />,
+    )
+    fireEvent.keyDown(screen.getByLabelText(/your number/i), { key: 'Enter' })
+    expect(onKeyDown).toHaveBeenCalled()
   })
 
   it('uses the numeric keyboard and never spinners', () => {
