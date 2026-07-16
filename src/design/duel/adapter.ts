@@ -265,7 +265,7 @@ export function deriveHeadline(
   outcome: OutcomeKey,
   groundBallResult: GroundBallResult | null,
 ): string {
-  if (groundBallResult) {
+  if (groundBallResult !== null) {
     const headline = GB_RESULT_HEADLINE.get(groundBallResult)
     if (!headline) throw new RangeError(`unmapped ground-ball result: ${groundBallResult}`)
     return headline

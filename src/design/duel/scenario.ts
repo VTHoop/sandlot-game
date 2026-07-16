@@ -65,7 +65,10 @@ export type DuelSituation = Pick<
   'opponent' | 'inning' | 'half' | 'outs' | 'scoreBefore' | 'hitsBefore'
 >
 
-export const OUTCOME_NAMES: Record<OutcomeKey, string> = {
+// Internal: callers reach these through `outcomeName()` so the lookup stays off the
+// object-injection sink. `satisfies` validates every OutcomeKey is named while
+// keeping each value's literal type.
+const OUTCOME_NAMES = {
   HR: 'HOME RUN!',
   '3B': 'TRIPLE!',
   '2B': 'DOUBLE!',
@@ -76,7 +79,7 @@ export const OUTCOME_NAMES: Record<OutcomeKey, string> = {
   PO: 'POP OUT',
   GB: 'GROUNDOUT',
   K: 'STRIKEOUT',
-}
+} satisfies Record<OutcomeKey, string>
 
 // The Record read through a Map, so callers look up a name without a variable-key
 // index into `OUTCOME_NAMES` (the object-injection sink Codacy flags; cf. the

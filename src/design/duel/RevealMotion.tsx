@@ -1,5 +1,5 @@
 import { MotionConfig, motion, useReducedMotion } from 'motion/react'
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import { Scoreboard } from '../../components/ui/Scoreboard'
@@ -181,7 +181,16 @@ interface FieldPlayProps {
   runnersAt: number
 }
 
-function FieldPlay({ movements, hit, fieldAt, tracerAt, runnersAt }: FieldPlayProps) {
+// Memoized: its props (movements, hit, timings) are stable across a reveal, so it
+// skips the re-renders the two hit/run scoreboard-count flips would otherwise cause
+// — no re-diffing the field or rebuilding the runner keyframe arrays.
+const FieldPlay = memo(function FieldPlay({
+  movements,
+  hit,
+  fieldAt,
+  tracerAt,
+  runnersAt,
+}: FieldPlayProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -229,7 +238,7 @@ function FieldPlay({ movements, hit, fieldAt, tracerAt, runnersAt }: FieldPlayPr
       ))}
     </motion.div>
   )
-}
+})
 
 interface RevealMotionProps {
   scenario: RevealScenario
