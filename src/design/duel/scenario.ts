@@ -1,5 +1,34 @@
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 
+/**
+ * A node on the base-running path — where a runner starts or ends on the reveal's
+ * field. An enum (not a literal union) per the project's finite-value-set
+ * convention. `Batter` (stepping in at the plate) is a start-only spot; `Home`
+ * (scored) and `Out` (retired on the play) are end-only. The three bases can be
+ * either end of a journey.
+ */
+export enum FieldSpot {
+  Batter = 'batter',
+  First = 'first',
+  Second = 'second',
+  Third = 'third',
+  Home = 'home',
+  Out = 'out',
+}
+
+/**
+ * One runner's journey across the play, so the reveal animates the REAL base
+ * running rather than a canned flourish: the batter (and each on-base runner)
+ * traced from where they started (`from`) to where they ended (`to`). A held
+ * runner has `from === to`; a scorer ends at `Home`; a retired runner ends at
+ * `Out`. Derived in the adapter from the engine's before/after base state, which
+ * preserves runner identity (`RunnerId`) across bases.
+ */
+export interface RunnerMovement {
+  from: FieldSpot
+  to: FieldSpot
+}
+
 /** A resolved at-bat from the viewer's (batter's) perspective. */
 export interface RevealScenario {
   you: number
@@ -14,6 +43,14 @@ export interface RevealScenario {
   scoreBefore: { you: number; opp: number }
   hitsBefore: { you: number; opp: number }
   scoreline: string
+  /** The headline word(s) the reveal shouts — the specific result, not just the
+   * band. A groundball resolves into a fielder's choice / double play / etc., each
+   * of which reads differently; the adapter names it (see `deriveHeadline`) so
+   * "GROUNDOUT" no longer stands in for a double play. */
+  headline: string
+  /** Each runner's real journey this play, for the field animation. Empty only
+   * when nobody moved (never in practice — the batter is always traced). */
+  movements: RunnerMovement[]
 }
 
 /**
@@ -28,7 +65,10 @@ export type DuelSituation = Pick<
   'opponent' | 'inning' | 'half' | 'outs' | 'scoreBefore' | 'hitsBefore'
 >
 
-export const OUTCOME_NAMES: Record<OutcomeKey, string> = {
+// Internal: callers reach these through `outcomeName()` so the lookup stays off the
+// object-injection sink. `satisfies` validates every OutcomeKey is named while
+// keeping each value's literal type.
+const OUTCOME_NAMES = {
   HR: 'HOME RUN!',
   '3B': 'TRIPLE!',
   '2B': 'DOUBLE!',
@@ -39,6 +79,19 @@ export const OUTCOME_NAMES: Record<OutcomeKey, string> = {
   PO: 'POP OUT',
   GB: 'GROUNDOUT',
   K: 'STRIKEOUT',
+} satisfies Record<OutcomeKey, string>
+
+// The Record read through a Map, so callers look up a name without a variable-key
+// index into `OUTCOME_NAMES` (the object-injection sink Codacy flags; cf. the
+// adapter's OUTCOME_KEY_LOOKUP).
+const OUTCOME_NAME_LOOKUP: ReadonlyMap<string, string> = new Map(Object.entries(OUTCOME_NAMES))
+
+/** The display name for an outcome, looked up injection-safely. Throws on an
+ * unknown key so a missing name fails loudly rather than yielding `undefined`. */
+export function outcomeName(outcome: OutcomeKey): string {
+  const name = OUTCOME_NAME_LOOKUP.get(outcome)
+  if (!name) throw new RangeError(`unmapped outcome: ${outcome}`)
+  return name
 }
 
 const HIT_OUTCOMES: ReadonlySet<OutcomeKey> = new Set(['HR', '3B', '2B', '1B', 'IF1B'])

@@ -1,6 +1,7 @@
 import {
   type BaseSpeeds,
   type BaseState,
+  GroundBallResult,
   type HitterAttributes,
   type PitcherAttributes,
   type ResolvedAtBat,
@@ -20,8 +21,14 @@ import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import type { DuelMatchup, MatchupSide } from './MatchupCard'
 import type { Roster, RosterPlayer } from './roster'
-import type { DuelSituation, RevealScenario } from './scenario'
-import { isHit } from './scenario'
+import {
+  type DuelSituation,
+  FieldSpot,
+  isHit,
+  outcomeName,
+  type RevealScenario,
+  type RunnerMovement,
+} from './scenario'
 
 /**
  * The pure, headless duel adapter (SAN-45): the boundary that bridges the
@@ -210,6 +217,117 @@ export function deriveScoreline(params: {
   return clauses.filter((c): c is string => c !== null).join(' · ')
 }
 
+// ── Headline (the reveal's shouted result) ───────────────────────────────────
+
+/**
+ * The distinct headlines a groundball can shout. A TS enum (per the project's
+ * finite-value-set convention) single-sources the copy that several sub-results
+ * share — a fielder's choice reads the same whether the force was at 2nd, 3rd, or
+ * home — and makes {@link GB_RESULT_HEADLINE} value-type-safe (a typo'd string
+ * can't sneak in). Display copy, so it lives here in the adapter, never in the
+ * engine's `GroundBallResult` (ADR-0009: the engine stays UI-free).
+ */
+export enum GbHeadline {
+  Groundout = 'GROUNDOUT',
+  FieldersChoice = "FIELDER'S CHOICE",
+  DoublePlay = 'DOUBLE PLAY',
+  TriplePlay = 'TRIPLE PLAY',
+}
+
+/**
+ * Groundball sub-result → the headline it reads as. The `GB` band collapses eight
+ * distinct plays; without this they'd all shout "GROUNDOUT" and a double play would
+ * look like a routine out (the runners just vanish). One row per `GroundBallResult`
+ * (not a shared-headline shortcut) so a future divergence — e.g. `FC_HOME` reading
+ * "OUT AT HOME" — is a one-line change. A Map keeps the lookup off the
+ * object-injection sink; an unmapped result throws in `deriveHeadline` (the mirror
+ * test pins every `GroundBallResult`), so a new sub-result fails loudly, not silently.
+ */
+const GB_RESULT_HEADLINE = new Map<GroundBallResult, GbHeadline>([
+  [GroundBallResult.GO, GbHeadline.Groundout],
+  [GroundBallResult.GO_RA, GbHeadline.Groundout],
+  [GroundBallResult.FC, GbHeadline.FieldersChoice],
+  [GroundBallResult.FC_2ND, GbHeadline.FieldersChoice],
+  [GroundBallResult.FC_3RD, GbHeadline.FieldersChoice],
+  [GroundBallResult.FC_HOME, GbHeadline.FieldersChoice],
+  [GroundBallResult.DP, GbHeadline.DoublePlay],
+  [GroundBallResult.TP, GbHeadline.TriplePlay],
+])
+
+/**
+ * Name the reveal's headline. Most outcomes read as their band's name; a groundball
+ * carries a finer `groundBallResult` (fielder's choice / double play / …) that names
+ * itself, so "GROUNDOUT" no longer stands in for a twin killing. Throws on an
+ * unmapped sub-result so a new `GroundBallResult` fails loudly here rather than
+ * silently mislabeling.
+ */
+export function deriveHeadline(
+  outcome: OutcomeKey,
+  groundBallResult: GroundBallResult | null,
+): string {
+  if (groundBallResult !== null) {
+    const headline = GB_RESULT_HEADLINE.get(groundBallResult)
+    if (!headline) throw new RangeError(`unmapped ground-ball result: ${groundBallResult}`)
+    return headline
+  }
+  return outcomeName(outcome)
+}
+
+// ── Runner movement (field animation) ────────────────────────────────────────
+
+/** Which base a runner id occupies after the play, or null if they left the bases
+ * (scored or retired). Explicit property reads — no variable-key indexing on the
+ * injection sink (cf. the roster's Map convention). */
+function landingSpot(basesAfter: BaseState, id: RunnerId): FieldSpot | null {
+  if (basesAfter.third === id) return FieldSpot.Third
+  if (basesAfter.second === id) return FieldSpot.Second
+  if (basesAfter.first === id) return FieldSpot.First
+  return null
+}
+
+/**
+ * Trace every runner's real journey for the reveal's field animation. The engine
+ * preserves runner identity across bases (`RunnerId`), so each on-base runner and
+ * the batter is followed from where they started to where they ended: still on a
+ * base (advanced or held), across the plate (scored), or off the board (retired).
+ *
+ * A runner absent from `basesAfter` either scored or was put out — before/after
+ * alone can't say which. Runs are credited to the LEAD runners (closest to home),
+ * so we process in lead order (third → second → first → batter) and let the
+ * frontmost `runsScored` departed runners score; every remaining departure is an
+ * out. This is the same lead-runner-scores convention the box score implies, and it
+ * covers the real cases (sac fly: the runner on third scores, the batter is out;
+ * force DP: the trail runner and batter are both out with no run).
+ */
+export function deriveRunnerMovements(params: {
+  basesBefore: BaseState
+  basesAfter: BaseState
+  batter: RunnerId
+  runsScored: number
+}): RunnerMovement[] {
+  const { basesBefore, basesAfter, batter, runsScored } = params
+  const starters: Array<{ id: RunnerId; from: FieldSpot }> = []
+  const addStarter = (id: RunnerId | null, from: FieldSpot) => {
+    if (id) starters.push({ id, from })
+  }
+  // Lead order (closest to home first) so score credit falls to the front runners.
+  addStarter(basesBefore.third, FieldSpot.Third)
+  addStarter(basesBefore.second, FieldSpot.Second)
+  addStarter(basesBefore.first, FieldSpot.First)
+  starters.push({ id: batter, from: FieldSpot.Batter })
+
+  let scored = 0
+  return starters.map(({ id, from }) => {
+    const landing = landingSpot(basesAfter, id)
+    if (landing) return { from, to: landing }
+    if (scored < runsScored) {
+      scored += 1
+      return { from, to: FieldSpot.Home }
+    }
+    return { from, to: FieldSpot.Out }
+  })
+}
+
 // ── Hit accumulation ────────────────────────────────────────────────────────
 
 /** Fold one outcome into the running hit totals: a hit credits the batting team
@@ -263,6 +381,12 @@ function buildReveal(params: {
   const { pitch, swing, state, resolved, applied, batter, opponent, hitsBefore } = params
   const outcome = toOutcomeKey(resolved.outcome)
   return {
+    movements: deriveRunnerMovements({
+      basesBefore: state.bases,
+      basesAfter: resolved.basesAfter,
+      batter,
+      runsScored: resolved.runsScored,
+    }),
     // `you`/`them` are perspective-bearing: the batter's own swing vs. the pitch
     // they faced (SAN-45 renders for the batter). A `viewer` input would flip these
     // for the pitching side — see the module header.
@@ -276,6 +400,7 @@ function buildReveal(params: {
     runsScored: resolved.runsScored,
     scoreBefore: scoreBefore(state),
     hitsBefore,
+    headline: deriveHeadline(outcome, resolved.groundBallResult),
     scoreline: deriveScoreline({
       outcome,
       basesAfter: resolved.basesAfter,
