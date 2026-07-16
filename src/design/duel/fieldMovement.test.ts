@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { movementPath } from './fieldMovement'
-import { FieldSpot } from './scenario'
+import { latestScoringArrival, movementPath } from './fieldMovement'
+import { FieldSpot, type RunnerMovement } from './scenario'
 
 const HOME = { x: 120, y: 210 }
 const FIRST = { x: 205, y: 125 }
@@ -43,5 +43,37 @@ describe('movementPath', () => {
     const path = movementPath({ from: FieldSpot.First, to: FieldSpot.Home })
     expect(path.scored).toBe(true)
     expect(path.waypoints).toEqual([FIRST, SECOND, THIRD, HOME])
+  })
+})
+
+describe('latestScoringArrival', () => {
+  it('returns runnersAt when nothing scores', () => {
+    const outs: RunnerMovement[] = [
+      { from: FieldSpot.Batter, to: FieldSpot.Out },
+      { from: FieldSpot.First, to: FieldSpot.Out },
+    ]
+    expect(latestScoringArrival(outs, 3)).toBe(3)
+  })
+
+  it('ignores non-scoring tokens, timing off the runner who scores', () => {
+    // A double: the runner scores from second (3 waypoints → 1.0s), the batter
+    // stops at second (not a scorer). Index 0, no stagger → 1.0s after runnersAt.
+    const double: RunnerMovement[] = [
+      { from: FieldSpot.Second, to: FieldSpot.Home },
+      { from: FieldSpot.Batter, to: FieldSpot.Second },
+    ]
+    expect(latestScoringArrival(double, 0)).toBeCloseTo(1.0)
+  })
+
+  it('waits for the last, deepest scorer on a grand slam', () => {
+    // Four scorers; the batter (index 3) travels the full circuit (5 waypoints →
+    // 2.0s) after a 3-step stagger (0.36s): 2.36s, the max across all four.
+    const grandSlam: RunnerMovement[] = [
+      { from: FieldSpot.Third, to: FieldSpot.Home },
+      { from: FieldSpot.Second, to: FieldSpot.Home },
+      { from: FieldSpot.First, to: FieldSpot.Home },
+      { from: FieldSpot.Batter, to: FieldSpot.Home },
+    ]
+    expect(latestScoringArrival(grandSlam, 0)).toBeCloseTo(2.36)
   })
 })

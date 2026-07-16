@@ -27,21 +27,14 @@ const SPOT_POINT = new Map<FieldSpot, Point>([
 ])
 
 /**
- * Position along the counter-clockwise base path, so a journey expands into the
- * bases it passes through. The batter starts at 0 (the plate) and a scorer lands at
- * 4 (the plate again, one lap later); a runner already on base starts at their
- * base's index. `Out` has no path index — a retired runner does not travel.
+ * The base path in running order: the batter starts at the plate (`Batter`, index
+ * 0) and a scorer returns to it as `Home` (the far end, one lap later); a runner
+ * already on base starts at their base. A journey is the inclusive slice between its
+ * endpoints, so it expands into every base it passes through. Sliced by value, never
+ * indexed by a computed key — no object-injection sink. `Out` is absent: a retired
+ * runner does not travel (handled before this sequence is consulted).
  */
-const RUNNING_ORDER = new Map<FieldSpot, number>([
-  [FieldSpot.Batter, 0],
-  [FieldSpot.First, 1],
-  [FieldSpot.Second, 2],
-  [FieldSpot.Third, 3],
-  [FieldSpot.Home, 4],
-])
-
-/** The spot occupying each running-order index, for expanding a journey's path. */
-const ORDER_SPOT: readonly FieldSpot[] = [
+const RUNNING_SEQUENCE: readonly FieldSpot[] = [
   FieldSpot.Batter,
   FieldSpot.First,
   FieldSpot.Second,
@@ -85,11 +78,31 @@ export function movementPath(movement: RunnerMovement): MovementPath {
     return { start, waypoints: [start], travels: false, scored: false, retired }
   }
 
-  const startIdx = RUNNING_ORDER.get(from) ?? 0
-  const endIdx = RUNNING_ORDER.get(to) ?? startIdx
-  const waypoints: Point[] = []
-  for (let idx = startIdx; idx <= endIdx; idx++) {
-    waypoints.push(pointOf(ORDER_SPOT[idx]))
-  }
+  const startIdx = RUNNING_SEQUENCE.indexOf(from)
+  const endIdx = RUNNING_SEQUENCE.indexOf(to)
+  const waypoints = RUNNING_SEQUENCE.slice(startIdx, endIdx + 1).map(pointOf)
   return { start, waypoints, travels: true, scored: to === FieldSpot.Home, retired: false }
+}
+
+/** Seconds a token spends travelling, one beat per base it passes, floored so a
+ * single-base move still reads. */
+export function travelDuration(path: MovementPath): number {
+  return Math.max(0.6, 0.5 * (path.waypoints.length - 1))
+}
+
+/** Per-runner start stagger (seconds) so tokens step off in sequence, not as a blob. */
+export const RUNNER_STAGGER = 0.12
+
+/**
+ * When the last run actually crosses the plate, relative to `runnersAt`: the max
+ * over the scoring tokens of (their staggered start + travel). The reveal ticks the
+ * scoreboard here so a multi-run play (e.g. a grand slam) doesn't add the runs while
+ * the trailing tokens are still between bases. Returns `runnersAt` when nothing scores.
+ */
+export function latestScoringArrival(movements: RunnerMovement[], runnersAt: number): number {
+  return movements.reduce((latest, movement, index) => {
+    const path = movementPath(movement)
+    if (!path.scored) return latest
+    return Math.max(latest, runnersAt + index * RUNNER_STAGGER + travelDuration(path))
+  }, runnersAt)
 }

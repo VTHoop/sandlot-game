@@ -25,7 +25,7 @@ import {
   type DuelSituation,
   FieldSpot,
   isHit,
-  OUTCOME_NAMES,
+  outcomeName,
   type RevealScenario,
   type RunnerMovement,
 } from './scenario'
@@ -270,7 +270,7 @@ export function deriveHeadline(
     if (!headline) throw new RangeError(`unmapped ground-ball result: ${groundBallResult}`)
     return headline
   }
-  return OUTCOME_NAMES[outcome]
+  return outcomeName(outcome)
 }
 
 // ── Runner movement (field animation) ────────────────────────────────────────

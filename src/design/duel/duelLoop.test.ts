@@ -7,7 +7,7 @@ import type { DuelAdapter, HitTotals } from './adapter'
 import { createBotAgent } from './botAgent'
 import { playHalfInning, type RevealGate, type SeatAgents } from './duelLoop'
 import type { Roster } from './roster'
-import { OUTCOME_NAMES, type RevealScenario } from './scenario'
+import { outcomeName, type RevealScenario } from './scenario'
 import { DuelSeat, type SeatAgent, type SeatCommitRequest } from './seatAgent'
 
 // A one-pitcher roster is all `deriveSituation` needs to name the opponent.
@@ -56,7 +56,7 @@ function fakeReveal(outcome: OutcomeKey, runsScored = 0): RevealScenario {
     scoreBefore: { you: 0, opp: 0 },
     hitsBefore: { you: 0, opp: 0 },
     scoreline: '',
-    headline: OUTCOME_NAMES[outcome],
+    headline: outcomeName(outcome),
     // The loop never renders the field; movements only matter to the reveal UI.
     movements: [],
   }

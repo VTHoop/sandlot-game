@@ -5,7 +5,13 @@ import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import { Scoreboard } from '../../components/ui/Scoreboard'
 import { ScoreTile } from '../../components/ui/ScoreTile'
 import { FieldDiagram } from './FieldDiagram'
-import { type MovementPath, movementPath } from './fieldMovement'
+import {
+  latestScoringArrival,
+  type MovementPath,
+  movementPath,
+  RUNNER_STAGGER,
+  travelDuration,
+} from './fieldMovement'
 import {
   deriveDrama,
   FieldSpot,
@@ -103,11 +109,6 @@ function OutcomeCallout({ headline, callout, outcomeAt, calloutAt }: OutcomeCall
 // corner, so shift by this to center them on a base's coordinate.
 const TOKEN_HALF = 8
 
-/** Seconds a token travels per base it passes, floored so a one-base move still reads. */
-function travelDuration(path: MovementPath): number {
-  return Math.max(0.6, 0.5 * (path.waypoints.length - 1))
-}
-
 interface RunnerTokenProps {
   path: MovementPath
   index: number
@@ -132,7 +133,7 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
   const startX = path.start.x - TOKEN_HALF
   const startY = path.start.y - TOKEN_HALF
   const appearAt = fieldAt + 0.2 + index * 0.05
-  const moveAt = runnersAt + index * 0.12
+  const moveAt = runnersAt + index * RUNNER_STAGGER
 
   if (!path.travels) {
     // A held runner sits on the base; a retired runner fades out as the play resolves.
@@ -255,8 +256,14 @@ export function RevealMotion({
   const fieldAt = outcomeAt + 0.9
   const tracerAt = fieldAt + 0.35
   const runnersAt = tracerAt + 0.5
-  const runTickAt = runnersAt + 1.15
-  const scorelineAt = runnersAt + 1.7
+  // Tick the scoreboard once the last run has actually crossed the plate — floored
+  // at the original beat so a routine play keeps its pacing, extended when a
+  // multi-run play (e.g. a grand slam) leaves tokens still rounding the bases.
+  const runTickAt = Math.max(
+    runnersAt + 1.15,
+    latestScoringArrival(scenario.movements, runnersAt) + 0.15,
+  )
+  const scorelineAt = runTickAt + 0.55
 
   const [hitCounted, setHitCounted] = useState(false)
   const [runsCounted, setRunsCounted] = useState(false)
