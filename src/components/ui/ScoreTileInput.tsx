@@ -1,4 +1,5 @@
-import { type KeyboardEventHandler, useEffect, useRef } from 'react'
+import { type KeyboardEventHandler, useEffect, useId, useRef } from 'react'
+import { Input } from './Input'
 
 const sanitize = (raw: string) => raw.replace(/\D/g, '').replace(/^0+/, '').slice(0, 3)
 
@@ -29,15 +30,19 @@ export function ScoreTileInput({
   focusOnMount = false,
   onKeyDown,
 }: ScoreTileInputProps) {
+  const id = useId()
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (focusOnMount && !disabled) inputRef.current?.focus()
   }, [focusOnMount, disabled])
 
   return (
-    <label className="flex flex-col items-center gap-1.5">
-      <span className="font-body text-[11px] tracking-[0.22em] text-muted uppercase">{label}</span>
-      <input
+    <div className="flex flex-col items-center gap-1.5">
+      <label htmlFor={id} className="font-body text-[11px] tracking-[0.22em] text-muted uppercase">
+        {label}
+      </label>
+      <Input
+        id={id}
         ref={inputRef}
         type="text"
         inputMode="numeric"
@@ -50,8 +55,8 @@ export function ScoreTileInput({
           onChange(sanitize(event.target.value))
         }}
         onKeyDown={onKeyDown}
-        className="w-36 appearance-none rounded-(--radius-tile) border border-edge bg-surface px-3 py-1 text-center font-display text-4xl tracking-wider text-chalk transition-colors placeholder:text-muted focus:border-chalk focus:outline-none disabled:opacity-40"
+        className="w-36 rounded-(--radius-tile) px-3 py-1 text-center font-display text-4xl tracking-wider"
       />
-    </label>
+    </div>
   )
 }
