@@ -538,6 +538,15 @@ describe('deriveSituation', () => {
     expect(situation.runnersOn).toEqual([FieldSpot.Third, FieldSpot.First])
   })
 
+  it('projects a loaded diamond — every base branch, second included', () => {
+    const situation = deriveSituation(
+      liveState({ bases: { first: 'away-1', second: 'away-2', third: 'away-3' } }),
+      { you: 0, opp: 0 },
+      ROSTER,
+    )
+    expect(situation.runnersOn).toEqual([FieldSpot.Third, FieldSpot.Second, FieldSpot.First])
+  })
+
   it('is structurally free of either duel number (secret-state law)', () => {
     const situation = deriveSituation(liveState(), { you: 0, opp: 0 }, ROSTER)
     expect(situation).not.toHaveProperty('you')

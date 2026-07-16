@@ -89,14 +89,17 @@ export function FieldDiagram({ runnersOn, className = 'h-60 w-60' }: FieldDiagra
           />
         ))}
       </svg>
-      {runnersOn?.map((spot) => (
-        <span
-          key={spot}
-          data-testid="runner-token"
-          className={`absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full ${runnerTokenClass(spot === FieldSpot.Batter)}`}
-          style={{ left: pct(spotPoint(spot).x), top: pct(spotPoint(spot).y) }}
-        />
-      ))}
+      {runnersOn?.map((spot) => {
+        const { x, y } = spotPoint(spot)
+        return (
+          <span
+            key={spot}
+            data-testid="runner-token"
+            className={`absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full ${runnerTokenClass(spot === FieldSpot.Batter)}`}
+            style={{ left: pct(x), top: pct(y) }}
+          />
+        )
+      })}
     </div>
   )
 }

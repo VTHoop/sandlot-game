@@ -6,6 +6,7 @@ import { Scoreboard } from '../../components/ui/Scoreboard'
 import { ScoreTile } from '../../components/ui/ScoreTile'
 import { FieldDiagram, runnerTokenClass } from './FieldDiagram'
 import {
+  FIELD_VIEWBOX,
   latestScoringArrival,
   type MovementPath,
   movementPath,
@@ -198,7 +199,11 @@ const FieldPlay = memo(function FieldPlay({
     >
       <FieldDiagram />
       {hit && (
-        <svg aria-hidden="true" className="absolute inset-0" viewBox="0 0 240 240">
+        <svg
+          aria-hidden="true"
+          className="absolute inset-0"
+          viewBox={`0 0 ${FIELD_VIEWBOX} ${FIELD_VIEWBOX}`}
+        >
           <motion.line
             x1="120"
             y1="200"
