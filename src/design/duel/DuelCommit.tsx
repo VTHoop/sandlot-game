@@ -133,6 +133,11 @@ export function DuelCommit({
   const opponent = situation.opponent
   const { half, matchup } = orientSeat(seat, players, situation)
 
+  const handleLock = () => {
+    onLock?.(Number(number))
+    setLocked(true)
+  }
+
   return (
     <DuelChrome opponent={opponent} opponentOnline={opponentOnline}>
       <div className="flex flex-1 flex-col gap-3 px-5 pb-4">
@@ -161,6 +166,9 @@ export function DuelCommit({
             onChange={setNumber}
             disabled={locked}
             focusOnMount={focusOnMount}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !locked && isValidDuelNumber(number)) handleLock()
+            }}
           />
         </div>
         <CommitAction
@@ -168,10 +176,7 @@ export function DuelCommit({
           bothLocked={locked && opponentLocked}
           opponent={opponent}
           canLock={isValidDuelNumber(number)}
-          onLock={() => {
-            onLock?.(Number(number))
-            setLocked(true)
-          }}
+          onLock={handleLock}
           onReveal={onReveal}
         />
         <div className="mt-auto">

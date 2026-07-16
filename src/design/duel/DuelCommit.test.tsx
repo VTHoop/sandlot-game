@@ -62,6 +62,39 @@ describe('DuelCommit', () => {
     screen.getByRole('img', { name: 'Runner on 2nd' })
   })
 
+  it('pressing Enter with a valid number locks the seat', () => {
+    const onLock = vi.fn()
+    render(
+      <DuelCommit
+        seat="pitcher"
+        matchup={SHOWCASE_MATCHUP}
+        situation={SHOWCASE_SITUATION}
+        opponentLocked={false}
+        opponentOnline={false}
+        onLock={onLock}
+      />,
+    )
+    fireEvent.change(numberInput(), { target: { value: '472' } })
+    fireEvent.keyDown(numberInput(), { key: 'Enter' })
+    expect(onLock).toHaveBeenCalledExactlyOnceWith(472)
+  })
+
+  it('pressing Enter with an invalid entry is a no-op', () => {
+    const onLock = vi.fn()
+    render(
+      <DuelCommit
+        seat="pitcher"
+        matchup={SHOWCASE_MATCHUP}
+        situation={SHOWCASE_SITUATION}
+        opponentLocked={false}
+        opponentOnline={false}
+        onLock={onLock}
+      />,
+    )
+    fireEvent.keyDown(numberInput(), { key: 'Enter' })
+    expect(onLock).not.toHaveBeenCalled()
+  })
+
   it('does not surface a number while it is still invalid', () => {
     const onLock = vi.fn()
     render(
