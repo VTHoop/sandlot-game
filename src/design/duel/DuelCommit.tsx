@@ -8,7 +8,7 @@ import { DuelChrome } from './DuelChrome'
 import { isValidDuelNumber } from './duelNumber'
 import { FieldDiagram } from './FieldDiagram'
 import { type DuelMatchup, MatchupCard } from './MatchupCard'
-import { type DuelSituation, formatInning } from './scenario'
+import { type DuelSituation, formatInning, liveFieldSpots } from './scenario'
 
 interface DuelCommitProps {
   /** Which seat the viewer holds; the screen is otherwise identical. */
@@ -147,7 +147,10 @@ export function DuelCommit({
           outs={situation.outs}
         />
         <div className="flex items-stretch gap-3">
-          <FieldDiagram className="h-36 w-36 shrink-0 self-center" />
+          <FieldDiagram
+            runnersOn={liveFieldSpots(situation)}
+            className="h-36 w-36 shrink-0 self-center"
+          />
           <MatchupCard {...matchup} />
         </div>
         <OpponentNumberChip opponent={opponent} locked={opponentLocked} />

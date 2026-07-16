@@ -512,6 +512,19 @@ export function createDuelAdapter(roster: Roster, context: GameContext): DuelAda
 // ── Non-secret situation + matchup derivation (commit-screen inputs) ─────────
 
 /**
+ * The occupied bases in lead order (third → first) — the commit field's live
+ * occupancy (SAN-51). Occupancy only, never runner identity: explicit property
+ * reads, no computed keys (cf. `landingSpot`).
+ */
+function occupiedBases(bases: BaseState): FieldSpot[] {
+  const spots: FieldSpot[] = []
+  if (bases.third) spots.push(FieldSpot.Third)
+  if (bases.second) spots.push(FieldSpot.Second)
+  if (bases.first) spots.push(FieldSpot.First)
+  return spots
+}
+
+/**
  * Project the non-secret situation for the seat about to commit — the whole input
  * a commit screen (and a seat agent) is allowed to see. The return type
  * `DuelSituation` structurally excludes both duel numbers, and `opponent` is the
@@ -532,7 +545,7 @@ export function deriveSituation(
     outs: state.outs,
     scoreBefore: scoreBefore(state),
     hitsBefore: { you: hits.you, opp: hits.opp },
-    runnersOn: [],
+    runnersOn: occupiedBases(state.bases),
   }
 }
 

@@ -73,6 +73,14 @@ export type DuelSituation = Pick<
   runnersOn: readonly FieldSpot[]
 }
 
+/** What the live field shows before the pitch: the batter standing in plus each
+ * occupied base — the same opening frame the reveal's animation settles on, so
+ * the commit/waiting field and the reveal field read as one diamond (SAN-51). */
+export const liveFieldSpots = (situation: DuelSituation): readonly FieldSpot[] => [
+  FieldSpot.Batter,
+  ...situation.runnersOn,
+]
+
 // Internal: callers reach these through `outcomeName()` so the lookup stays off the
 // object-injection sink. `satisfies` validates every OutcomeKey is named while
 // keeping each value's literal type.

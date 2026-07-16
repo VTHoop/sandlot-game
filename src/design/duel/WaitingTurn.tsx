@@ -1,7 +1,7 @@
 import { Scoreboard } from '../../components/ui/Scoreboard'
 import { DuelChrome } from './DuelChrome'
 import { FieldDiagram } from './FieldDiagram'
-import { type DuelSituation, formatInning } from './scenario'
+import { type DuelSituation, formatInning, liveFieldSpots } from './scenario'
 
 interface WaitingTurnProps {
   situation: DuelSituation
@@ -37,7 +37,7 @@ export function WaitingTurn({ situation }: WaitingTurnProps) {
           inning={formatInning(situation)}
           outs={situation.outs}
         />
-        <FieldDiagram />
+        <FieldDiagram runnersOn={liveFieldSpots(situation)} />
         <p className="font-display text-xl tracking-wider text-chalk">
           IT&rsquo;S {situation.opponent.toUpperCase()}&rsquo;S TURN
         </p>

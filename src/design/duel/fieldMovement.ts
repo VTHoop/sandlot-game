@@ -42,7 +42,12 @@ const RUNNING_SEQUENCE: readonly FieldSpot[] = [
   FieldSpot.Home,
 ]
 
-const pointOf = (spot: FieldSpot): Point => {
+/** Side length of the square viewBox the field diagram draws in. */
+export const FIELD_VIEWBOX = 240
+
+/** The viewBox coordinate of a field spot — the one geometry both the static
+ * diagram (SAN-51) and the reveal animation position tokens from. */
+export const spotPoint = (spot: FieldSpot): Point => {
   const point = SPOT_POINT.get(spot)
   if (!point) throw new RangeError(`no field point for spot ${spot}`)
   return point
@@ -70,7 +75,7 @@ export interface MovementPath {
  */
 export function movementPath(movement: RunnerMovement): MovementPath {
   const { from, to } = movement
-  const start = pointOf(from)
+  const start = spotPoint(from)
   const retired = to === FieldSpot.Out
   const held = from === to
 
@@ -80,7 +85,7 @@ export function movementPath(movement: RunnerMovement): MovementPath {
 
   const startIdx = RUNNING_SEQUENCE.indexOf(from)
   const endIdx = RUNNING_SEQUENCE.indexOf(to)
-  const waypoints = RUNNING_SEQUENCE.slice(startIdx, endIdx + 1).map(pointOf)
+  const waypoints = RUNNING_SEQUENCE.slice(startIdx, endIdx + 1).map(spotPoint)
   return { start, waypoints, travels: true, scored: to === FieldSpot.Home, retired: false }
 }
 
