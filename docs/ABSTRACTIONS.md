@@ -189,7 +189,9 @@ the adapter fills exactly that gap:
 - **`deriveSituation(state, hits, roster)` / `deriveMatchup(state, roster, context)`
   (SAN-47).** The commit screen's inputs, read from `LiveGameState` rather than
   fixtures. `deriveSituation` returns a `DuelSituation` — the non-secret subset that
-  structurally excludes both duel numbers (secret-state law). `deriveMatchup` mirrors
+  structurally excludes both duel numbers (secret-state law); since SAN-51 it also
+  carries `runnersOn`, the live base occupancy (lead order, occupancy only — never
+  runner identity), so the commit/waiting field draws the real diamond. `deriveMatchup` mirrors
   the live pitcher-vs-batter matchup for both seats (hotseat casts the batting side as
   "you"; `DuelCommit.orientSeat` flips it per seat) and maps engine attribute blocks
   to the UI's pip labels. Both live in the adapter because they are perspective-bearing
@@ -242,6 +244,23 @@ enabling human-vs-bot and bot-vs-bot on the mock half-inning.
   tendencies are a future enhancement. It ignores the request, so a bot seat carries no
   secret exactly as the seam guarantees. `rng` is injectable for deterministic tests.
   This is the seed of a future bot-vs-bot balance simulator (ADR-0010/0015).
+
+## Live field state on the commit/waiting screens (SAN-51)
+
+The number-entry (commit) and waiting screens' field shows the current game state —
+the same diamond the reveal animates — instead of a decorative runner.
+
+- **`FieldDiagram.runnersOn`** — optional occupancy: one token per occupied spot
+  (the batter at the plate plus each occupied base, composed by
+  `scenario.liveFieldSpots`). With it the field is exposed as `role="img"` whose
+  label reads the base state ("Runner on 2nd", "Bases loaded" — `describeBases`);
+  without it the diagram stays a bare, decorative (`aria-hidden`) diamond the
+  reveal overlays with its own animated tokens.
+- **One geometry, one skin.** Tokens are positioned by `fieldMovement.spotPoint`
+  (percent of `FIELD_VIEWBOX`, so any box size tracks) and colored by
+  `FieldDiagram.runnerTokenClass` (batter = hero, on-base runner = clay) — shared
+  with `RevealMotion`, so the commit field is exactly the reveal field's opening
+  frame and the two screens stay visually interchangeable.
 
 ---
 

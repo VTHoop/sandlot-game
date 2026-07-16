@@ -49,4 +49,6 @@ export const SHOWCASE_SITUATION = {
   outs: SHOWCASE_SCENARIO.outs,
   scoreBefore: SHOWCASE_SCENARIO.scoreBefore,
   hitsBefore: SHOWCASE_SCENARIO.hitsBefore,
+  // Mirrors the scenario's movements: the runner the double scores starts on 2nd.
+  runnersOn: [FieldSpot.Second],
 } satisfies DuelSituation

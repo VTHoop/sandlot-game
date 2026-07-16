@@ -4,8 +4,9 @@ import { Button } from '../../components/ui/Button'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import { Scoreboard } from '../../components/ui/Scoreboard'
 import { ScoreTile } from '../../components/ui/ScoreTile'
-import { FieldDiagram } from './FieldDiagram'
+import { FieldDiagram, runnerTokenClass } from './FieldDiagram'
 import {
+  FIELD_VIEWBOX,
   latestScoringArrival,
   type MovementPath,
   movementPath,
@@ -127,9 +128,7 @@ interface RunnerTokenProps {
  * position is driven by the movement's waypoints, never a canned route.
  */
 function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenProps) {
-  const color = isBatter
-    ? 'bg-consequence shadow-(--shadow-runner)'
-    : 'bg-clay-bright shadow-(--shadow-runner-clay)'
+  const color = runnerTokenClass(isBatter)
   const startX = path.start.x - TOKEN_HALF
   const startY = path.start.y - TOKEN_HALF
   const appearAt = fieldAt + 0.2 + index * 0.05
@@ -198,9 +197,13 @@ const FieldPlay = memo(function FieldPlay({
       transition={{ delay: fieldAt, duration: 0.5 }}
       className="relative"
     >
-      <FieldDiagram runners="none" />
+      <FieldDiagram />
       {hit && (
-        <svg aria-hidden="true" className="absolute inset-0" viewBox="0 0 240 240">
+        <svg
+          aria-hidden="true"
+          className="absolute inset-0"
+          viewBox={`0 0 ${FIELD_VIEWBOX} ${FIELD_VIEWBOX}`}
+        >
           <motion.line
             x1="120"
             y1="200"

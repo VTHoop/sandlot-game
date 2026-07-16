@@ -30,7 +30,7 @@ describe('DesignShowcase', () => {
 
   it('shows opponent presence in the chrome and outs in the scoreboard', () => {
     screen.getByRole('img', { name: 'Maddie is offline' })
-    screen.getByText('2 OUT')
+    screen.getByRole('img', { name: '2 outs' })
     fireEvent.click(button('BATTER'))
     screen.getByRole('img', { name: 'Maddie is online' })
   })
