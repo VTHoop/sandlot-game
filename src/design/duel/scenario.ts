@@ -63,7 +63,15 @@ export interface RevealScenario {
 export type DuelSituation = Pick<
   RevealScenario,
   'opponent' | 'inning' | 'half' | 'outs' | 'scoreBefore' | 'hitsBefore'
->
+> & {
+  /**
+   * Which bases are occupied right now, in lead order (third → first), so the
+   * commit/waiting field can draw the REAL diamond instead of a decorative one
+   * (SAN-51). Occupancy only — no runner identity and, like every other field
+   * here, no number. Base spots only; `Batter`/`Home`/`Out` never appear.
+   */
+  runnersOn: readonly FieldSpot[]
+}
 
 // Internal: callers reach these through `outcomeName()` so the lookup stays off the
 // object-injection sink. `satisfies` validates every OutcomeKey is named while

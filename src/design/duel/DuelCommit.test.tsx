@@ -46,6 +46,22 @@ describe('DuelCommit', () => {
     expect(onLock).toHaveBeenCalledExactlyOnceWith(472)
   })
 
+  it('shows the live base state on the field: the batter plus each occupied base (SAN-51)', () => {
+    render(
+      <DuelCommit
+        seat="batter"
+        matchup={SHOWCASE_MATCHUP}
+        situation={SHOWCASE_SITUATION}
+        opponentLocked={false}
+        opponentOnline
+      />,
+    )
+    // The showcase situation has a runner on 2nd → that runner plus the batter,
+    // never the old decorative lone-runner default.
+    expect(screen.getAllByTestId('runner-token')).toHaveLength(2)
+    screen.getByRole('img', { name: 'Runner on 2nd' })
+  })
+
   it('does not surface a number while it is still invalid', () => {
     const onLock = vi.fn()
     render(

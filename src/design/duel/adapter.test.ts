@@ -524,7 +524,18 @@ describe('deriveSituation', () => {
       outs: 1,
       scoreBefore: { you: 2, opp: 1 },
       hitsBefore: { you: 3, opp: 4 },
+      runnersOn: [],
     })
+  })
+
+  it('projects occupied bases in lead order so the commit field mirrors the live diamond', () => {
+    const situation = deriveSituation(
+      liveState({ bases: { first: 'away-1', second: null, third: 'away-2' } }),
+      { you: 0, opp: 0 },
+      ROSTER,
+    )
+    // Occupancy only (no runner identity), lead order like the reveal's starters.
+    expect(situation.runnersOn).toEqual([FieldSpot.Third, FieldSpot.First])
   })
 
   it('is structurally free of either duel number (secret-state law)', () => {

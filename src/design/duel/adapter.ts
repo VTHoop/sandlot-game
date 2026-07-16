@@ -532,6 +532,7 @@ export function deriveSituation(
     outs: state.outs,
     scoreBefore: scoreBefore(state),
     hitsBefore: { you: hits.you, opp: hits.opp },
+    runnersOn: [],
   }
 }
 

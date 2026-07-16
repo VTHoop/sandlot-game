@@ -13,6 +13,7 @@ const SITUATION: DuelSituation = {
   outs: 0,
   scoreBefore: { you: 0, opp: 0 },
   hitsBefore: { you: 0, opp: 0 },
+  runnersOn: [],
 }
 const request = (seat: DuelSeat): SeatCommitRequest => ({ seat, situation: SITUATION })
 

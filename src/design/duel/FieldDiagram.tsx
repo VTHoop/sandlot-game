@@ -1,9 +1,13 @@
+import type { FieldSpot } from './scenario'
+
 interface FieldDiagramProps {
   /**
    * `static`: lone runner holding 2nd · `none`: bare diamond (caller overlays
    * its own runner tokens / spray-chart marks).
    */
   runners?: 'static' | 'none'
+  /** Occupied spots rendered as live-state runner tokens (SAN-51). */
+  runnersOn?: readonly FieldSpot[]
   /** Size classes; the diagram scales with its box (overlays use the 240 viewBox). */
   className?: string
 }
