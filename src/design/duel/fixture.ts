@@ -1,5 +1,5 @@
 import type { DuelMatchup } from './MatchupCard'
-import type { DuelSituation, RevealScenario } from './scenario'
+import { type DuelSituation, FieldSpot, type RevealScenario } from './scenario'
 
 /**
  * Player-level matchup context for the commit screen (managers duel; players
@@ -30,6 +30,11 @@ export const SHOWCASE_SCENARIO: RevealScenario = {
   scoreBefore: { you: 4, opp: 4 },
   hitsBefore: { you: 7, opp: 6 },
   scoreline: 'Your runner scores from 2nd · you stand on 2nd',
+  headline: 'DOUBLE!',
+  movements: [
+    { from: FieldSpot.Second, to: FieldSpot.Home },
+    { from: FieldSpot.Batter, to: FieldSpot.Second },
+  ],
 }
 
 /**

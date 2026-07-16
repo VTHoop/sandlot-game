@@ -1,5 +1,34 @@
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 
+/**
+ * A node on the base-running path — where a runner starts or ends on the reveal's
+ * field. An enum (not a literal union) per the project's finite-value-set
+ * convention. `Batter` (stepping in at the plate) is a start-only spot; `Home`
+ * (scored) and `Out` (retired on the play) are end-only. The three bases can be
+ * either end of a journey.
+ */
+export enum FieldSpot {
+  Batter = 'batter',
+  First = 'first',
+  Second = 'second',
+  Third = 'third',
+  Home = 'home',
+  Out = 'out',
+}
+
+/**
+ * One runner's journey across the play, so the reveal animates the REAL base
+ * running rather than a canned flourish: the batter (and each on-base runner)
+ * traced from where they started (`from`) to where they ended (`to`). A held
+ * runner has `from === to`; a scorer ends at `Home`; a retired runner ends at
+ * `Out`. Derived in the adapter from the engine's before/after base state, which
+ * preserves runner identity (`RunnerId`) across bases.
+ */
+export interface RunnerMovement {
+  from: FieldSpot
+  to: FieldSpot
+}
+
 /** A resolved at-bat from the viewer's (batter's) perspective. */
 export interface RevealScenario {
   you: number
@@ -14,6 +43,14 @@ export interface RevealScenario {
   scoreBefore: { you: number; opp: number }
   hitsBefore: { you: number; opp: number }
   scoreline: string
+  /** The headline word(s) the reveal shouts — the specific result, not just the
+   * band. A groundball resolves into a fielder's choice / double play / etc., each
+   * of which reads differently; the adapter names it (see `deriveHeadline`) so
+   * "GROUNDOUT" no longer stands in for a double play. */
+  headline: string
+  /** Each runner's real journey this play, for the field animation. Empty only
+   * when nobody moved (never in practice — the batter is always traced). */
+  movements: RunnerMovement[]
 }
 
 /**

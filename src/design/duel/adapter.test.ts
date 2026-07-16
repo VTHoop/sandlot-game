@@ -1,4 +1,4 @@
-import type { BaseState, HitterAttributes } from '@sandlot/engine/atBat'
+import { type BaseState, GroundBallResult, type HitterAttributes } from '@sandlot/engine/atBat'
 import { GameStatus, Half, type LiveGameState } from '@sandlot/engine/game'
 import { OUTCOME_BAND_KEYS, type OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { describe, expect, it } from 'vitest'
@@ -7,14 +7,18 @@ import {
   accumulateHits,
   assembleRunnerSpeeds,
   createDuelAdapter,
+  deriveHeadline,
   deriveMatchup,
+  deriveRunnerMovements,
   deriveScoreline,
   deriveSituation,
+  GbHeadline,
   OUTCOME_KEY_BY_BAND,
   resolveDuelAtBat,
   toOutcomeKey,
 } from './adapter'
 import { GAME_CONTEXT, ROSTER, type Roster, type RosterPlayer } from './roster'
+import { FieldSpot, type RunnerMovement } from './scenario'
 
 // Probed against away-1 (R. VANCE) vs home-p (H. MARSH), bases empty, 0 outs:
 // the folded difference lands these bands. Keep those two attribute blocks stable.
@@ -178,6 +182,130 @@ describe('deriveScoreline', () => {
   })
 })
 
+describe('deriveHeadline', () => {
+  it('reads the plain outcome name when there is no groundball sub-result', () => {
+    expect(deriveHeadline('K', null)).toBe('STRIKEOUT')
+    expect(deriveHeadline('HR', null)).toBe('HOME RUN!')
+    expect(deriveHeadline('BB', null)).toBe('WALK')
+  })
+
+  // The bug: every groundball sub-result read "GROUNDOUT", so a double play looked
+  // like a routine out. Each sub-result now names itself.
+  const gbCases: Array<{ result: GroundBallResult; expected: GbHeadline }> = [
+    { result: GroundBallResult.GO, expected: GbHeadline.Groundout },
+    { result: GroundBallResult.GO_RA, expected: GbHeadline.Groundout },
+    { result: GroundBallResult.FC, expected: GbHeadline.FieldersChoice },
+    { result: GroundBallResult.FC_2ND, expected: GbHeadline.FieldersChoice },
+    { result: GroundBallResult.FC_3RD, expected: GbHeadline.FieldersChoice },
+    { result: GroundBallResult.FC_HOME, expected: GbHeadline.FieldersChoice },
+    { result: GroundBallResult.DP, expected: GbHeadline.DoublePlay },
+    { result: GroundBallResult.TP, expected: GbHeadline.TriplePlay },
+  ]
+
+  it.each(gbCases)('names a groundball $result as "$expected"', ({ result, expected }) => {
+    expect(deriveHeadline('GB', result)).toBe(expected)
+  })
+})
+
+describe('deriveRunnerMovements', () => {
+  const empty: BaseState = { first: null, second: null, third: null }
+  // Each case traces every runner (and the batter) from before → after by identity,
+  // in lead order (third → batter). Departed runners score frontmost-first up to
+  // `runsScored`; the rest are outs.
+  const cases: Array<{
+    name: string
+    basesBefore: BaseState
+    basesAfter: BaseState
+    runsScored: number
+    expected: RunnerMovement[]
+  }> = [
+    {
+      name: 'a strikeout, empty bases: only the batter, retired',
+      basesBefore: empty,
+      basesAfter: empty,
+      runsScored: 0,
+      expected: [{ from: FieldSpot.Batter, to: FieldSpot.Out }],
+    },
+    {
+      name: 'a single, empty bases: the batter reaches first',
+      basesBefore: empty,
+      basesAfter: { first: 'b', second: null, third: null },
+      runsScored: 0,
+      expected: [{ from: FieldSpot.Batter, to: FieldSpot.First }],
+    },
+    {
+      name: 'a double scoring the runner from second',
+      basesBefore: { first: null, second: 'r2', third: null },
+      basesAfter: { first: null, second: 'b', third: null },
+      runsScored: 1,
+      expected: [
+        { from: FieldSpot.Second, to: FieldSpot.Home },
+        { from: FieldSpot.Batter, to: FieldSpot.Second },
+      ],
+    },
+    {
+      name: 'a grand slam: all four cross the plate',
+      basesBefore: { first: 'r1', second: 'r2', third: 'r3' },
+      basesAfter: empty,
+      runsScored: 4,
+      expected: [
+        { from: FieldSpot.Third, to: FieldSpot.Home },
+        { from: FieldSpot.Second, to: FieldSpot.Home },
+        { from: FieldSpot.First, to: FieldSpot.Home },
+        { from: FieldSpot.Batter, to: FieldSpot.Home },
+      ],
+    },
+    {
+      name: 'a sac fly: the lead runner scores, the batter is out',
+      basesBefore: { first: null, second: null, third: 'r3' },
+      basesAfter: empty,
+      runsScored: 1,
+      expected: [
+        { from: FieldSpot.Third, to: FieldSpot.Home },
+        { from: FieldSpot.Batter, to: FieldSpot.Out },
+      ],
+    },
+    {
+      name: 'a force double play: the trail runner and the batter are both out',
+      basesBefore: { first: 'r1', second: null, third: null },
+      basesAfter: empty,
+      runsScored: 0,
+      expected: [
+        { from: FieldSpot.First, to: FieldSpot.Out },
+        { from: FieldSpot.Batter, to: FieldSpot.Out },
+      ],
+    },
+    {
+      name: 'a strikeout with a runner holding on second',
+      basesBefore: { first: null, second: 'r2', third: null },
+      basesAfter: { first: null, second: 'r2', third: null },
+      runsScored: 0,
+      expected: [
+        { from: FieldSpot.Second, to: FieldSpot.Second },
+        { from: FieldSpot.Batter, to: FieldSpot.Out },
+      ],
+    },
+    {
+      name: 'a bases-loaded walk: the forced run scores, everyone else pushes up one',
+      basesBefore: { first: 'r1', second: 'r2', third: 'r3' },
+      basesAfter: { first: 'b', second: 'r1', third: 'r2' },
+      runsScored: 1,
+      expected: [
+        { from: FieldSpot.Third, to: FieldSpot.Home },
+        { from: FieldSpot.Second, to: FieldSpot.Third },
+        { from: FieldSpot.First, to: FieldSpot.Second },
+        { from: FieldSpot.Batter, to: FieldSpot.First },
+      ],
+    },
+  ]
+
+  it.each(cases)('$name', ({ basesBefore, basesAfter, runsScored, expected }) => {
+    expect(deriveRunnerMovements({ basesBefore, basesAfter, batter: 'b', runsScored })).toEqual(
+      expected,
+    )
+  })
+})
+
 describe('accumulateHits', () => {
   it('credits the batting team on a hit', () => {
     expect(accumulateHits({ you: 0, opp: 0 }, '1B')).toEqual({ you: 1, opp: 0 })
@@ -216,7 +344,9 @@ describe('resolveDuelAtBat', () => {
       runsScored: 0,
       scoreBefore: { you: 0, opp: 0 },
       hitsBefore: { you: 0, opp: 0 },
+      headline: 'SINGLE!',
       scoreline: 'you stand on 1st',
+      movements: [{ from: FieldSpot.Batter, to: FieldSpot.First }],
     })
   })
 

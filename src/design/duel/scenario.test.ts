@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveDrama, formatInning, type RevealScenario } from './scenario'
+import { deriveDrama, FieldSpot, formatInning, type RevealScenario } from './scenario'
 
 const base: RevealScenario = {
   you: 472,
@@ -13,6 +13,11 @@ const base: RevealScenario = {
   scoreBefore: { you: 4, opp: 4 },
   hitsBefore: { you: 7, opp: 6 },
   scoreline: 'Your runner scores from 2nd',
+  headline: 'DOUBLE!',
+  movements: [
+    { from: FieldSpot.Second, to: FieldSpot.Home },
+    { from: FieldSpot.Batter, to: FieldSpot.Second },
+  ],
 }
 
 describe('deriveDrama', () => {

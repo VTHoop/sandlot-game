@@ -5,7 +5,15 @@ import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import { Scoreboard } from '../../components/ui/Scoreboard'
 import { ScoreTile } from '../../components/ui/ScoreTile'
 import { FieldDiagram } from './FieldDiagram'
-import { deriveDrama, formatInning, isHit, OUTCOME_NAMES, type RevealScenario } from './scenario'
+import { type MovementPath, movementPath } from './fieldMovement'
+import {
+  deriveDrama,
+  FieldSpot,
+  formatInning,
+  isHit,
+  type RevealScenario,
+  type RunnerMovement,
+} from './scenario'
 
 const FLAP_SPRING = { type: 'spring', stiffness: 320, damping: 17 } as const
 
@@ -57,13 +65,14 @@ function ScoreFlaps({ scenario, secondFlapAt }: ScoreFlapsProps) {
 }
 
 interface OutcomeCalloutProps {
-  outcome: OutcomeKey
+  /** The already-named result (e.g. "DOUBLE PLAY", "HOME RUN!"), from the adapter. */
+  headline: string
   callout: string | null
   outcomeAt: number
   calloutAt: number
 }
 
-function OutcomeCallout({ outcome, callout, outcomeAt, calloutAt }: OutcomeCalloutProps) {
+function OutcomeCallout({ headline, callout, outcomeAt, calloutAt }: OutcomeCalloutProps) {
   return (
     <div className="flex flex-col items-center gap-2.5">
       <motion.p
@@ -74,7 +83,7 @@ function OutcomeCallout({ outcome, callout, outcomeAt, calloutAt }: OutcomeCallo
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: outcomeAt, type: 'spring', stiffness: 380, damping: 22 }}
       >
-        {OUTCOME_NAMES[outcome]}
+        {headline}
       </motion.p>
       {callout && (
         <motion.span
@@ -90,15 +99,88 @@ function OutcomeCallout({ outcome, callout, outcomeAt, calloutAt }: OutcomeCallo
   )
 }
 
+// Half a token's width (size-4 = 16px): tokens are positioned by their top-left
+// corner, so shift by this to center them on a base's coordinate.
+const TOKEN_HALF = 8
+
+/** Seconds a token travels per base it passes, floored so a one-base move still reads. */
+function travelDuration(path: MovementPath): number {
+  return Math.max(0.6, 0.5 * (path.waypoints.length - 1))
+}
+
+interface RunnerTokenProps {
+  path: MovementPath
+  index: number
+  /** When the field (and thus the starting runners) appears. */
+  fieldAt: number
+  /** When the runners begin to move. */
+  runnersAt: number
+  /** The batter's own token reads as the hero color; on-base runners are clay. */
+  isBatter: boolean
+}
+
+/**
+ * One runner rendered on the field: it appears at its starting base as the field
+ * settles (current state), then, when the play resolves, travels its real path —
+ * or holds (a runner who stayed put) or fades (a runner retired on the play). The
+ * position is driven by the movement's waypoints, never a canned route.
+ */
+function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenProps) {
+  const color = isBatter
+    ? 'bg-consequence shadow-(--shadow-runner)'
+    : 'bg-clay-bright shadow-(--shadow-runner-clay)'
+  const startX = path.start.x - TOKEN_HALF
+  const startY = path.start.y - TOKEN_HALF
+  const appearAt = fieldAt + 0.2 + index * 0.05
+  const moveAt = runnersAt + index * 0.12
+
+  if (!path.travels) {
+    // A held runner sits on the base; a retired runner fades out as the play resolves.
+    return (
+      <motion.span
+        aria-hidden="true"
+        data-testid="runner-token"
+        className={`absolute top-0 left-0 size-4 rounded-full ${color}`}
+        style={{ x: startX, y: startY }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: path.retired ? [1, 1, 0] : 1 }}
+        transition={
+          path.retired
+            ? { delay: appearAt, duration: moveAt - appearAt + 0.6, times: [0, 0.7, 1] }
+            : { delay: appearAt, duration: 0.4 }
+        }
+      />
+    )
+  }
+
+  const xs = path.waypoints.map((p) => p.x - TOKEN_HALF)
+  const ys = path.waypoints.map((p) => p.y - TOKEN_HALF)
+  const times = xs.map((_, i) => i / (xs.length - 1))
+  return (
+    <motion.span
+      aria-hidden="true"
+      data-testid="runner-token"
+      className={`absolute top-0 left-0 size-4 rounded-full ${color}`}
+      initial={{ x: startX, y: startY, opacity: 0 }}
+      animate={{ x: xs, y: ys, opacity: 1 }}
+      transition={{
+        opacity: { delay: appearAt, duration: 0.4 },
+        x: { delay: moveAt, duration: travelDuration(path), times, ease: 'easeInOut' },
+        y: { delay: moveAt, duration: travelDuration(path), times, ease: 'easeInOut' },
+      }}
+    />
+  )
+}
+
 interface FieldPlayProps {
-  outcome: OutcomeKey
+  movements: RunnerMovement[]
   hit: { x: number; y: number } | null
   fieldAt: number
   tracerAt: number
   runnersAt: number
 }
 
-function FieldPlay({ outcome: _outcome, hit, fieldAt, tracerAt, runnersAt }: FieldPlayProps) {
+function FieldPlay({ movements, hit, fieldAt, tracerAt, runnersAt }: FieldPlayProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -133,25 +215,17 @@ function FieldPlay({ outcome: _outcome, hit, fieldAt, tracerAt, runnersAt }: Fie
           </motion.g>
         </svg>
       )}
-      <motion.span
-        aria-hidden="true"
-        className="absolute top-0 left-0 size-4 rounded-full bg-clay-bright shadow-(--shadow-runner-clay)"
-        initial={{ x: 112, y: 32, opacity: 0 }}
-        animate={{ x: [112, 27, 112], y: [32, 117, 202], opacity: [1, 1, 0] }}
-        transition={{ delay: runnersAt, duration: 1.3, times: [0, 0.5, 1], ease: 'easeInOut' }}
-      />
-      <motion.span
-        aria-hidden="true"
-        className="absolute top-0 left-0 size-4 rounded-full bg-consequence shadow-(--shadow-runner)"
-        initial={{ x: 112, y: 202, opacity: 0 }}
-        animate={{ x: [112, 197, 112], y: [202, 117, 32], opacity: [1, 1, 1] }}
-        transition={{
-          delay: runnersAt + 0.1,
-          duration: 1.6,
-          times: [0, 0.5, 1],
-          ease: 'easeInOut',
-        }}
-      />
+      {movements.map((movement, index) => (
+        <RunnerToken
+          // Stable across a single reveal: each starting spot appears at most once.
+          key={movement.from}
+          path={movementPath(movement)}
+          index={index}
+          fieldAt={fieldAt}
+          runnersAt={runnersAt}
+          isBatter={movement.from === FieldSpot.Batter}
+        />
+      ))}
     </motion.div>
   )
 }
@@ -221,13 +295,13 @@ export function RevealMotion({
       >
         <ScoreFlaps scenario={scenario} secondFlapAt={secondFlapAt} />
         <OutcomeCallout
-          outcome={scenario.outcome}
+          headline={scenario.headline}
           callout={drama.callout}
           outcomeAt={outcomeAt}
           calloutAt={calloutAt}
         />
         <FieldPlay
-          outcome={scenario.outcome}
+          movements={scenario.movements}
           hit={hit}
           fieldAt={fieldAt}
           tracerAt={tracerAt}
