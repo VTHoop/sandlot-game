@@ -31,8 +31,9 @@ const SPOT_POINT = new Map<FieldSpot, Point>([
  * 0) and a scorer returns to it as `Home` (the far end, one lap later); a runner
  * already on base starts at their base. A journey is the inclusive slice between its
  * endpoints, so it expands into every base it passes through. Sliced by value, never
- * indexed by a computed key — no object-injection sink. `Out` is absent: a retired
- * runner does not travel (handled before this sequence is consulted).
+ * indexed by a computed key — no object-injection sink. A force out is a real journey
+ * too (the runner runs to the bag it was forced to); a runner retired in place at the
+ * plate is a `from === to` hold, handled before this sequence is consulted.
  */
 const RUNNING_SEQUENCE: readonly FieldSpot[] = [
   FieldSpot.Batter,
@@ -53,40 +54,43 @@ export const spotPoint = (spot: FieldSpot): Point => {
   return point
 }
 
-/** How a movement should render: a held/retired runner sits, everyone else travels. */
+/** How a movement should render: a held runner (and an in-place out) sits, everyone
+ * else — including a forced runner running to the bag — travels. */
 export interface MovementPath {
   /** Where the token begins (always the `from` point). */
   start: Point
   /** Every waypoint from start through the destination, inclusive. */
   waypoints: Point[]
-  /** True when the token moves; false for a hold (`from === to`) or an out. */
+  /** True when the token moves; false for a hold or an in-place out (`from === to`). */
   travels: boolean
-  /** True when this journey ends in a run crossing the plate. */
+  /** True when this journey ends in a run crossing the plate (never for an out). */
   scored: boolean
-  /** True when the runner was retired on the play. */
+  /** True when the runner was retired on the play; `to` is where the out occurred. */
   retired: boolean
 }
 
 /**
- * Expand a runner movement into its animation path. A hold (`from === to`) or an
- * `Out` yields a single stationary point; any advance/score walks the running order
- * from the start index to the end index, emitting each base center on the way — so
- * a runner scoring from first rounds second and third before reaching home.
+ * Expand a runner movement into its animation path. A hold or an in-place out
+ * (`from === to`, e.g. a strikeout at the plate) yields a single stationary point;
+ * any advance/score/force-out walks the running order from the start index to the
+ * end index, emitting each base center on the way — so a runner scoring from first
+ * rounds second and third before reaching home, and a runner forced at second runs
+ * from first to the bag (where the reveal fades it). A retirement never counts as a
+ * run even when the out is recorded at home (`FC_HOME`).
  */
 export function movementPath(movement: RunnerMovement): MovementPath {
-  const { from, to } = movement
+  const { from, to, retired } = movement
   const start = spotPoint(from)
-  const retired = to === FieldSpot.Out
   const held = from === to
 
-  if (retired || held) {
+  if (held) {
     return { start, waypoints: [start], travels: false, scored: false, retired }
   }
 
   const startIdx = RUNNING_SEQUENCE.indexOf(from)
   const endIdx = RUNNING_SEQUENCE.indexOf(to)
   const waypoints = RUNNING_SEQUENCE.slice(startIdx, endIdx + 1).map(spotPoint)
-  return { start, waypoints, travels: true, scored: to === FieldSpot.Home, retired: false }
+  return { start, waypoints, travels: true, scored: !retired && to === FieldSpot.Home, retired }
 }
 
 /** Seconds a token spends travelling, one beat per base it passes, floored so a

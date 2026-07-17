@@ -286,6 +286,36 @@ function landingSpot(basesAfter: BaseState, id: RunnerId): FieldSpot | null {
 }
 
 /**
+ * The base a runner is forced to — one ahead of where they started, in running
+ * order. A ground ball is a force play, so a retired runner is out AT this base
+ * (batter→1st, 1st→2nd, 2nd→3rd, 3rd→home); that single rule reproduces the whole
+ * `GroundBallResult` out-location table (GO→1st, FC*→the forced bag, DP/TP→each
+ * forced runner at its bag). A Map keeps the lookup off the object-injection sink.
+ */
+const FORCE_OUT_BASE: ReadonlyMap<FieldSpot, FieldSpot> = new Map([
+  [FieldSpot.Batter, FieldSpot.First],
+  [FieldSpot.First, FieldSpot.Second],
+  [FieldSpot.Second, FieldSpot.Third],
+  [FieldSpot.Third, FieldSpot.Home],
+])
+
+/**
+ * Where a retired runner's out is shown. A ground ball is a FORCE play (SAN-16 only
+ * resolves force outs), so the runner is out at the base they were forced to — the
+ * `from + 1` bag {@link FORCE_OUT_BASE} gives, derived from the play being a GB at
+ * all. An air out or strikeout carries no `groundBallResult` and has no force base,
+ * so the runner is retired in place (`to === from`) and fades where it stands (the
+ * batter at the plate, a hypothetical doubled-off runner at its base). Throws if a
+ * force play somehow retires a runner already at home — a real out can't.
+ */
+function retirementSpot(from: FieldSpot, groundBallResult: GroundBallResult | null): FieldSpot {
+  if (groundBallResult === null) return from
+  const forced = FORCE_OUT_BASE.get(from)
+  if (!forced) throw new RangeError(`no force-out base for ${from}`)
+  return forced
+}
+
+/**
  * Trace every runner's real journey for the reveal's field animation. The engine
  * preserves runner identity across bases (`RunnerId`), so each on-base runner and
  * the batter is followed from where they started to where they ended: still on a
@@ -298,14 +328,21 @@ function landingSpot(basesAfter: BaseState, id: RunnerId): FieldSpot | null {
  * out. This is the same lead-runner-scores convention the box score implies, and it
  * covers the real cases (sac fly: the runner on third scores, the batter is out;
  * force DP: the trail runner and batter are both out with no run).
+ *
+ * A departed runner who was put out is located from the play: `groundBallResult`
+ * marks a force play, so the out is recorded at the base the runner was forced to
+ * ({@link retirementSpot}); an air out / strikeout has no force base and is retired
+ * in place. This is why before/after state alone is not enough — it can say a runner
+ * left the bases but not WHERE the out happened.
  */
 export function deriveRunnerMovements(params: {
   basesBefore: BaseState
   basesAfter: BaseState
   batter: RunnerId
   runsScored: number
+  groundBallResult: GroundBallResult | null
 }): RunnerMovement[] {
-  const { basesBefore, basesAfter, batter, runsScored } = params
+  const { basesBefore, basesAfter, batter, runsScored, groundBallResult } = params
   const starters: Array<{ id: RunnerId; from: FieldSpot }> = []
   const addStarter = (id: RunnerId | null, from: FieldSpot) => {
     if (id) starters.push({ id, from })
@@ -319,12 +356,12 @@ export function deriveRunnerMovements(params: {
   let scored = 0
   return starters.map(({ id, from }) => {
     const landing = landingSpot(basesAfter, id)
-    if (landing) return { from, to: landing }
+    if (landing) return { from, to: landing, retired: false }
     if (scored < runsScored) {
       scored += 1
-      return { from, to: FieldSpot.Home }
+      return { from, to: FieldSpot.Home, retired: false }
     }
-    return { from, to: FieldSpot.Out }
+    return { from, to: retirementSpot(from, groundBallResult), retired: true }
   })
 }
 
@@ -386,6 +423,7 @@ function buildReveal(params: {
       basesAfter: resolved.basesAfter,
       batter,
       runsScored: resolved.runsScored,
+      groundBallResult: resolved.groundBallResult,
     }),
     // `you`/`them` are perspective-bearing: the batter's own swing vs. the pitch
     // they faced (SAN-45 renders for the batter). A `viewer` input would flip these
