@@ -45,7 +45,7 @@ describe('RevealMotion field', () => {
       <RevealMotion
         scenario={scenario({
           outcome: 'K',
-          movements: [{ from: FieldSpot.Batter, to: FieldSpot.Out }],
+          movements: [{ from: FieldSpot.Batter, to: FieldSpot.Batter, retired: true }],
         })}
       />,
     )
@@ -63,8 +63,8 @@ describe('RevealMotion field', () => {
           scoreline: 'you ground out',
           headline: 'DOUBLE PLAY',
           movements: [
-            { from: FieldSpot.First, to: FieldSpot.Out },
-            { from: FieldSpot.Batter, to: FieldSpot.Out },
+            { from: FieldSpot.First, to: FieldSpot.Second, retired: true },
+            { from: FieldSpot.Batter, to: FieldSpot.First, retired: true },
           ],
         })}
       />,
@@ -84,10 +84,10 @@ describe('RevealMotion field', () => {
           runsScored: 4,
           scoreline: '4 runs score · you go yard',
           movements: [
-            { from: FieldSpot.Third, to: FieldSpot.Home },
-            { from: FieldSpot.Second, to: FieldSpot.Home },
-            { from: FieldSpot.First, to: FieldSpot.Home },
-            { from: FieldSpot.Batter, to: FieldSpot.Home },
+            { from: FieldSpot.Third, to: FieldSpot.Home, retired: false },
+            { from: FieldSpot.Second, to: FieldSpot.Home, retired: false },
+            { from: FieldSpot.First, to: FieldSpot.Home, retired: false },
+            { from: FieldSpot.Batter, to: FieldSpot.Home, retired: false },
           ],
         })}
       />,

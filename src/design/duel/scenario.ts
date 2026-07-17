@@ -3,9 +3,9 @@ import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 /**
  * A node on the base-running path — where a runner starts or ends on the reveal's
  * field. An enum (not a literal union) per the project's finite-value-set
- * convention. `Batter` (stepping in at the plate) is a start-only spot; `Home`
- * (scored) and `Out` (retired on the play) are end-only. The three bases can be
- * either end of a journey.
+ * convention. `Batter` (the plate) is where a runner steps in, and also where a
+ * strikeout / air out is retired in place; `Home` is a scored run. The three bases
+ * can be either end of a journey, including the base a force out is recorded at.
  */
 export enum FieldSpot {
   Batter = 'batter',
@@ -13,20 +13,25 @@ export enum FieldSpot {
   Second = 'second',
   Third = 'third',
   Home = 'home',
-  Out = 'out',
 }
 
 /**
  * One runner's journey across the play, so the reveal animates the REAL base
  * running rather than a canned flourish: the batter (and each on-base runner)
  * traced from where they started (`from`) to where they ended (`to`). A held
- * runner has `from === to`; a scorer ends at `Home`; a retired runner ends at
- * `Out`. Derived in the adapter from the engine's before/after base state, which
- * preserves runner identity (`RunnerId`) across bases.
+ * runner has `from === to`; a scorer ends at `Home`. A retired runner carries
+ * `retired: true` and a real `to` — the base the out was recorded at (a force out
+ * ends at the base the runner was forced to; an air out / strikeout is retired in
+ * place, `from === to`), so the reveal fades them WHERE the out happened rather
+ * than at their starting spot. Derived in the adapter from the engine's
+ * before/after base state plus the ground-ball sub-result, which together locate
+ * the out (before/after alone cannot).
  */
 export interface RunnerMovement {
   from: FieldSpot
   to: FieldSpot
+  /** True when this runner was retired on the play; `to` is where the out occurred. */
+  retired: boolean
 }
 
 /** A resolved at-bat from the viewer's (batter's) perspective. */
@@ -68,7 +73,7 @@ export type DuelSituation = Pick<
    * Which bases are occupied right now, in lead order (third → first), so the
    * commit/waiting field can draw the REAL diamond instead of a decorative one
    * (SAN-51). Occupancy only — no runner identity and, like every other field
-   * here, no number. Base spots only; `Batter`/`Home`/`Out` never appear.
+   * here, no number. Base spots only; `Batter`/`Home` never appear.
    */
   runnersOn: readonly FieldSpot[]
 }

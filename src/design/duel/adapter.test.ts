@@ -217,30 +217,34 @@ describe('deriveRunnerMovements', () => {
     basesBefore: BaseState
     basesAfter: BaseState
     runsScored: number
+    groundBallResult: GroundBallResult | null
     expected: RunnerMovement[]
   }> = [
     {
-      name: 'a strikeout, empty bases: only the batter, retired',
+      name: 'a strikeout, empty bases: only the batter, retired in place at the plate',
       basesBefore: empty,
       basesAfter: empty,
       runsScored: 0,
-      expected: [{ from: FieldSpot.Batter, to: FieldSpot.Out }],
+      groundBallResult: null,
+      expected: [{ from: FieldSpot.Batter, to: FieldSpot.Batter, retired: true }],
     },
     {
       name: 'a single, empty bases: the batter reaches first',
       basesBefore: empty,
       basesAfter: { first: 'b', second: null, third: null },
       runsScored: 0,
-      expected: [{ from: FieldSpot.Batter, to: FieldSpot.First }],
+      groundBallResult: null,
+      expected: [{ from: FieldSpot.Batter, to: FieldSpot.First, retired: false }],
     },
     {
       name: 'a double scoring the runner from second',
       basesBefore: { first: null, second: 'r2', third: null },
       basesAfter: { first: null, second: 'b', third: null },
       runsScored: 1,
+      groundBallResult: null,
       expected: [
-        { from: FieldSpot.Second, to: FieldSpot.Home },
-        { from: FieldSpot.Batter, to: FieldSpot.Second },
+        { from: FieldSpot.Second, to: FieldSpot.Home, retired: false },
+        { from: FieldSpot.Batter, to: FieldSpot.Second, retired: false },
       ],
     },
     {
@@ -248,31 +252,113 @@ describe('deriveRunnerMovements', () => {
       basesBefore: { first: 'r1', second: 'r2', third: 'r3' },
       basesAfter: empty,
       runsScored: 4,
+      groundBallResult: null,
       expected: [
-        { from: FieldSpot.Third, to: FieldSpot.Home },
-        { from: FieldSpot.Second, to: FieldSpot.Home },
-        { from: FieldSpot.First, to: FieldSpot.Home },
-        { from: FieldSpot.Batter, to: FieldSpot.Home },
+        { from: FieldSpot.Third, to: FieldSpot.Home, retired: false },
+        { from: FieldSpot.Second, to: FieldSpot.Home, retired: false },
+        { from: FieldSpot.First, to: FieldSpot.Home, retired: false },
+        { from: FieldSpot.Batter, to: FieldSpot.Home, retired: false },
       ],
     },
     {
-      name: 'a sac fly: the lead runner scores, the batter is out',
+      name: 'a sac fly: the lead runner scores, the batter is out in place at the plate',
       basesBefore: { first: null, second: null, third: 'r3' },
       basesAfter: empty,
       runsScored: 1,
+      groundBallResult: null,
       expected: [
-        { from: FieldSpot.Third, to: FieldSpot.Home },
-        { from: FieldSpot.Batter, to: FieldSpot.Out },
+        { from: FieldSpot.Third, to: FieldSpot.Home, retired: false },
+        { from: FieldSpot.Batter, to: FieldSpot.Batter, retired: true },
       ],
     },
     {
-      name: 'a force double play: the trail runner and the batter are both out',
+      name: 'GO, bases empty: the batter is forced out at first',
+      basesBefore: empty,
+      basesAfter: empty,
+      runsScored: 0,
+      groundBallResult: GroundBallResult.GO,
+      expected: [{ from: FieldSpot.Batter, to: FieldSpot.First, retired: true }],
+    },
+    {
+      name: 'GO_RA: out at first, the runner on third scores as the batter is forced there',
+      basesBefore: { first: null, second: null, third: 'r3' },
+      basesAfter: empty,
+      runsScored: 1,
+      groundBallResult: GroundBallResult.GO_RA,
+      expected: [
+        { from: FieldSpot.Third, to: FieldSpot.Home, retired: false },
+        { from: FieldSpot.Batter, to: FieldSpot.First, retired: true },
+      ],
+    },
+    {
+      name: 'FC: the runner from first is out at second, the batter is safe at first',
+      basesBefore: { first: 'r1', second: null, third: null },
+      basesAfter: { first: 'b', second: null, third: null },
+      runsScored: 0,
+      groundBallResult: GroundBallResult.FC,
+      expected: [
+        { from: FieldSpot.First, to: FieldSpot.Second, retired: true },
+        { from: FieldSpot.Batter, to: FieldSpot.First, retired: false },
+      ],
+    },
+    {
+      name: 'FC_2ND: runner from first out at second, the runner ahead takes third',
+      basesBefore: { first: 'r1', second: 'r2', third: null },
+      basesAfter: { first: 'b', second: null, third: 'r2' },
+      runsScored: 0,
+      groundBallResult: GroundBallResult.FC_2ND,
+      expected: [
+        { from: FieldSpot.Second, to: FieldSpot.Third, retired: false },
+        { from: FieldSpot.First, to: FieldSpot.Second, retired: true },
+        { from: FieldSpot.Batter, to: FieldSpot.First, retired: false },
+      ],
+    },
+    {
+      name: 'FC_3RD: the runner from second is out at third, the trailers are safe',
+      basesBefore: { first: 'r1', second: 'r2', third: null },
+      basesAfter: { first: 'b', second: 'r1', third: null },
+      runsScored: 0,
+      groundBallResult: GroundBallResult.FC_3RD,
+      expected: [
+        { from: FieldSpot.Second, to: FieldSpot.Third, retired: true },
+        { from: FieldSpot.First, to: FieldSpot.Second, retired: false },
+        { from: FieldSpot.Batter, to: FieldSpot.First, retired: false },
+      ],
+    },
+    {
+      name: 'FC_HOME: the runner from third is out AT HOME, never counted as a run',
+      basesBefore: { first: 'r1', second: 'r2', third: 'r3' },
+      basesAfter: { first: 'b', second: 'r1', third: 'r2' },
+      runsScored: 0,
+      groundBallResult: GroundBallResult.FC_HOME,
+      expected: [
+        { from: FieldSpot.Third, to: FieldSpot.Home, retired: true },
+        { from: FieldSpot.Second, to: FieldSpot.Third, retired: false },
+        { from: FieldSpot.First, to: FieldSpot.Second, retired: false },
+        { from: FieldSpot.Batter, to: FieldSpot.First, retired: false },
+      ],
+    },
+    {
+      name: 'a force double play: the trail runner is out at second, the batter at first',
       basesBefore: { first: 'r1', second: null, third: null },
       basesAfter: empty,
       runsScored: 0,
+      groundBallResult: GroundBallResult.DP,
       expected: [
-        { from: FieldSpot.First, to: FieldSpot.Out },
-        { from: FieldSpot.Batter, to: FieldSpot.Out },
+        { from: FieldSpot.First, to: FieldSpot.Second, retired: true },
+        { from: FieldSpot.Batter, to: FieldSpot.First, retired: true },
+      ],
+    },
+    {
+      name: 'a triple play: every forced runner is out at the base ahead',
+      basesBefore: { first: 'r1', second: 'r2', third: null },
+      basesAfter: empty,
+      runsScored: 0,
+      groundBallResult: GroundBallResult.TP,
+      expected: [
+        { from: FieldSpot.Second, to: FieldSpot.Third, retired: true },
+        { from: FieldSpot.First, to: FieldSpot.Second, retired: true },
+        { from: FieldSpot.Batter, to: FieldSpot.First, retired: true },
       ],
     },
     {
@@ -280,9 +366,10 @@ describe('deriveRunnerMovements', () => {
       basesBefore: { first: null, second: 'r2', third: null },
       basesAfter: { first: null, second: 'r2', third: null },
       runsScored: 0,
+      groundBallResult: null,
       expected: [
-        { from: FieldSpot.Second, to: FieldSpot.Second },
-        { from: FieldSpot.Batter, to: FieldSpot.Out },
+        { from: FieldSpot.Second, to: FieldSpot.Second, retired: false },
+        { from: FieldSpot.Batter, to: FieldSpot.Batter, retired: true },
       ],
     },
     {
@@ -290,19 +377,20 @@ describe('deriveRunnerMovements', () => {
       basesBefore: { first: 'r1', second: 'r2', third: 'r3' },
       basesAfter: { first: 'b', second: 'r1', third: 'r2' },
       runsScored: 1,
+      groundBallResult: null,
       expected: [
-        { from: FieldSpot.Third, to: FieldSpot.Home },
-        { from: FieldSpot.Second, to: FieldSpot.Third },
-        { from: FieldSpot.First, to: FieldSpot.Second },
-        { from: FieldSpot.Batter, to: FieldSpot.First },
+        { from: FieldSpot.Third, to: FieldSpot.Home, retired: false },
+        { from: FieldSpot.Second, to: FieldSpot.Third, retired: false },
+        { from: FieldSpot.First, to: FieldSpot.Second, retired: false },
+        { from: FieldSpot.Batter, to: FieldSpot.First, retired: false },
       ],
     },
   ]
 
-  it.each(cases)('$name', ({ basesBefore, basesAfter, runsScored, expected }) => {
-    expect(deriveRunnerMovements({ basesBefore, basesAfter, batter: 'b', runsScored })).toEqual(
-      expected,
-    )
+  it.each(cases)('$name', ({ basesBefore, basesAfter, runsScored, groundBallResult, expected }) => {
+    expect(
+      deriveRunnerMovements({ basesBefore, basesAfter, batter: 'b', runsScored, groundBallResult }),
+    ).toEqual(expected)
   })
 })
 
@@ -346,7 +434,7 @@ describe('resolveDuelAtBat', () => {
       hitsBefore: { you: 0, opp: 0 },
       headline: 'SINGLE!',
       scoreline: 'you stand on 1st',
-      movements: [{ from: FieldSpot.Batter, to: FieldSpot.First }],
+      movements: [{ from: FieldSpot.Batter, to: FieldSpot.First, retired: false }],
     })
   })
 

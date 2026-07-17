@@ -110,6 +110,31 @@ function OutcomeCallout({ headline, callout, outcomeAt, calloutAt }: OutcomeCall
 // corner, so shift by this to center them on a base's coordinate.
 const TOKEN_HALF = 8
 
+// Fraction of the run a forced runner covers before it starts to fade: it holds full
+// opacity to here, then fades to nothing by the time it reaches the bag, so the out
+// reads as recorded AT the base — not the token vanishing mid-path.
+const FADE_START = 0.75
+
+/**
+ * Opacity animation for a runner retired on a force play — one that travels to the
+ * bag and is out on arrival. It fades in on its starting base (the same 0.4s the
+ * other tokens use), holds full through the run, then fades to nothing over the last
+ * quarter so it bottoms out at the bag. Returns the keyframes plus a transition
+ * spanning appear → arrival, since the fade-in (at `appearAt`) and the run (at
+ * `moveAt`) live on one opacity track.
+ */
+function retiredTravelFade(appearAt: number, moveAt: number, travel: number) {
+  const window = moveAt + travel - appearAt
+  return {
+    keyframes: [0, 1, 1, 0],
+    transition: {
+      delay: appearAt,
+      duration: window,
+      times: [0, 0.4 / window, (moveAt + FADE_START * travel - appearAt) / window, 1],
+    },
+  }
+}
+
 interface RunnerTokenProps {
   path: MovementPath
   index: number
@@ -135,7 +160,8 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
   const moveAt = runnersAt + index * RUNNER_STAGGER
 
   if (!path.travels) {
-    // A held runner sits on the base; a retired runner fades out as the play resolves.
+    // A held runner sits on the base; a runner retired in place (strikeout / air out)
+    // fades out where it stands as the play resolves.
     return (
       <motion.span
         aria-hidden="true"
@@ -146,7 +172,7 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
         animate={{ opacity: path.retired ? [1, 1, 0] : 1 }}
         transition={
           path.retired
-            ? { delay: appearAt, duration: moveAt - appearAt + 0.6, times: [0, 0.7, 1] }
+            ? { delay: appearAt, duration: moveAt - appearAt + 0.6, times: [0, FADE_START, 1] }
             : { delay: appearAt, duration: 0.4 }
         }
       />
@@ -156,17 +182,21 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
   const xs = path.waypoints.map((p) => p.x - TOKEN_HALF)
   const ys = path.waypoints.map((p) => p.y - TOKEN_HALF)
   const times = xs.map((_, i) => i / (xs.length - 1))
+  const travel = travelDuration(path)
+  // A forced runner travels to the bag and is out on arrival — fade it to nothing over
+  // the last quarter of the run; everyone else stays fully opaque as they advance.
+  const fade = path.retired ? retiredTravelFade(appearAt, moveAt, travel) : null
   return (
     <motion.span
       aria-hidden="true"
       data-testid="runner-token"
       className={`absolute top-0 left-0 size-4 rounded-full ${color}`}
       initial={{ x: startX, y: startY, opacity: 0 }}
-      animate={{ x: xs, y: ys, opacity: 1 }}
+      animate={{ x: xs, y: ys, opacity: fade ? fade.keyframes : 1 }}
       transition={{
-        opacity: { delay: appearAt, duration: 0.4 },
-        x: { delay: moveAt, duration: travelDuration(path), times, ease: 'easeInOut' },
-        y: { delay: moveAt, duration: travelDuration(path), times, ease: 'easeInOut' },
+        opacity: fade ? fade.transition : { delay: appearAt, duration: 0.4 },
+        x: { delay: moveAt, duration: travel, times, ease: 'easeInOut' },
+        y: { delay: moveAt, duration: travel, times, ease: 'easeInOut' },
       }}
     />
   )

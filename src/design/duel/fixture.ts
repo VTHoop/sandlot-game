@@ -32,8 +32,8 @@ export const SHOWCASE_SCENARIO: RevealScenario = {
   scoreline: 'Your runner scores from 2nd · you stand on 2nd',
   headline: 'DOUBLE!',
   movements: [
-    { from: FieldSpot.Second, to: FieldSpot.Home },
-    { from: FieldSpot.Batter, to: FieldSpot.Second },
+    { from: FieldSpot.Second, to: FieldSpot.Home, retired: false },
+    { from: FieldSpot.Batter, to: FieldSpot.Second, retired: false },
   ],
 }
 
