@@ -4,9 +4,8 @@ import { Button } from '../../components/ui/Button'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import { Scoreboard } from '../../components/ui/Scoreboard'
 import { ScoreTile } from '../../components/ui/ScoreTile'
-import { FieldDiagram, runnerTokenClass } from './FieldDiagram'
+import { Ballpark, HIT_SPRAY, HIT_TARGETS } from './Ballpark'
 import {
-  FIELD_VIEWBOX,
   latestScoringArrival,
   type MovementPath,
   movementPath,
@@ -24,22 +23,19 @@ import {
 
 const FLAP_SPRING = { type: 'spring', stiffness: 320, damping: 17 } as const
 
-const HIT_TARGETS = new Map<OutcomeKey, { x: number; y: number }>([
-  ['HR', { x: 120, y: 16 }],
-  ['3B', { x: 178, y: 52 }],
-  ['2B', { x: 76, y: 56 }],
-  ['1B', { x: 98, y: 96 }],
-  ['IF1B', { x: 106, y: 142 }],
-])
-
 // Deterministic hash jitter: same at-bat always maps to the same spray-chart mark.
+// The landing zones themselves are park geometry and live with the park.
+const TARGET_OF = new Map<OutcomeKey, { x: number; y: number }>(
+  Object.entries(HIT_TARGETS) as [OutcomeKey, { x: number; y: number }][],
+)
+
 function hitLocation(outcome: OutcomeKey, seed: number): { x: number; y: number } | null {
-  const target = HIT_TARGETS.get(outcome)
+  const target = TARGET_OF.get(outcome)
   if (!target) return null
   const h = (seed * 2654435761) >>> 0
   return {
-    x: target.x + (h % 25) - 12,
-    y: target.y + ((h >>> 8) % 17) - 8,
+    x: target.x + (h % (HIT_SPRAY.x * 2 + 1)) - HIT_SPRAY.x,
+    y: target.y + ((h >>> 8) % (HIT_SPRAY.y * 2 + 1)) - HIT_SPRAY.y,
   }
 }
 
@@ -106,9 +102,9 @@ function OutcomeCallout({ headline, callout, outcomeAt, calloutAt }: OutcomeCall
   )
 }
 
-// Half a token's width (size-4 = 16px): tokens are positioned by their top-left
-// corner, so shift by this to center them on a base's coordinate.
-const TOKEN_HALF = 8
+// Runner token radius in park units — 16 across, matching the `size-4` tokens the
+// commit and waiting screens draw with `runnerTokenClass`.
+const TOKEN_RADIUS = 8
 
 // Fraction of the run a forced runner covers before it starts to fade: it holds full
 // opacity to here, then fades to nothing by the time it reaches the bag, so the out
@@ -153,9 +149,12 @@ interface RunnerTokenProps {
  * position is driven by the movement's waypoints, never a canned route.
  */
 function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenProps) {
-  const color = runnerTokenClass(isBatter)
-  const startX = path.start.x - TOKEN_HALF
-  const startY = path.start.y - TOKEN_HALF
+  // The reveal draws its runners INSIDE the park's SVG rather than as positioned
+  // HTML: one coordinate space for the whole stage, so the ball, the bases and the
+  // runners can never drift apart. `runnerTokenClass` still dresses the HTML tokens
+  // on the commit and waiting screens; these are its in-SVG counterpart.
+  const fill = isBatter ? 'fill-consequence' : 'fill-clay-bright'
+  const glow = isBatter ? 'var(--drop-runner)' : 'var(--drop-runner-clay)'
   const appearAt = fieldAt + 0.2 + index * 0.05
   const moveAt = runnersAt + index * RUNNER_STAGGER
 
@@ -163,11 +162,13 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
     // A held runner sits on the base; a runner retired in place (strikeout / air out)
     // fades out where it stands as the play resolves.
     return (
-      <motion.span
-        aria-hidden="true"
+      <motion.circle
         data-testid="runner-token"
-        className={`absolute top-0 left-0 size-4 rounded-full ${color}`}
-        style={{ x: startX, y: startY }}
+        className={fill}
+        r={TOKEN_RADIUS}
+        cx={path.start.x}
+        cy={path.start.y}
+        style={{ filter: `drop-shadow(${glow})` }}
         initial={{ opacity: 0 }}
         animate={{ opacity: path.retired ? [1, 1, 0] : 1 }}
         transition={
@@ -179,24 +180,25 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
     )
   }
 
-  const xs = path.waypoints.map((p) => p.x - TOKEN_HALF)
-  const ys = path.waypoints.map((p) => p.y - TOKEN_HALF)
+  const xs = path.waypoints.map((p) => p.x)
+  const ys = path.waypoints.map((p) => p.y)
   const times = xs.map((_, i) => i / (xs.length - 1))
   const travel = travelDuration(path)
   // A forced runner travels to the bag and is out on arrival — fade it to nothing over
   // the last quarter of the run; everyone else stays fully opaque as they advance.
   const fade = path.retired ? retiredTravelFade(appearAt, moveAt, travel) : null
   return (
-    <motion.span
-      aria-hidden="true"
+    <motion.circle
       data-testid="runner-token"
-      className={`absolute top-0 left-0 size-4 rounded-full ${color}`}
-      initial={{ x: startX, y: startY, opacity: 0 }}
-      animate={{ x: xs, y: ys, opacity: fade ? fade.keyframes : 1 }}
+      className={fill}
+      r={TOKEN_RADIUS}
+      style={{ filter: `drop-shadow(${glow})` }}
+      initial={{ cx: path.start.x, cy: path.start.y, opacity: 0 }}
+      animate={{ cx: xs, cy: ys, opacity: fade ? fade.keyframes : 1 }}
       transition={{
         opacity: fade ? fade.transition : { delay: appearAt, duration: 0.4 },
-        x: { delay: moveAt, duration: travel, times, ease: 'easeInOut' },
-        y: { delay: moveAt, duration: travel, times, ease: 'easeInOut' },
+        cx: { delay: moveAt, duration: travel, times, ease: 'easeInOut' },
+        cy: { delay: moveAt, duration: travel, times, ease: 'easeInOut' },
       }}
     />
   )
@@ -225,50 +227,47 @@ const FieldPlay = memo(function FieldPlay({
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: fieldAt, duration: 0.5 }}
-      className="relative"
+      className="flex w-full justify-center"
     >
-      <FieldDiagram />
-      {hit && (
-        <svg
-          aria-hidden="true"
-          className="absolute inset-0"
-          viewBox={`0 0 ${FIELD_VIEWBOX} ${FIELD_VIEWBOX}`}
-        >
-          <motion.line
-            x1="120"
-            y1="200"
-            x2={hit.x}
-            y2={hit.y}
-            className="stroke-chalk"
-            strokeWidth="2"
-            strokeDasharray="6 5"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.7 }}
-            transition={{ delay: tracerAt, duration: 0.35 }}
+      <Ballpark>
+        {hit && (
+          <>
+            <motion.line
+              x1="120"
+              y1="200"
+              x2={hit.x}
+              y2={hit.y}
+              className="stroke-chalk"
+              strokeWidth="2"
+              strokeDasharray="6 5"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.7 }}
+              transition={{ delay: tracerAt, duration: 0.35 }}
+            />
+            <motion.g
+              className="stroke-chalk"
+              strokeWidth="2.5"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.9 }}
+              transition={{ delay: tracerAt + 0.4, duration: 0.2 }}
+            >
+              <line x1={hit.x - 5} y1={hit.y - 5} x2={hit.x + 5} y2={hit.y + 5} />
+              <line x1={hit.x - 5} y1={hit.y + 5} x2={hit.x + 5} y2={hit.y - 5} />
+            </motion.g>
+          </>
+        )}
+        {movements.map((movement, index) => (
+          <RunnerToken
+            // Stable across a single reveal: each starting spot appears at most once.
+            key={movement.from}
+            path={movementPath(movement)}
+            index={index}
+            fieldAt={fieldAt}
+            runnersAt={runnersAt}
+            isBatter={movement.from === FieldSpot.Batter}
           />
-          <motion.g
-            className="stroke-chalk"
-            strokeWidth="2.5"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.9 }}
-            transition={{ delay: tracerAt + 0.4, duration: 0.2 }}
-          >
-            <line x1={hit.x - 5} y1={hit.y - 5} x2={hit.x + 5} y2={hit.y + 5} />
-            <line x1={hit.x - 5} y1={hit.y + 5} x2={hit.x + 5} y2={hit.y - 5} />
-          </motion.g>
-        </svg>
-      )}
-      {movements.map((movement, index) => (
-        <RunnerToken
-          // Stable across a single reveal: each starting spot appears at most once.
-          key={movement.from}
-          path={movementPath(movement)}
-          index={index}
-          fieldAt={fieldAt}
-          runnersAt={runnersAt}
-          isBatter={movement.from === FieldSpot.Batter}
-        />
-      ))}
+        ))}
+      </Ballpark>
     </motion.div>
   )
 })

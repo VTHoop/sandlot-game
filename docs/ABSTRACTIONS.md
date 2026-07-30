@@ -258,9 +258,35 @@ the same diamond the reveal animates — instead of a decorative runner.
   reveal overlays with its own animated tokens.
 - **One geometry, one skin.** Tokens are positioned by `fieldMovement.spotPoint`
   (percent of `FIELD_VIEWBOX`, so any box size tracks) and colored by
-  `FieldDiagram.runnerTokenClass` (batter = hero, on-base runner = clay) — shared
-  with `RevealMotion`, so the commit field is exactly the reveal field's opening
-  frame and the two screens stay visually interchangeable.
+  `FieldDiagram.runnerTokenClass` (batter = hero, on-base runner = clay).
+
+> **Superseded in part.** The reveal no longer shares this diagram — see *Two
+> fields, on purpose* below. `FieldDiagram` remains the commit/waiting field; the
+> interchangeability the two screens once had with the reveal was retired
+> deliberately, not lost.
+
+## Two fields, on purpose
+
+The reveal stages its hit animation on **`Ballpark`**, not `FieldDiagram`. A bare
+diamond is the wrong stage for a batted ball — it ends at the basepaths, which is
+why the old reveal had to place a home run and a triple a bat's length apart above
+second base. A whole park is equally wrong as a readout of who is on base.
+
+- **`Ballpark`** — the reveal's stage: foul lines, infield dirt, warning track and
+  fence, drawn in a wider `PARK_VIEWBOX` that extends past the bases. Fence, track
+  and dirt are the same cubic nested at three depths, so the park reads as one
+  shape. Bags come from `fieldMovement.spotPoint`, so both fields still share one
+  source of geometry. Decorative throughout (`aria-hidden`) — the reveal states its
+  outcome in the headline and scoreline.
+- **`Ballpark.HIT_TARGETS` / `HIT_SPRAY`** — where each hit finishes, plus the
+  deterministic spray either side of it. These live with the park because a landing
+  zone only means something relative to the dirt it clears and the fence it does or
+  doesn't; `Ballpark.test.tsx` asserts each zone holds its region across the whole
+  spray box.
+- **Runners live inside the SVG.** `RevealMotion` draws its tokens as `motion.circle`
+  in park coordinates (glowing via `--drop-runner` / `--drop-runner-clay`, since
+  `drop-shadow()` takes no spread length). One coordinate space for chrome, ball and
+  runners means a future camera can move the viewBox and the contents follow.
 
 ---
 
