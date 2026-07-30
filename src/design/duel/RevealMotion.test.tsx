@@ -39,6 +39,60 @@ function scenario(
   }
 }
 
+describe('RevealMotion landing mark', () => {
+  // The scorer's own convention: a hit is a dot where the ball landed, an out is an
+  // X. Shape carries it, not colour, so it survives greyscale and does not spend the
+  // amber ADR-0012 reserves for consequence.
+  const mark = () => ({
+    hit: screen.queryByTestId('landing-hit'),
+    out: screen.queryByTestId('landing-out'),
+  })
+
+  it.each(['2B', '1B', 'IF1B'] as const)('marks a %s with the hit dot', (outcome) => {
+    render(
+      <RevealMotion
+        scenario={scenario({ outcome, headline: 'HIT', movements: [] })}
+        onReplay={() => {}}
+      />,
+    )
+    expect(mark().hit).not.toBeNull()
+    expect(mark().out).toBeNull()
+  })
+
+  it.each(['GB', 'FO', 'PO'] as const)('marks a %s with the out X', (outcome) => {
+    render(
+      <RevealMotion
+        scenario={scenario({ outcome, headline: 'OUT', movements: [] })}
+        onReplay={() => {}}
+      />,
+    )
+    expect(mark().out).not.toBeNull()
+    expect(mark().hit).toBeNull()
+  })
+
+  it('marks a home run with neither — it left the park', () => {
+    render(
+      <RevealMotion
+        scenario={scenario({ outcome: 'HR', headline: 'HOME RUN!', movements: [] })}
+        onReplay={() => {}}
+      />,
+    )
+    expect(mark().hit).toBeNull()
+    expect(mark().out).toBeNull()
+  })
+
+  it.each(['K', 'BB'] as const)('marks nothing on a %s — no ball was put in play', (outcome) => {
+    render(
+      <RevealMotion
+        scenario={scenario({ outcome, headline: 'NO CONTACT', movements: [] })}
+        onReplay={() => {}}
+      />,
+    )
+    expect(mark().hit).toBeNull()
+    expect(mark().out).toBeNull()
+  })
+})
+
 describe('RevealMotion field', () => {
   it('renders one token per real movement — a strikeout has no phantom runners', () => {
     render(

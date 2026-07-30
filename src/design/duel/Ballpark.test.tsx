@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Ballpark, HIT_SPRAY, HIT_TARGETS, PARK_PATHS, PARK_VIEWBOX } from './Ballpark'
+import { OUTCOME_LADDER, type OutcomeKey } from '../../components/ui/OutcomeLadder'
+import { Ballpark, HIT_SPRAY, LANDING_ZONES, PARK_PATHS, PARK_VIEWBOX } from './Ballpark'
 import { spotPoint } from './fieldMovement'
 import { FieldSpot } from './scenario'
 
@@ -43,38 +44,47 @@ const curveYAt = (path: string, x: number): number | null => {
   return samples.reduce((best, s) => (Math.abs(s[0] - x) < Math.abs(best[0] - x) ? s : best))[1]
 }
 
-describe('Ballpark hit landing zones', () => {
+describe('Ballpark landing zones', () => {
   // The whole premise of the overhaul is that WHERE a ball lands names the outcome.
   // That only holds if each zone actually sits in the region it claims — including
   // at the extremes of the deterministic spray, not just at its centre.
-  const deepest = (key: keyof typeof HIT_TARGETS) => HIT_TARGETS[key].y + HIT_SPRAY.y
+  const deepest = (key: keyof typeof LANDING_ZONES) => LANDING_ZONES[key].y + HIT_SPRAY.y
+  const shallowest = (key: keyof typeof LANDING_ZONES) => LANDING_ZONES[key].y - HIT_SPRAY.y
 
-  it('drops an infield hit on the dirt, where it belongs', () => {
-    const { x } = HIT_TARGETS.IF1B
-    const dirt = curveYAt(PARK_PATHS.infieldDirt, x)
-    expect(dirt).not.toBeNull()
-    expect(HIT_TARGETS.IF1B.y).toBeGreaterThan(dirt as number)
+  it('gives every outcome that puts a ball in play somewhere to land', () => {
+    const noBallInPlay: OutcomeKey[] = ['BB', 'K']
+    for (const key of OUTCOME_LADDER) {
+      const zoned = key in LANDING_ZONES
+      expect(zoned).toBe(!noBallInPlay.includes(key))
+    }
   })
 
-  it.each(['1B', '2B'] as const)('clears the infield dirt on a %s', (key) => {
+  it.each(['IF1B', 'GB', 'PO'] as const)('keeps a %s on the infield', (key) => {
+    const dirt = curveYAt(PARK_PATHS.infieldDirt, LANDING_ZONES[key].x)
+    expect(dirt).not.toBeNull()
+    expect(shallowest(key)).toBeGreaterThan(dirt as number)
+  })
+
+  it.each(['1B', '2B', 'FO'] as const)('clears the infield dirt on a %s', (key) => {
     // Regression: 1B originally sat at y=96, which is ON the dirt — a plain single
     // and an infield hit landed in the same region and stopped telling them apart.
-    const dirt = curveYAt(PARK_PATHS.infieldDirt, HIT_TARGETS[key].x)
+    const dirt = curveYAt(PARK_PATHS.infieldDirt, LANDING_ZONES[key].x)
     expect(dirt).not.toBeNull()
     expect(deepest(key)).toBeLessThan(dirt as number)
   })
 
   it('drops a triple past the dirt entirely, down in the corner', () => {
-    expect(curveYAt(PARK_PATHS.infieldDirt, HIT_TARGETS['3B'].x)).toBeNull()
+    expect(curveYAt(PARK_PATHS.infieldDirt, LANDING_ZONES['3B'].x)).toBeNull()
   })
 
   it('puts a home run beyond the fence and everything else inside it', () => {
-    const overFence = (key: keyof typeof HIT_TARGETS) => {
-      const fence = curveYAt(PARK_PATHS.fence, HIT_TARGETS[key].x)
-      return fence === null ? false : HIT_TARGETS[key].y < fence
+    const overFence = (key: keyof typeof LANDING_ZONES) => {
+      const fence = curveYAt(PARK_PATHS.fence, LANDING_ZONES[key].x)
+      return fence === null ? false : LANDING_ZONES[key].y < fence
     }
     expect(overFence('HR')).toBe(true)
-    for (const key of ['3B', '2B', '1B', 'IF1B'] as const) expect(overFence(key)).toBe(false)
+    for (const key of ['3B', '2B', '1B', 'IF1B', 'FO', 'PO', 'GB'] as const)
+      expect(overFence(key)).toBe(false)
   })
 })
 

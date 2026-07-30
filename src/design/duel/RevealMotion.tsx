@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/Button'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import { Scoreboard } from '../../components/ui/Scoreboard'
 import { ScoreTile } from '../../components/ui/ScoreTile'
-import { Ballpark, HIT_SPRAY, HIT_TARGETS } from './Ballpark'
+import { Ballpark, HIT_SPRAY, LANDING_ZONES } from './Ballpark'
 import {
   latestScoringArrival,
   type MovementPath,
@@ -26,7 +26,7 @@ const FLAP_SPRING = { type: 'spring', stiffness: 320, damping: 17 } as const
 // Deterministic hash jitter: same at-bat always maps to the same spray-chart mark.
 // The landing zones themselves are park geometry and live with the park.
 const TARGET_OF = new Map<OutcomeKey, { x: number; y: number }>(
-  Object.entries(HIT_TARGETS) as [OutcomeKey, { x: number; y: number }][],
+  Object.entries(LANDING_ZONES) as [OutcomeKey, { x: number; y: number }][],
 )
 
 function hitLocation(outcome: OutcomeKey, seed: number): { x: number; y: number } | null {
