@@ -14,7 +14,7 @@ import {
 } from './ballFlight'
 import { type MovementPath, movementPath, RUNNER_STAGGER, travelDuration } from './fieldMovement'
 import { cameraFrameAt, frameToViewBox } from './revealCamera'
-import { REVEAL_TEMPO, revealBeats } from './revealTiming'
+import { compressToOutcome, REVEAL_TEMPO, revealBeats } from './revealTiming'
 import {
   deriveDrama,
   FieldSpot,
@@ -375,10 +375,13 @@ export function RevealMotion({
   const reduceMotion = useReducedMotion() ?? false
   const drama = deriveDrama(scenario)
 
-  const secondFlapAt = 0.95 * REVEAL_TEMPO
-  const beats = revealBeats(scenario)
-  const { calloutAt, fieldAt, ballAt, runnersAt, runTickAt, scorelineAt } = beats
-  const outcomeAt = reduceMotion ? 0 : beats.outcomeAt
+  const secondFlapAt = slow(0.95)
+  // Reduced motion drops the held breath in front of the outcome rather than only
+  // the headline's own delay — otherwise the field, ball and runners still wait it
+  // out and the viewer sits in front of an empty screen.
+  const played = revealBeats(scenario)
+  const beats = reduceMotion ? compressToOutcome(played) : played
+  const { outcomeAt, calloutAt, fieldAt, ballAt, runnersAt, runTickAt, scorelineAt } = beats
 
   const [hitCounted, setHitCounted] = useState(false)
   const [runsCounted, setRunsCounted] = useState(false)

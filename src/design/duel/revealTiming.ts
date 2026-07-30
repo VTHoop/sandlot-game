@@ -75,3 +75,15 @@ export function revealBeats(scenario: RevealScenario, tempo: number = REVEAL_TEM
     Object.entries(beats).map(([key, value]) => [key, value * tempo]),
   ) as unknown as RevealBeats
 }
+
+/**
+ * The same beats with the pre-roll removed — every time re-anchored so the outcome
+ * lands at zero. Used for reduced motion: the sequence exists to be *understood*
+ * rather than felt, so the held breath before the outcome is dead time. Spacing
+ * between beats is untouched; only the wait in front of them goes.
+ */
+export function compressToOutcome(beats: RevealBeats): RevealBeats {
+  return Object.fromEntries(
+    Object.entries(beats).map(([key, value]) => [key, value - beats.outcomeAt]),
+  ) as unknown as RevealBeats
+}
