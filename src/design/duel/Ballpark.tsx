@@ -1,3 +1,4 @@
+import { type MotionProps, motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import type { LandingZone } from './ballFlight'
@@ -68,9 +69,9 @@ export const LANDING_ZONES: Record<BattedOutcome, LandingZone> = {
   '2B': { x: 232, y: 12, bow: 22, lift: 4.6, flight: 0.85 },
   '1B': { x: 40, y: 28, bow: 16, lift: 3.4, flight: 0.7 },
   IF1B: { x: 150, y: 152, bow: 12, lift: 2.2, flight: 0.5 },
-  FO: { x: 0, y: 0, bow: 0, lift: 0, flight: 0 },
-  PO: { x: 0, y: 0, bow: 0, lift: 0, flight: 0 },
-  GB: { x: 0, y: 0, bow: 0, lift: 0, flight: 0 },
+  FO: { x: 96, y: 4, bow: 18, lift: 5.0, flight: 0.95 },
+  PO: { x: 112, y: 120, bow: 9, lift: 3.2, flight: 0.75 },
+  GB: { x: 86, y: 158, bow: 7, lift: 0, flight: 0.55 },
 }
 
 /** Max deterministic spray either side of a target, so the same at-bat always
@@ -78,9 +79,14 @@ export const LANDING_ZONES: Record<BattedOutcome, LandingZone> = {
 export const HIT_SPRAY = { x: 12, y: 8 } as const
 
 interface BallparkProps {
-  /** Anything drawn in park coordinates — the ball, its tracer, runner tokens. */
+  /** Anything drawn in park coordinates — the ball, its trail, runner tokens. */
   children?: ReactNode
   className?: string
+  /** The camera's current frame. Defaults to the whole park, held still. */
+  viewBox?: string
+  /** Camera motion, as a viewBox keyframe track. */
+  animate?: MotionProps['animate']
+  transition?: MotionProps['transition']
 }
 
 /**
@@ -88,9 +94,22 @@ interface BallparkProps {
  * illustration). Decorative throughout — the reveal states its outcome in the
  * headline and scoreline, so assistive tech is never asked to read the field.
  */
-export function Ballpark({ children, className = 'w-full max-w-80' }: BallparkProps) {
+export function Ballpark({
+  children,
+  className = 'w-full max-w-80',
+  viewBox = PARK_VIEWBOX,
+  animate,
+  transition,
+}: BallparkProps) {
   return (
-    <svg aria-hidden="true" className={`block h-auto w-full ${className}`} viewBox={PARK_VIEWBOX}>
+    <motion.svg
+      aria-hidden="true"
+      className={`block h-auto w-full ${className}`}
+      viewBox={viewBox}
+      animate={animate}
+      transition={transition}
+      preserveAspectRatio="xMidYMid meet"
+    >
       <title>Ballpark</title>
       <path d={PARK_PATHS.fairTerritory} fill="rgb(245 241 230 / 0.028)" />
       <path d={PARK_PATHS.infieldDirt} fill="rgb(194 80 42 / 0.10)" />
@@ -136,6 +155,6 @@ export function Ballpark({ children, className = 'w-full max-w-80' }: BallparkPr
         )
       })}
       {children}
-    </svg>
+    </motion.svg>
   )
 }

@@ -1,4 +1,5 @@
-import type { RevealScenario } from './scenario'
+import { latestScoringArrival } from './fieldMovement'
+import { deriveDrama, type RevealScenario } from './scenario'
 
 /**
  * The reveal's choreography, as times rather than as animation.
@@ -30,7 +31,47 @@ export interface RevealBeats {
   scorelineAt: number
 }
 
-/** Every beat of the reveal, already scaled to the played tempo. */
-export function revealBeats(_scenario: RevealScenario, _tempo: number = REVEAL_TEMPO): RevealBeats {
-  throw new Error('not implemented')
+/** When the opponent's score tile flips, in story seconds. */
+const SECOND_FLAP_AT = 0.95
+
+/** Gaps between beats, in story seconds. */
+const AFTER_FLAP = 0.45
+const CALLOUT_GAP = 0.55
+const FIELD_GAP = 0.9
+const BALL_GAP = 0.35
+const RUNNERS_GAP = 0.5
+const RUN_TICK_FLOOR = 1.15
+const RUN_TICK_SETTLE = 0.15
+const SCORELINE_GAP = 0.55
+
+/**
+ * Every beat of the reveal, already scaled to the played tempo.
+ *
+ * The whole sequence is derived at tempo 1 and multiplied once at the end, so
+ * slowing the reveal cannot leave a beat behind at its old duration. The run tick
+ * is floored rather than fixed: a grand slam's trailing runner is still rounding
+ * third long after a routine single's would have scored, and the scoreboard must
+ * not add runs while a token is still between bases.
+ */
+export function revealBeats(scenario: RevealScenario, tempo: number = REVEAL_TEMPO): RevealBeats {
+  const outcomeAt = SECOND_FLAP_AT + AFTER_FLAP + deriveDrama(scenario).hold
+  const fieldAt = outcomeAt + FIELD_GAP
+  const ballAt = fieldAt + BALL_GAP
+  const runnersAt = ballAt + RUNNERS_GAP
+  const runTickAt = Math.max(
+    runnersAt + RUN_TICK_FLOOR,
+    latestScoringArrival(scenario.movements, runnersAt) + RUN_TICK_SETTLE,
+  )
+  const beats: RevealBeats = {
+    outcomeAt,
+    calloutAt: outcomeAt + CALLOUT_GAP,
+    fieldAt,
+    ballAt,
+    runnersAt,
+    runTickAt,
+    scorelineAt: runTickAt + SCORELINE_GAP,
+  }
+  return Object.fromEntries(
+    Object.entries(beats).map(([key, value]) => [key, value * tempo]),
+  ) as unknown as RevealBeats
 }

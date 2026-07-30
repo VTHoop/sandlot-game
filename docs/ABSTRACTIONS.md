@@ -286,7 +286,28 @@ second base. A whole park is equally wrong as a readout of who is on base.
 - **Runners live inside the SVG.** `RevealMotion` draws its tokens as `motion.circle`
   in park coordinates (glowing via `--drop-runner` / `--drop-runner-clay`, since
   `drop-shadow()` takes no spread length). One coordinate space for chrome, ball and
-  runners means a future camera can move the viewBox and the contents follow.
+  runners means the camera moves the viewBox and the contents follow.
+
+## The reveal's camera, flight and tempo (ADR-0022)
+
+Three pure modules carry the reveal's behaviour, so the choreography is unit-testable
+and `RevealMotion` stays a renderer.
+
+- **`revealCamera`** — `cameraFrameAt(t, { zone, ballAt })` returns the viewBox at a
+  moment. Tight on the diamond until contact, opening across exactly the flight so it is
+  widest as the ball lands, then held. `FULL_OPEN_REACH` is *derived* from the deepest
+  landing zone, so the longest ball opens the whole park and moving a zone can never
+  leave the widest frame unreachable. Nothing in play means no widening at all — which
+  matters, because 62% of at-bats never reach the outfield (SAN-15 balance harness).
+- **`ballFlight`** — `ballPointAt` / `ballRadiusAt` / `ballTrailPath` over a
+  `LandingZone`. A plan view has no vertical axis, so altitude is the ball's *radius*;
+  the path bows sideways rather than arcing, and `lift: 0` keeps a grounder on the deck.
+- **`revealTiming`** — `revealBeats(scenario, tempo)` computes the whole sequence in
+  story seconds and multiplies once at the boundary. `REVEAL_TEMPO` (1.5) is the only
+  pace knob; every duration in `RevealMotion` passes through the same `slow()` helper so
+  no beat can keep its old duration and desynchronise.
+- **`Ballpark.LANDING_ZONES`** is keyed by `BattedOutcome` (`OutcomeKey` minus `BB`/`K`),
+  so a new outcome cannot be added without deciding where it lands.
 
 ---
 

@@ -6,12 +6,15 @@ import { Scoreboard } from '../../components/ui/Scoreboard'
 import { ScoreTile } from '../../components/ui/ScoreTile'
 import { Ballpark, HIT_SPRAY, LANDING_ZONES } from './Ballpark'
 import {
-  latestScoringArrival,
-  type MovementPath,
-  movementPath,
-  RUNNER_STAGGER,
-  travelDuration,
-} from './fieldMovement'
+  BALL_RADIUS,
+  ballPointAt,
+  ballRadiusAt,
+  ballTrailPath,
+  type LandingZone,
+} from './ballFlight'
+import { type MovementPath, movementPath, RUNNER_STAGGER, travelDuration } from './fieldMovement'
+import { cameraFrameAt, frameToViewBox } from './revealCamera'
+import { REVEAL_TEMPO, revealBeats } from './revealTiming'
 import {
   deriveDrama,
   FieldSpot,
@@ -23,19 +26,24 @@ import {
 
 const FLAP_SPRING = { type: 'spring', stiffness: 320, damping: 17 } as const
 
-// Deterministic hash jitter: same at-bat always maps to the same spray-chart mark.
-// The landing zones themselves are park geometry and live with the park.
-const TARGET_OF = new Map<OutcomeKey, { x: number; y: number }>(
-  Object.entries(LANDING_ZONES) as [OutcomeKey, { x: number; y: number }][],
+/** Story seconds → played seconds. Every duration and delay in the reveal passes
+ * through here, so slowing the beat cannot leave one part at its old speed. */
+const slow = (storySeconds: number): number => storySeconds * REVEAL_TEMPO
+
+// Deterministic hash jitter: the same at-bat always sprays to the same spot, so a
+// replay never relocates the ball. Zones themselves are park geometry.
+const ZONE_OF = new Map<OutcomeKey, LandingZone>(
+  Object.entries(LANDING_ZONES) as [OutcomeKey, LandingZone][],
 )
 
-function hitLocation(outcome: OutcomeKey, seed: number): { x: number; y: number } | null {
-  const target = TARGET_OF.get(outcome)
-  if (!target) return null
+function sprayedZone(outcome: OutcomeKey, seed: number): LandingZone | undefined {
+  const zone = ZONE_OF.get(outcome)
+  if (!zone) return undefined
   const h = (seed * 2654435761) >>> 0
   return {
-    x: target.x + (h % (HIT_SPRAY.x * 2 + 1)) - HIT_SPRAY.x,
-    y: target.y + ((h >>> 8) % (HIT_SPRAY.y * 2 + 1)) - HIT_SPRAY.y,
+    ...zone,
+    x: zone.x + (h % (HIT_SPRAY.x * 2 + 1)) - HIT_SPRAY.x,
+    y: zone.y + ((h >>> 8) % (HIT_SPRAY.y * 2 + 1)) - HIT_SPRAY.y,
   }
 }
 
@@ -50,7 +58,7 @@ function ScoreFlaps({ scenario, secondFlapAt }: ScoreFlapsProps) {
       <motion.div
         initial={{ rotateX: -92, opacity: 0 }}
         animate={{ rotateX: 0, opacity: 1 }}
-        transition={{ ...FLAP_SPRING, delay: 0.3 }}
+        transition={{ ...FLAP_SPRING, delay: slow(0.3) }}
         style={{ transformOrigin: 'top' }}
       >
         <ScoreTile label="you" value={String(scenario.you)} size="md" />
@@ -126,7 +134,7 @@ function retiredTravelFade(appearAt: number, moveAt: number, travel: number) {
     transition: {
       delay: appearAt,
       duration: window,
-      times: [0, 0.4 / window, (moveAt + FADE_START * travel - appearAt) / window, 1],
+      times: [0, slow(0.4) / window, (moveAt + FADE_START * travel - appearAt) / window, 1],
     },
   }
 }
@@ -155,8 +163,8 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
   // on the commit and waiting screens; these are its in-SVG counterpart.
   const fill = isBatter ? 'fill-consequence' : 'fill-clay-bright'
   const glow = isBatter ? 'var(--drop-runner)' : 'var(--drop-runner-clay)'
-  const appearAt = fieldAt + 0.2 + index * 0.05
-  const moveAt = runnersAt + index * RUNNER_STAGGER
+  const appearAt = fieldAt + slow(0.2 + index * 0.05)
+  const moveAt = runnersAt + slow(index * RUNNER_STAGGER)
 
   if (!path.travels) {
     // A held runner sits on the base; a runner retired in place (strikeout / air out)
@@ -173,8 +181,12 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
         animate={{ opacity: path.retired ? [1, 1, 0] : 1 }}
         transition={
           path.retired
-            ? { delay: appearAt, duration: moveAt - appearAt + 0.6, times: [0, FADE_START, 1] }
-            : { delay: appearAt, duration: 0.4 }
+            ? {
+                delay: appearAt,
+                duration: moveAt - appearAt + slow(0.6),
+                times: [0, FADE_START, 1],
+              }
+            : { delay: appearAt, duration: slow(0.4) }
         }
       />
     )
@@ -183,7 +195,7 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
   const xs = path.waypoints.map((p) => p.x)
   const ys = path.waypoints.map((p) => p.y)
   const times = xs.map((_, i) => i / (xs.length - 1))
-  const travel = travelDuration(path)
+  const travel = slow(travelDuration(path))
   // A forced runner travels to the bag and is out on arrival — fade it to nothing over
   // the last quarter of the run; everyone else stays fully opaque as they advance.
   const fade = path.retired ? retiredTravelFade(appearAt, moveAt, travel) : null
@@ -196,7 +208,7 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
       initial={{ cx: path.start.x, cy: path.start.y, opacity: 0 }}
       animate={{ cx: xs, cy: ys, opacity: fade ? fade.keyframes : 1 }}
       transition={{
-        opacity: fade ? fade.transition : { delay: appearAt, duration: 0.4 },
+        opacity: fade ? fade.transition : { delay: appearAt, duration: slow(0.4) },
         cx: { delay: moveAt, duration: travel, times, ease: 'easeInOut' },
         cy: { delay: moveAt, duration: travel, times, ease: 'easeInOut' },
       }}
@@ -204,11 +216,94 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
   )
 }
 
+interface BattedBallProps {
+  zone: LandingZone
+  outcome: OutcomeKey
+  /** When contact happens, in played seconds. */
+  ballAt: number
+  /** How long the flight takes, in played seconds. */
+  flight: number
+}
+
+/**
+ * The batted ball: a trail that draws itself along the flight, the ball swelling
+ * and shrinking to carry height a plan view cannot show, and a mark where it
+ * finishes. Scorer's convention on the mark — a hit is a dot, an out is an X, so
+ * shape rather than colour tells them apart. A home run gets neither; it left.
+ */
+function BattedBall({ zone, outcome, ballAt, flight }: BattedBallProps) {
+  const trail = ballTrailPath(zone)
+  const landedAt = ballAt + flight
+  const hit = isHit(outcome)
+  const gone = outcome === 'HR'
+  // Sampled rather than eased: the radius has to peak at the apex of the flight,
+  // which no single easing curve on a two-keyframe animation expresses.
+  const steps = Array.from({ length: 9 }, (_, i) => i / 8)
+  return (
+    <>
+      <motion.path
+        d={trail}
+        className="stroke-chalk"
+        fill="none"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: 1, opacity: 0.85 }}
+        transition={{ delay: ballAt, duration: flight, ease: 'linear' }}
+      />
+      <motion.circle
+        className="fill-chalk"
+        initial={{ cx: 120, cy: 210, r: BALL_RADIUS, opacity: 0 }}
+        animate={{
+          cx: steps.map((u) => ballPointAt(zone, u).x),
+          cy: steps.map((u) => ballPointAt(zone, u).y),
+          r: steps.map((u) => ballRadiusAt(zone, u)),
+          opacity: [0, 1, 1, 0],
+        }}
+        transition={{
+          cx: { delay: ballAt, duration: flight, ease: 'linear' },
+          cy: { delay: ballAt, duration: flight, ease: 'linear' },
+          r: { delay: ballAt, duration: flight, ease: 'linear' },
+          opacity: { delay: ballAt, duration: flight, times: [0, 0.05, 0.95, 1] },
+        }}
+      />
+      {!gone && (
+        <motion.g
+          data-testid={hit ? 'landing-hit' : 'landing-out'}
+          transform={`translate(${zone.x} ${zone.y})`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: hit ? 0.95 : 0.9 }}
+          transition={{ delay: landedAt, duration: slow(0.25) }}
+        >
+          {hit ? (
+            <>
+              <circle
+                className="stroke-chalk"
+                r="9.5"
+                fill="none"
+                strokeWidth="1.5"
+                opacity="0.5"
+              />
+              <circle className="fill-chalk" r="4.2" />
+            </>
+          ) : (
+            <g className="stroke-chalk" strokeWidth="2.6">
+              <line x1="-6" y1="-6" x2="6" y2="6" />
+              <line x1="-6" y1="6" x2="6" y2="-6" />
+            </g>
+          )}
+        </motion.g>
+      )}
+    </>
+  )
+}
+
 interface FieldPlayProps {
   movements: RunnerMovement[]
-  hit: { x: number; y: number } | null
+  zone: LandingZone | undefined
+  outcome: OutcomeKey
   fieldAt: number
-  tracerAt: number
+  ballAt: number
   runnersAt: number
 }
 
@@ -217,11 +312,21 @@ interface FieldPlayProps {
 // — no re-diffing the field or rebuilding the runner keyframe arrays.
 const FieldPlay = memo(function FieldPlay({
   movements,
-  hit,
+  zone,
+  outcome,
   fieldAt,
-  tracerAt,
+  ballAt,
   runnersAt,
 }: FieldPlayProps) {
+  // The camera opens across exactly the flight and then holds, so the frame it
+  // rests in says how far the ball went. Sampled into keyframes because the
+  // viewBox is an attribute, not a transform.
+  // Sampled in STORY seconds from contact, then played back over the scaled flight:
+  // the shape of the move is tempo-independent, only its duration is not.
+  const flight = slow(zone?.flight ?? 0)
+  const sweep = Array.from({ length: 13 }, (_, i) =>
+    frameToViewBox(cameraFrameAt((i / 12) * (zone?.flight ?? 0), { zone, ballAt: 0 })),
+  )
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -229,33 +334,12 @@ const FieldPlay = memo(function FieldPlay({
       transition={{ delay: fieldAt, duration: 0.5 }}
       className="flex w-full justify-center"
     >
-      <Ballpark>
-        {hit && (
-          <>
-            <motion.line
-              x1="120"
-              y1="200"
-              x2={hit.x}
-              y2={hit.y}
-              className="stroke-chalk"
-              strokeWidth="2"
-              strokeDasharray="6 5"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.7 }}
-              transition={{ delay: tracerAt, duration: 0.35 }}
-            />
-            <motion.g
-              className="stroke-chalk"
-              strokeWidth="2.5"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.9 }}
-              transition={{ delay: tracerAt + 0.4, duration: 0.2 }}
-            >
-              <line x1={hit.x - 5} y1={hit.y - 5} x2={hit.x + 5} y2={hit.y + 5} />
-              <line x1={hit.x - 5} y1={hit.y + 5} x2={hit.x + 5} y2={hit.y - 5} />
-            </motion.g>
-          </>
-        )}
+      <Ballpark
+        viewBox={sweep[0]}
+        animate={zone ? { viewBox: sweep } : undefined}
+        transition={{ delay: ballAt, duration: flight, ease: 'linear' }}
+      >
+        {zone && <BattedBall zone={zone} outcome={outcome} ballAt={ballAt} flight={flight} />}
         {movements.map((movement, index) => (
           <RunnerToken
             // Stable across a single reveal: each starting spot appears at most once.
@@ -291,20 +375,10 @@ export function RevealMotion({
   const reduceMotion = useReducedMotion() ?? false
   const drama = deriveDrama(scenario)
 
-  const secondFlapAt = 0.95
-  const outcomeAt = reduceMotion ? 0 : secondFlapAt + 0.45 + drama.hold
-  const calloutAt = outcomeAt + 0.55
-  const fieldAt = outcomeAt + 0.9
-  const tracerAt = fieldAt + 0.35
-  const runnersAt = tracerAt + 0.5
-  // Tick the scoreboard once the last run has actually crossed the plate — floored
-  // at the original beat so a routine play keeps its pacing, extended when a
-  // multi-run play (e.g. a grand slam) leaves tokens still rounding the bases.
-  const runTickAt = Math.max(
-    runnersAt + 1.15,
-    latestScoringArrival(scenario.movements, runnersAt) + 0.15,
-  )
-  const scorelineAt = runTickAt + 0.55
+  const secondFlapAt = 0.95 * REVEAL_TEMPO
+  const beats = revealBeats(scenario)
+  const { calloutAt, fieldAt, ballAt, runnersAt, runTickAt, scorelineAt } = beats
+  const outcomeAt = reduceMotion ? 0 : beats.outcomeAt
 
   const [hitCounted, setHitCounted] = useState(false)
   const [runsCounted, setRunsCounted] = useState(false)
@@ -330,8 +404,8 @@ export function RevealMotion({
     }
   }, [reduceMotion, outcomeAt, runTickAt])
 
-  const hit = useMemo(
-    () => hitLocation(scenario.outcome, scenario.you * 10000 + scenario.them),
+  const zone = useMemo(
+    () => sprayedZone(scenario.outcome, scenario.you * 10000 + scenario.them),
     [scenario.outcome, scenario.you, scenario.them],
   )
 
@@ -350,9 +424,10 @@ export function RevealMotion({
         />
         <FieldPlay
           movements={scenario.movements}
-          hit={hit}
+          zone={zone}
+          outcome={scenario.outcome}
           fieldAt={fieldAt}
-          tracerAt={tracerAt}
+          ballAt={ballAt}
           runnersAt={runnersAt}
         />
         <motion.p

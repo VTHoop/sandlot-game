@@ -26,17 +26,36 @@ export interface LandingZone {
 /** The ball's resting radius, in park units. */
 export const BALL_RADIUS = 4.2
 
+const PLATE: Point = { x: 120, y: 210 }
+
+/** The quadratic control point: the midpoint, pushed perpendicular by `bow`. */
+function control(zone: LandingZone): Point {
+  const vx = zone.x - PLATE.x
+  const vy = zone.y - PLATE.y
+  const length = Math.hypot(vx, vy) || 1
+  return {
+    x: (PLATE.x + zone.x) / 2 + (-vy / length) * zone.bow,
+    y: (PLATE.y + zone.y) / 2 + (vx / length) * zone.bow,
+  }
+}
+
 /** The ball's position at `u` (0 = contact, 1 = landing). */
-export function ballPointAt(_zone: LandingZone, _u: number): Point {
-  throw new Error('not implemented')
+export function ballPointAt(zone: LandingZone, u: number): Point {
+  const c = control(zone)
+  const m = 1 - u
+  return {
+    x: m * m * PLATE.x + 2 * m * u * c.x + u * u * zone.x,
+    y: m * m * PLATE.y + 2 * m * u * c.y + u * u * zone.y,
+  }
 }
 
 /** The ball's radius at `u` — altitude, in the only axis a plan view has left. */
-export function ballRadiusAt(_zone: LandingZone, _u: number): number {
-  throw new Error('not implemented')
+export function ballRadiusAt(zone: LandingZone, u: number): number {
+  return BALL_RADIUS + zone.lift * Math.sin(Math.PI * u)
 }
 
 /** The whole flight as an SVG quadratic path, for the trail stroke. */
-export function ballTrailPath(_zone: LandingZone): string {
-  throw new Error('not implemented')
+export function ballTrailPath(zone: LandingZone): string {
+  const c = control(zone)
+  return `M ${PLATE.x} ${PLATE.y} Q ${c.x} ${c.y} ${zone.x} ${zone.y}`
 }
