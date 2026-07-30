@@ -6,7 +6,13 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!convex/_generated", "!test-results", "!playwright-report"]
+    "includes": [
+      "**",
+      "!convex/_generated",
+      "!test-results",
+      "!playwright-report",
+      "!docs/design/*.html"
+    ]
   },
   "formatter": {
     "enabled": true,
