@@ -48,9 +48,11 @@
   --shadow-runner: 0 0 14px 3px rgb(255 180 84 / 0.8);
   --shadow-runner-clay: 0 0 14px 3px rgb(232 116 74 / 0.7);
   /* the same two glows for in-SVG runners on the reveal's ballpark: drop-shadow()
-     takes no spread length, so these can't reuse the box-shadow tokens above */
-  --drop-runner: 0 0 7px rgb(255 180 84 / 0.85);
-  --drop-runner-clay: 0 0 7px rgb(232 116 74 / 0.75);
+     takes no spread length, so these can't reuse the box-shadow tokens above. In the
+     --drop-shadow-* namespace so they land as utilities and no component has to apply
+     a colour inline. */
+  --drop-shadow-runner: 0 0 7px rgb(255 180 84 / 0.85);
+  --drop-shadow-runner-clay: 0 0 7px rgb(232 116 74 / 0.75);
 
   --radius-tile: 0.5rem;
   --radius-control: 0.75rem;

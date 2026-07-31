@@ -161,7 +161,7 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
   // on the commit and waiting screens; these are its in-SVG counterpart.
   const still = useReducedMotion() ?? false
   const fill = isBatter ? 'fill-consequence' : 'fill-clay-bright'
-  const glow = isBatter ? 'var(--drop-runner)' : 'var(--drop-runner-clay)'
+  const glow = isBatter ? 'drop-shadow-runner' : 'drop-shadow-runner-clay'
   const appearAt = fieldAt + slow(0.2 + index * 0.05)
   const moveAt = runnersAt + slow(index * RUNNER_STAGGER)
 
@@ -172,13 +172,12 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
     return (
       <circle
         data-testid="runner-token"
-        className={fill}
+        className={`${fill} ${glow}`}
         r={TOKEN_RADIUS}
         cx={settled.x}
         cy={settled.y}
         // A retired runner ends at nothing — the same state the fade lands on.
         opacity={path.retired ? 0 : 1}
-        style={{ filter: `drop-shadow(${glow})` }}
       />
     )
   }
@@ -189,11 +188,10 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
     return (
       <motion.circle
         data-testid="runner-token"
-        className={fill}
+        className={`${fill} ${glow}`}
         r={TOKEN_RADIUS}
         cx={path.start.x}
         cy={path.start.y}
-        style={{ filter: `drop-shadow(${glow})` }}
         initial={{ opacity: 0 }}
         animate={{ opacity: path.retired ? [1, 1, 0] : 1 }}
         transition={
@@ -219,9 +217,8 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
   return (
     <motion.circle
       data-testid="runner-token"
-      className={fill}
+      className={`${fill} ${glow}`}
       r={TOKEN_RADIUS}
-      style={{ filter: `drop-shadow(${glow})` }}
       initial={{ cx: path.start.x, cy: path.start.y, opacity: 0 }}
       animate={{ cx: xs, cy: ys, opacity: fade ? fade.keyframes : 1 }}
       transition={{
@@ -360,7 +357,7 @@ const FieldPlay = memo(function FieldPlay({
     <motion.div
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: fieldAt, duration: 0.5 }}
+      transition={{ delay: fieldAt, duration: slow(0.5) }}
       className="flex w-full justify-center"
     >
       <Ballpark
@@ -414,6 +411,7 @@ export function RevealMotion({
     secondFlapAt,
     outcomeAt,
     calloutAt,
+    hitTickAt,
     fieldAt,
     ballAt,
     runnersAt,
@@ -430,12 +428,9 @@ export function RevealMotion({
       setRunsCounted(true)
       return
     }
-    const hitTimer = setTimeout(
-      () => {
-        setHitCounted(true)
-      },
-      (outcomeAt + 0.15) * 1000,
-    )
+    const hitTimer = setTimeout(() => {
+      setHitCounted(true)
+    }, hitTickAt * 1000)
     const runTimer = setTimeout(() => {
       setRunsCounted(true)
     }, runTickAt * 1000)
@@ -443,7 +438,7 @@ export function RevealMotion({
       clearTimeout(hitTimer)
       clearTimeout(runTimer)
     }
-  }, [reduceMotion, outcomeAt, runTickAt])
+  }, [reduceMotion, hitTickAt, runTickAt])
 
   const zone = useMemo(
     () => sprayedZone(scenario.outcome, scenario.you * 10000 + scenario.them),
@@ -475,7 +470,7 @@ export function RevealMotion({
           className="font-body text-[13px] tracking-[0.12em] text-consequence uppercase"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: scorelineAt, duration: 0.5 }}
+          transition={{ delay: scorelineAt, duration: slow(0.5) }}
         >
           {scenario.scoreline}
         </motion.p>

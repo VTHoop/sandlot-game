@@ -278,7 +278,7 @@ second base. A whole park is equally wrong as a readout of who is on base.
   shape. Bags come from `fieldMovement.spotPoint`, so both fields still share one
   source of geometry. Decorative throughout (`aria-hidden`) — the reveal states its
   outcome in the headline and scoreline.
-- **`Ballpark.HIT_TARGETS` / `HIT_SPRAY`** — where each hit finishes, plus the
+- **`Ballpark.LANDING_ZONES` / `HIT_SPRAY`** — where each hit finishes, plus the
   deterministic spray either side of it. These live with the park because a landing
   zone only means something relative to the dirt it clears and the fence it does or
   doesn't; `Ballpark.test.tsx` asserts each zone holds its region across the whole

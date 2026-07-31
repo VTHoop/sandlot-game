@@ -58,8 +58,14 @@ describe('Ballpark landing zones', () => {
   // The whole premise of the overhaul is that WHERE a ball lands names the outcome.
   // That only holds if each zone actually sits in the region it claims — including
   // at the extremes of the deterministic spray, not just at its centre.
+  // Both axes of the spray box. Checking only the y extremes tested a column the
+  // game may never draw: the x spray is ±12, and at full stretch a 1B clears the
+  // dirt by 4.2 units rather than 12.5 — still clear, but not what was verified.
+  const SPRAY_X = [-HIT_SPRAY.x, 0, HIT_SPRAY.x]
   const deepest = (key: BattedOutcome) => landingZone(key).y + HIT_SPRAY.y
   const shallowest = (key: BattedOutcome) => landingZone(key).y - HIT_SPRAY.y
+  const dirtUnder = (key: BattedOutcome, dx: number) =>
+    curveYAt(PARK_PATHS.infieldDirt, landingZone(key).x + dx)
 
   it('gives every outcome that puts a ball in play somewhere to land', () => {
     const noBallInPlay: OutcomeKey[] = ['BB', 'K']
@@ -70,17 +76,27 @@ describe('Ballpark landing zones', () => {
   })
 
   it.each(['IF1B', 'GB', 'PO'] as const)('keeps a %s on the infield', (key) => {
-    const dirt = curveYAt(PARK_PATHS.infieldDirt, landingZone(key).x)
-    expect(dirt).not.toBeNull()
-    expect(shallowest(key)).toBeGreaterThan(dirt as number)
+    for (const dx of SPRAY_X) {
+      const dirt = dirtUnder(key, dx)
+      // Sprayed clear off the dirt's x-span would not be the infield either.
+      expect(dirt).not.toBeNull()
+      expect(shallowest(key)).toBeGreaterThan(dirt as number)
+    }
   })
 
   it.each(['1B', '2B', 'FO'] as const)('clears the infield dirt on a %s', (key) => {
     // Regression: 1B originally sat at y=96, which is ON the dirt — a plain single
     // and an infield hit landed in the same region and stopped telling them apart.
-    const dirt = curveYAt(PARK_PATHS.infieldDirt, landingZone(key).x)
-    expect(dirt).not.toBeNull()
-    expect(deepest(key)).toBeLessThan(dirt as number)
+    // Past the dirt's x-span counts as cleared — there is no dirt there to be on —
+    // so it is folded into the predicate rather than skipping the assertion.
+    const clearsDirt = (dx: number) => {
+      const dirt = dirtUnder(key, dx)
+      return dirt === null || deepest(key) < dirt
+    }
+    const cleared = SPRAY_X.map(clearsDirt)
+    // Pin the sweep length too, so an empty SPRAY_X could never pass vacuously.
+    expect(cleared).toHaveLength(3)
+    expect(cleared).toEqual([true, true, true])
   })
 
   it('drops a triple past the dirt entirely, down in the corner', () => {

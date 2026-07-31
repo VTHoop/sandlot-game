@@ -29,6 +29,8 @@ export interface RevealBeats {
   ballAt: number
   /** The runners step off. */
   runnersAt: number
+  /** The scoreboard ticks the hit, just behind the outcome word. */
+  hitTickAt: number
   /** The scoreboard ticks the runs, once the last one has actually crossed. */
   runTickAt: number
   /** The scoreline settles under the field. */
@@ -46,8 +48,30 @@ const FIELD_GAP = 0.9
 const BALL_GAP = 0.35
 const RUNNERS_GAP = 0.5
 const RUN_TICK_FLOOR = 1.15
+const HIT_TICK_SETTLE = 0.15
 const RUN_TICK_SETTLE = 0.15
 const SCORELINE_GAP = 0.55
+
+/**
+ * Every beat through one function. Written out rather than mapped over
+ * `Object.entries`, which needed a double assertion to come back as `RevealBeats` and
+ * so gave up the only compile-time proof that no beat is dropped along the way: add a
+ * beat to the interface and this stops compiling until it is handled.
+ */
+function mapBeats(beats: RevealBeats, f: (seconds: number) => number): RevealBeats {
+  return {
+    firstFlapAt: f(beats.firstFlapAt),
+    secondFlapAt: f(beats.secondFlapAt),
+    outcomeAt: f(beats.outcomeAt),
+    calloutAt: f(beats.calloutAt),
+    hitTickAt: f(beats.hitTickAt),
+    fieldAt: f(beats.fieldAt),
+    ballAt: f(beats.ballAt),
+    runnersAt: f(beats.runnersAt),
+    runTickAt: f(beats.runTickAt),
+    scorelineAt: f(beats.scorelineAt),
+  }
+}
 
 /**
  * Every beat of the reveal, already scaled to the played tempo.
@@ -72,15 +96,14 @@ export function revealBeats(scenario: RevealScenario, tempo: number = REVEAL_TEM
     secondFlapAt: SECOND_FLAP_AT,
     outcomeAt,
     calloutAt: outcomeAt + CALLOUT_GAP,
+    hitTickAt: outcomeAt + HIT_TICK_SETTLE,
     fieldAt,
     ballAt,
     runnersAt,
     runTickAt,
     scorelineAt: runTickAt + SCORELINE_GAP,
   }
-  return Object.fromEntries(
-    Object.entries(beats).map(([key, value]) => [key, value * tempo]),
-  ) as unknown as RevealBeats
+  return mapBeats(beats, (seconds) => seconds * tempo)
 }
 
 /**
@@ -95,7 +118,5 @@ export function revealBeats(scenario: RevealScenario, tempo: number = REVEAL_TEM
  * interpret, and ordering is not something to leave to that.
  */
 export function compressToOutcome(beats: RevealBeats): RevealBeats {
-  return Object.fromEntries(
-    Object.entries(beats).map(([key, value]) => [key, Math.max(0, value - beats.outcomeAt)]),
-  ) as unknown as RevealBeats
+  return mapBeats(beats, (seconds) => Math.max(0, seconds - beats.outcomeAt))
 }

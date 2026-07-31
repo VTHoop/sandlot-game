@@ -2,8 +2,7 @@ import { type MotionProps, motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import type { LandingZone } from './ballFlight'
-import { spotPoint } from './fieldMovement'
-import { FieldSpot } from './scenario'
+import { BASE_HALF, BASE_SPOTS, DIAMOND_PATH, spotPoint } from './fieldMovement'
 
 /**
  * The reveal's stage: a whole ballpark, not just the diamond.
@@ -19,9 +18,17 @@ import { FieldSpot } from './scenario'
  * contents follow for free.
  */
 
-/** The park's coordinate window. Wider and taller than the diamond's 240 square:
- * the outfield runs well above the bases and past both foul poles. */
-export const PARK_VIEWBOX = '-100 -120 440 360'
+/**
+ * The park's coordinate window. Wider and taller than the diamond's 240 square: the
+ * outfield runs well above the bases and past both foul poles.
+ *
+ * Held as numbers because the camera has to interpolate it — {@link PARK_VIEWBOX} is
+ * the same window as a viewBox string, derived rather than restated so the two can
+ * never drift into disagreeing about how big the park is.
+ */
+export const PARK_WINDOW = { x: -100, y: -120, w: 440, h: 360 } as const
+
+export const PARK_VIEWBOX = `${PARK_WINDOW.x} ${PARK_WINDOW.y} ${PARK_WINDOW.w} ${PARK_WINDOW.h}`
 
 /**
  * Fence, warning track and infield arc are the SAME cubic curve nested at three
@@ -38,7 +45,7 @@ export const PARK_PATHS = {
   fairTerritory: 'M 120 210 L -57 33 C 20 -110, 220 -110, 297 33 Z',
   leftFoulLine: 'M 120 210 L -57 33',
   rightFoulLine: 'M 120 210 L 297 33',
-  diamond: 'M120 210 L205 125 L120 40 L35 125 Z',
+  diamond: DIAMOND_PATH,
 } as const
 
 /** Every outcome that actually puts a ball on the field. A walk and a strikeout
@@ -46,18 +53,10 @@ export const PARK_PATHS = {
  * new outcome cannot be added without deciding where it lands. */
 export type BattedOutcome = Exclude<OutcomeKey, 'BB' | 'K'>
 
-/** Half a base's width — bases are drawn as 12-unit squares centred on their spot. */
-const BASE_HALF = 6
-
-/** The bags, positioned from the shared geometry rather than a second copy of it. */
-const BASE_SPOTS = [FieldSpot.First, FieldSpot.Second, FieldSpot.Third, FieldSpot.Home] as const
-
 /**
- * Where each batted ball finishes, in park coordinates. These used to live in the reveal,
- * crammed into the diamond's 240 square — a home run at y=16 and a triple at y=52,
- * barely a bat's length apart above second base, because there was nowhere else to
- * put them. They belong with the park geometry: a landing zone only means something
- * relative to the dirt it clears and the fence it does or doesn't.
+ * Where each batted ball finishes, in park coordinates. They belong with the park
+ * geometry: a landing zone only means something relative to the dirt it clears and
+ * the fence it does or doesn't.
  *
  * Read against {@link PARK_PATHS}: `HR` clears the fence, `3B` drops in the corner
  * beyond the dirt's reach, `2B` splits the right-center gap, `1B` falls just onto
@@ -129,7 +128,7 @@ export function Ballpark({
     >
       <title>Ballpark</title>
       <path d={PARK_PATHS.fairTerritory} fill="rgb(245 241 230 / 0.028)" />
-      <path d={PARK_PATHS.infieldDirt} fill="rgb(194 80 42 / 0.10)" />
+      <path className="fill-clay/10" d={PARK_PATHS.infieldDirt} />
       <path d={PARK_PATHS.diamond} fill="rgb(245 241 230 / 0.04)" />
       <path className="stroke-chalk" d={PARK_PATHS.leftFoulLine} strokeWidth="1.6" opacity="0.5" />
       <path className="stroke-chalk" d={PARK_PATHS.rightFoulLine} strokeWidth="1.6" opacity="0.5" />

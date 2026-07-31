@@ -1,4 +1,4 @@
-import { LANDING_ZONES } from './Ballpark'
+import { LANDING_ZONES, PARK_WINDOW } from './Ballpark'
 import { type LandingZone, PLATE } from './ballFlight'
 
 /**
@@ -21,8 +21,8 @@ export interface Frame {
 /** The opening shot: the diamond, filling the frame. */
 export const TIGHT_FRAME: Frame = { x: 8, y: 14, w: 224, h: 224 }
 
-/** The widest the camera ever goes: the whole park. */
-export const WIDE_FRAME: Frame = { x: -100, y: -120, w: 440, h: 360 }
+/** The widest the camera ever goes: the whole park, exactly as the park defines it. */
+export const WIDE_FRAME: Frame = PARK_WINDOW
 
 /**
  * The reach at which the camera is fully open — derived as the distance to the
@@ -30,7 +30,7 @@ export const WIDE_FRAME: Frame = { x: -100, y: -120, w: 440, h: 360 }
  * park and nothing opens it further. Deriving rather than hardcoding means moving
  * a landing zone can never quietly leave the widest frame unreachable.
  */
-export const FULL_OPEN_REACH = Math.max(
+const FULL_OPEN_REACH = Math.max(
   ...Object.values(LANDING_ZONES).map((zone) => Math.hypot(zone.x - PLATE.x, zone.y - PLATE.y)),
 )
 
