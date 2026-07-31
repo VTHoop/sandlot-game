@@ -111,6 +111,17 @@ export function movementPath(movement: RunnerMovement): MovementPath {
   const startIdx = RUNNING_SEQUENCE.indexOf(from)
   const endIdx = RUNNING_SEQUENCE.indexOf(to)
   const waypoints = RUNNING_SEQUENCE.slice(startIdx, endIdx + 1).map(spotPoint)
+
+  // A journey that walks backwards down the running order slices to nothing — a
+  // runner told to travel with nowhere to travel to. It should not reach here (a
+  // runner does not un-run the bases), but it does: `deriveRunnerMovements` locates
+  // a runner by id, so duplicate ids can land one "behind" where they started.
+  // Hold them at their base rather than emit a travelling path with no waypoints,
+  // which every consumer would have to guard against separately.
+  if (waypoints.length === 0) {
+    return { start, waypoints: [start], travels: false, scored: false, retired }
+  }
+
   return { start, waypoints, travels: true, scored: !retired && to === FieldSpot.Home, retired }
 }
 
