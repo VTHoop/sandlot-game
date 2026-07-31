@@ -1,4 +1,5 @@
-import type { Point } from './fieldMovement'
+import { type Point, spotPoint } from './fieldMovement'
+import { FieldSpot } from './scenario'
 
 /**
  * Ball flight across the reveal's park.
@@ -26,7 +27,12 @@ export interface LandingZone {
 /** The ball's resting radius, in park units. */
 export const BALL_RADIUS = 4.2
 
-const PLATE: Point = { x: 120, y: 210 }
+/**
+ * Contact point for every flight, and the origin the camera measures reach from.
+ * Taken from the shared base geometry rather than restated, so the ball leaves the
+ * bat from exactly where the plate is drawn even if the diamond ever moves.
+ */
+export const PLATE: Point = spotPoint(FieldSpot.Home)
 
 /** The quadratic control point: the midpoint, pushed perpendicular by `bow`. */
 function control(zone: LandingZone): Point {

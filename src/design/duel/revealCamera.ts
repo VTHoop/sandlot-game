@@ -1,5 +1,5 @@
 import { LANDING_ZONES } from './Ballpark'
-import type { LandingZone } from './ballFlight'
+import { type LandingZone, PLATE } from './ballFlight'
 
 /**
  * The reveal's camera.
@@ -23,8 +23,6 @@ export const TIGHT_FRAME: Frame = { x: 8, y: 14, w: 224, h: 224 }
 
 /** The widest the camera ever goes: the whole park. */
 export const WIDE_FRAME: Frame = { x: -100, y: -120, w: 440, h: 360 }
-
-const PLATE = { x: 120, y: 210 }
 
 /**
  * The reach at which the camera is fully open — derived as the distance to the

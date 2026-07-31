@@ -11,6 +11,7 @@ import {
   ballRadiusAt,
   ballTrailPath,
   type LandingZone,
+  PLATE,
 } from './ballFlight'
 import { type MovementPath, movementPath, RUNNER_STAGGER, travelDuration } from './fieldMovement'
 import { cameraFrameAt, frameToViewBox } from './revealCamera'
@@ -253,7 +254,7 @@ function BattedBall({ zone, outcome, ballAt, flight }: BattedBallProps) {
       />
       <motion.circle
         className="fill-chalk"
-        initial={{ cx: 120, cy: 210, r: BALL_RADIUS, opacity: 0 }}
+        initial={{ cx: PLATE.x, cy: PLATE.y, r: BALL_RADIUS, opacity: 0 }}
         animate={{
           cx: steps.map((u) => ballPointAt(zone, u).x),
           cy: steps.map((u) => ballPointAt(zone, u).y),
