@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/Button'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import { Scoreboard } from '../../components/ui/Scoreboard'
 import { ScoreTile } from '../../components/ui/ScoreTile'
-import { Ballpark, HIT_SPRAY, LANDING_ZONES } from './Ballpark'
+import { Ballpark, HIT_SPRAY, landingZone } from './Ballpark'
 import {
   BALL_RADIUS,
   ballPointAt,
@@ -33,12 +33,8 @@ const slow = (storySeconds: number): number => storySeconds * REVEAL_TEMPO
 
 // Deterministic hash jitter: the same at-bat always sprays to the same spot, so a
 // replay never relocates the ball. Zones themselves are park geometry.
-const ZONE_OF = new Map<OutcomeKey, LandingZone>(
-  Object.entries(LANDING_ZONES) as [OutcomeKey, LandingZone][],
-)
-
 function sprayedZone(outcome: OutcomeKey, seed: number): LandingZone | undefined {
-  const zone = ZONE_OF.get(outcome)
+  const zone = landingZone(outcome)
   if (!zone) return undefined
   const h = (seed * 2654435761) >>> 0
   return {

@@ -78,6 +78,23 @@ export const LANDING_ZONES: Record<BattedOutcome, LandingZone> = {
  * marks the same spot. Landing zones must hold their region across this whole box. */
 export const HIT_SPRAY = { x: 12, y: 8 } as const
 
+const ZONE_OF = new Map<OutcomeKey, LandingZone>(
+  Object.entries(LANDING_ZONES) as [OutcomeKey, LandingZone][],
+)
+
+/**
+ * Where an outcome's ball finishes — undefined for the two that never put one in
+ * play. Every read goes through a Map rather than reaching into the record with a
+ * computed key, the same rule the field geometry follows: a lookup that can miss
+ * should say so in its return type instead of handing back `undefined` from a
+ * `Record` that claims it cannot.
+ */
+export function landingZone(outcome: BattedOutcome): LandingZone
+export function landingZone(outcome: OutcomeKey): LandingZone | undefined
+export function landingZone(outcome: OutcomeKey): LandingZone | undefined {
+  return ZONE_OF.get(outcome)
+}
+
 interface BallparkProps {
   /** Anything drawn in park coordinates — the ball, its trail, runner tokens. */
   children?: ReactNode

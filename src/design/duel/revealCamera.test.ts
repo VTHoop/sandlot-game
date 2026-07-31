@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LANDING_ZONES } from './Ballpark'
+import { type BattedOutcome, landingZone } from './Ballpark'
 import { cameraFrameAt, TIGHT_FRAME, WIDE_FRAME } from './revealCamera'
 
 /**
@@ -9,13 +9,12 @@ import { cameraFrameAt, TIGHT_FRAME, WIDE_FRAME } from './revealCamera'
  */
 
 const BALL_AT = 1.25
-const shot = (outcome: keyof typeof LANDING_ZONES) => ({
-  zone: LANDING_ZONES[outcome],
+const shot = (outcome: BattedOutcome) => ({
+  zone: landingZone(outcome),
   ballAt: BALL_AT,
 })
-const widthAt = (t: number, outcome: keyof typeof LANDING_ZONES) =>
-  cameraFrameAt(t, shot(outcome)).w
-const landing = (outcome: keyof typeof LANDING_ZONES) => BALL_AT + LANDING_ZONES[outcome].flight
+const widthAt = (t: number, outcome: BattedOutcome) => cameraFrameAt(t, shot(outcome)).w
+const landing = (outcome: BattedOutcome) => BALL_AT + landingZone(outcome).flight
 
 describe('reveal camera', () => {
   it('holds the tight frame until the ball is launched', () => {
@@ -47,7 +46,7 @@ describe('reveal camera', () => {
 
     // Two different outcomes landing in the same spot must frame identically —
     // that is what "derived from geometry, not from the key" means.
-    const zone = { ...LANDING_ZONES['2B'] }
+    const zone = { ...landingZone('2B') }
     const asDouble = cameraFrameAt(3, { zone, ballAt: BALL_AT })
     const asFlyOut = cameraFrameAt(3, { zone: { ...zone }, ballAt: BALL_AT })
     expect(asDouble.w).toBeCloseTo(asFlyOut.w)

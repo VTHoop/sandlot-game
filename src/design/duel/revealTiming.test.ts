@@ -26,12 +26,11 @@ describe('reveal tempo', () => {
   it('plays the whole beat slower by exactly the tempo, nothing left behind', () => {
     // Testers said the reveal read fast. Slowing it must stretch EVERY part of the
     // choreography — a beat that keeps its old duration would desynchronise.
-    const raw = revealBeats(scenario(), 1)
-    const played = revealBeats(scenario(), REVEAL_TEMPO)
-    const keys = Object.keys(raw) as (keyof typeof raw)[]
-    expect(keys.length).toBeGreaterThan(4)
-    for (const key of keys) {
-      expect(played[key]).toBeCloseTo(raw[key] * REVEAL_TEMPO)
+    const raw = Object.entries(revealBeats(scenario(), 1))
+    const played = new Map(Object.entries(revealBeats(scenario(), REVEAL_TEMPO)))
+    expect(raw.length).toBeGreaterThan(4)
+    for (const [beat, storySeconds] of raw) {
+      expect(played.get(beat)).toBeCloseTo(storySeconds * REVEAL_TEMPO)
     }
   })
 
