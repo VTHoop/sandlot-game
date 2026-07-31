@@ -94,15 +94,19 @@ export function landingZone(outcome: OutcomeKey): LandingZone | undefined {
   return ZONE_OF.get(outcome)
 }
 
-interface BallparkProps {
-  /** Anything drawn in park coordinates — the ball, its trail, runner tokens. */
-  children?: ReactNode
-  className?: string
+/** What a camera hands the park: the frame it is in, and how it moves if it moves. */
+export interface BallparkCamera {
   /** The camera's current frame. Defaults to the whole park, held still. */
   viewBox?: string
   /** Camera motion, as a viewBox keyframe track. */
   animate?: MotionProps['animate']
   transition?: MotionProps['transition']
+}
+
+interface BallparkProps extends BallparkCamera {
+  /** Anything drawn in park coordinates — the ball, its trail, runner tokens. */
+  children?: ReactNode
+  className?: string
 }
 
 /**
