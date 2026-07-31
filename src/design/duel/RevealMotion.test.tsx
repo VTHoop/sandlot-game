@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { OUTCOME_LADDER, type OutcomeKey } from '../../components/ui/OutcomeLadder'
 import { RevealMotion } from './RevealMotion'
 import { FieldSpot, type RevealScenario, type RunnerMovement } from './scenario'
 
@@ -48,48 +49,44 @@ describe('RevealMotion landing mark', () => {
     out: screen.queryByTestId('landing-out'),
   })
 
-  it.each(['2B', '1B', 'IF1B'] as const)('marks a %s with the hit dot', (outcome) => {
+  // Every outcome and the mark it must leave. The cases differ only in data, so the
+  // data is the test — four near-identical blocks said the same thing four times and
+  // let a new outcome be added without anyone noticing it was never marked.
+  const LANDING_CASES: ReadonlyArray<{
+    outcome: OutcomeKey
+    headline: string
+    leaves: 'hit' | 'out' | 'nothing'
+    why: string
+  }> = [
+    { outcome: '3B', headline: 'HIT', leaves: 'hit', why: 'a dot down in the corner' },
+    { outcome: '2B', headline: 'HIT', leaves: 'hit', why: 'a dot where the ball landed' },
+    { outcome: '1B', headline: 'HIT', leaves: 'hit', why: 'a dot where the ball landed' },
+    { outcome: 'IF1B', headline: 'HIT', leaves: 'hit', why: 'a dot even on the dirt' },
+    { outcome: 'GB', headline: 'OUT', leaves: 'out', why: 'an X, the scorer’s out' },
+    { outcome: 'FO', headline: 'OUT', leaves: 'out', why: 'an X, the scorer’s out' },
+    { outcome: 'PO', headline: 'OUT', leaves: 'out', why: 'an X, the scorer’s out' },
+    { outcome: 'HR', headline: 'HOME RUN!', leaves: 'nothing', why: 'nothing — it left the park' },
+    { outcome: 'K', headline: 'NO CONTACT', leaves: 'nothing', why: 'nothing — never in play' },
+    { outcome: 'BB', headline: 'NO CONTACT', leaves: 'nothing', why: 'nothing — never in play' },
+  ]
+
+  it.each(LANDING_CASES)('$outcome leaves $why', ({ outcome, headline, leaves }) => {
     render(
       <RevealMotion
-        scenario={scenario({ outcome, headline: 'HIT', movements: [] })}
+        scenario={scenario({ outcome, headline, movements: [] })}
         onReplay={() => {}}
       />,
     )
-    expect(mark().hit).not.toBeNull()
-    expect(mark().out).toBeNull()
+    const { hit, out } = mark()
+    // Asserted as a pair, so a play that somehow drew BOTH marks still fails.
+    expect({ hit: hit !== null, out: out !== null }).toEqual({
+      hit: leaves === 'hit',
+      out: leaves === 'out',
+    })
   })
 
-  it.each(['GB', 'FO', 'PO'] as const)('marks a %s with the out X', (outcome) => {
-    render(
-      <RevealMotion
-        scenario={scenario({ outcome, headline: 'OUT', movements: [] })}
-        onReplay={() => {}}
-      />,
-    )
-    expect(mark().out).not.toBeNull()
-    expect(mark().hit).toBeNull()
-  })
-
-  it('marks a home run with neither — it left the park', () => {
-    render(
-      <RevealMotion
-        scenario={scenario({ outcome: 'HR', headline: 'HOME RUN!', movements: [] })}
-        onReplay={() => {}}
-      />,
-    )
-    expect(mark().hit).toBeNull()
-    expect(mark().out).toBeNull()
-  })
-
-  it.each(['K', 'BB'] as const)('marks nothing on a %s — no ball was put in play', (outcome) => {
-    render(
-      <RevealMotion
-        scenario={scenario({ outcome, headline: 'NO CONTACT', movements: [] })}
-        onReplay={() => {}}
-      />,
-    )
-    expect(mark().hit).toBeNull()
-    expect(mark().out).toBeNull()
+  it('covers every outcome on the ladder, so a new one cannot slip in unmarked', () => {
+    expect(LANDING_CASES.map((c) => c.outcome).sort()).toEqual([...OUTCOME_LADDER].sort())
   })
 })
 
