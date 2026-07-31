@@ -59,8 +59,21 @@ describe('reveal tempo', () => {
     expect(stilled.scorelineAt - stilled.runTickAt).toBeCloseTo(beats.scorelineAt - beats.runTickAt)
   })
 
+  it('never flips a score tile after the outcome it set up, even stilled', () => {
+    // The tiles flip BEFORE the outcome word — that is the beat the whole sequence
+    // is anchored on. When the pre-roll is dropped they must collapse onto the
+    // outcome, not survive as a positive delay that lands after it (which is what
+    // happened while this beat was computed outside the timing map).
+    const stilled = compressToOutcome(revealBeats(scenario()))
+    expect(stilled.firstFlapAt).toBe(0)
+    expect(stilled.secondFlapAt).toBe(0)
+    expect(stilled.outcomeAt).toBe(0)
+  })
+
   it('still resolves the beats in choreography order', () => {
     const b = revealBeats(scenario())
+    expect(b.firstFlapAt).toBeLessThan(b.secondFlapAt)
+    expect(b.secondFlapAt).toBeLessThan(b.outcomeAt)
     expect(b.outcomeAt).toBeLessThan(b.fieldAt)
     expect(b.fieldAt).toBeLessThan(b.ballAt)
     expect(b.ballAt).toBeLessThan(b.runnersAt)

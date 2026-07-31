@@ -15,6 +15,10 @@ import { deriveDrama, type RevealScenario } from './scenario'
 export const REVEAL_TEMPO = 1.5
 
 export interface RevealBeats {
+  /** Your score tile flips down. */
+  firstFlapAt: number
+  /** The opponent's tile follows — the beat the whole sequence is anchored on. */
+  secondFlapAt: number
   /** The outcome word lands. */
   outcomeAt: number
   /** The drama chip snaps in under it. */
@@ -31,7 +35,8 @@ export interface RevealBeats {
   scorelineAt: number
 }
 
-/** When the opponent's score tile flips, in story seconds. */
+/** When the score tiles flip, in story seconds. */
+const FIRST_FLAP_AT = 0.3
 const SECOND_FLAP_AT = 0.95
 
 /** Gaps between beats, in story seconds. */
@@ -63,6 +68,8 @@ export function revealBeats(scenario: RevealScenario, tempo: number = REVEAL_TEM
     latestScoringArrival(scenario.movements, runnersAt) + RUN_TICK_SETTLE,
   )
   const beats: RevealBeats = {
+    firstFlapAt: FIRST_FLAP_AT,
+    secondFlapAt: SECOND_FLAP_AT,
     outcomeAt,
     calloutAt: outcomeAt + CALLOUT_GAP,
     fieldAt,
@@ -80,10 +87,15 @@ export function revealBeats(scenario: RevealScenario, tempo: number = REVEAL_TEM
  * The same beats with the pre-roll removed — every time re-anchored so the outcome
  * lands at zero. Used for reduced motion: the sequence exists to be *understood*
  * rather than felt, so the held breath before the outcome is dead time. Spacing
- * between beats is untouched; only the wait in front of them goes.
+ * after the outcome is untouched; only the wait in front of it goes.
+ *
+ * Beats that ran BEFORE the outcome collapse onto zero rather than going negative:
+ * the score tiles are state, not choreography, so with the pre-roll gone they are
+ * simply already there. A negative delay would be up to the animation library to
+ * interpret, and ordering is not something to leave to that.
  */
 export function compressToOutcome(beats: RevealBeats): RevealBeats {
   return Object.fromEntries(
-    Object.entries(beats).map(([key, value]) => [key, value - beats.outcomeAt]),
+    Object.entries(beats).map(([key, value]) => [key, Math.max(0, value - beats.outcomeAt)]),
   ) as unknown as RevealBeats
 }
