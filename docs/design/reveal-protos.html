@@ -426,8 +426,8 @@ h1 em{font-style:normal;color:var(--consequence)}
 
   /* ── maths ──────────────────────────────────────────── */
   const clamp01 = v => v<0?0:v>1?1:v;
-  const easeInOut = u => u<.5 ? 2*u*u : 1-Math.pow(-2*u+2,2)/2;
-  const easeOut = u => 1-Math.pow(1-u,3);
+  const easeInOut = u => u<.5 ? 2*u*u : 1-(-2*u+2) ** 2/2;
+  const easeOut = u => 1-(1-u) ** 3;
   const lerp = (a,b,t) => a+(b-a)*t;
   function quad(p0,p1,p2,u){
     const v = 1-u;
@@ -487,9 +487,9 @@ h1 em{font-style:normal;color:var(--consequence)}
   /* ── telemetry chrome for C ─────────────────────────── */
   function plotSVG(){
     const rings = [150,250,330].map(r =>
-      `<path d="M ${120-r*0.7071} ${210-r*0.7071} A ${r} ${r} 0 0 1 ${120+r*0.7071} ${210-r*0.7071}"
+      `<path d="M ${120-r*Math.SQRT1_2} ${210-r*Math.SQRT1_2} A ${r} ${r} 0 0 1 ${120+r*Math.SQRT1_2} ${210-r*Math.SQRT1_2}"
          fill="none" stroke="var(--edge)" stroke-width="1" opacity=".85"/>
-       <text x="${120+r*0.7071+6}" y="${210-r*0.7071}" fill="var(--edge)"
+       <text x="${120+r*Math.SQRT1_2+6}" y="${210-r*Math.SQRT1_2}" fill="var(--edge)"
          font-size="11" letter-spacing="1">${r}</text>`).join("");
     return `
       ${rings}
@@ -540,7 +540,7 @@ h1 em{font-style:normal;color:var(--consequence)}
   const rig = document.getElementById("rig");
   const panels = DIRECTIONS.map(d => {
     const el = document.createElement("article");
-    el.className = "panel" + (d.chosen ? " is-chosen" : "");
+    el.className = `panel${d.chosen ? " is-chosen" : ""}`;
     el.innerHTML = `
       <div class="panel-head">
         <div class="tag"><span class="letter">${d.letter}</span><h2>${d.name}</h2>${
@@ -684,7 +684,7 @@ h1 em{font-style:normal;color:var(--consequence)}
     }
 
     // runners
-    c.movements.forEach((m,i) => {
+    c.movements.forEach((_m,i) => {
       const path = p.paths[i], tok = p.tokens[i];
       const appear = T_FIELD + .2 + i * .05;
       const moveAt = T_RUN + i * STAGGER;
@@ -737,7 +737,7 @@ h1 em{font-style:normal;color:var(--consequence)}
     if (p.statbug){
       const on = c.dist != null && ballU > 0;
       p.statbug.style.opacity = on ? 1 : 0;
-      if (on) p.statn.textContent = Math.round(c.dist * easeOut(ballU)) + " ft";
+      if (on) p.statn.textContent = `${Math.round(c.dist * easeOut(ballU))} ft`;
     }
 
     // telemetry readout (direction C only)
@@ -761,7 +761,7 @@ h1 em{font-style:normal;color:var(--consequence)}
   let cameraHold = true;
   let tempo = 1.5;          // story-seconds divisor: 1.5 plays the same beat 50% slower
 
-  function paintAll(t){ panels.forEach(p => render(p, current, t)); }
+  function paintAll(t){ panels.forEach(p => { render(p, current, t); }); }
 
   function stop(){ if (raf) cancelAnimationFrame(raf); raf = 0; }
 
@@ -785,9 +785,10 @@ h1 em{font-style:normal;color:var(--consequence)}
     current = c;
     document.getElementById("situation").innerHTML =
       `<b>${c.label.split(" · ")[0]}</b> — ${c.situation}`;
-    panels.forEach(p => setCase(p, c));
-    [...document.getElementById("cases").children].forEach(b =>
-      b.setAttribute("aria-pressed", String(b.dataset.id === c.id)));
+    panels.forEach(p => { setCase(p, c); });
+    [...document.getElementById("cases").children].forEach(b => {
+      b.setAttribute("aria-pressed", String(b.dataset.id === c.id));
+    });
     play();
   }
 
@@ -808,7 +809,7 @@ h1 em{font-style:normal;color:var(--consequence)}
       b.type = "button"; b.className = "case"; b.textContent = o.label;
       b.setAttribute("aria-pressed", String(o.value === initial));
       b.addEventListener("click", () => {
-        [...host.children].forEach(c => c.setAttribute("aria-pressed","false"));
+        [...host.children].forEach(c => { c.setAttribute("aria-pressed","false"); });
         b.setAttribute("aria-pressed","true");
         onPick(o.value);
         play();
