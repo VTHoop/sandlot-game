@@ -60,6 +60,11 @@ to make room for an outfield that most of them never use.
    moving the viewBox moves the contents. Runner tokens moved from positioned HTML —
    which silently depended on the field being exactly 240px wide — to `motion.circle`.
 
+7. **Every animated attribute carries its own reduced-motion gate.** The stage animates
+   SVG attributes rather than transforms, which is outside what Motion suppresses on its
+   own, so the suppression is explicit per component. See *Deferred* — this is the floor,
+   not a designed still composition.
+
 ## Deferred
 
 **A distance readout ("412 FT") is explicitly not built.** The telemetry prototype
@@ -69,10 +74,23 @@ shown would be invented and would sit next to real numbers on a scoreboard while
 being one. Revisit only alongside a decision about whether the engine should model batted
 distance at all; the prototype shows the treatment if it does.
 
-**A reduced-motion design for the camera is deferred.** Motion's `MotionConfig
-reducedMotion="user"` still applies, but no bespoke static composition was authored.
-Stripping the camera degrades to a fixed wide park, which is coherent but was not
-designed — it is what is left over, not what was chosen.
+**A *designed* reduced-motion composition is deferred — the safety floor is not.**
+Under `prefers-reduced-motion` the camera opens on the frame it would have settled in,
+runners appear where the play left them, and the ball's trail and landing mark are
+drawn without a flight. Nothing travels. The outcome stays legible, and the framing
+still reads as how far the ball went.
+
+That is a floor, not a composition: what the still reveal *should* look like has not
+been designed, only what it must not do.
+
+Worth stating plainly, because the first draft of this ADR got it wrong: **Motion's
+`MotionConfig reducedMotion="user"` does not do this on its own.** It strips transform
+and layout animations, and every moving part of this reveal is an SVG *attribute* —
+`viewBox`, `cx`, `cy`, `r`, `pathLength`. Measured in a browser under
+`prefers-reduced-motion: reduce`, the pre-fix build ran the camera through all 13
+frames of its sweep, the ball through its full flight, and runners around the bases.
+Each attribute is now gated by hand, and any new animated attribute needs its own gate
+(ADR-0012: respect `prefers-reduced-motion` in every animated component).
 
 ## Rejected alternatives
 

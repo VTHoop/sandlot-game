@@ -1,7 +1,9 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { OUTCOME_LADDER, type OutcomeKey } from '../../components/ui/OutcomeLadder'
+import { spotPoint } from './fieldMovement'
 import { RevealMotion } from './RevealMotion'
+import { frameToViewBox, TIGHT_FRAME } from './revealCamera'
 import { FieldSpot, type RevealScenario, type RunnerMovement } from './scenario'
 
 // Reduce motion so the reveal settles synchronously (no pending timers/act warnings).
@@ -87,6 +89,62 @@ describe('RevealMotion landing mark', () => {
 
   it('covers every outcome on the ladder, so a new one cannot slip in unmarked', () => {
     expect(LANDING_CASES.map((c) => c.outcome).sort()).toEqual([...OUTCOME_LADDER].sort())
+  })
+})
+
+describe('RevealMotion under reduced motion', () => {
+  // ADR-0012 requires prefers-reduced-motion be respected in EVERY animated component.
+  // Motion's own `reducedMotion="user"` only strips transforms and layout, and every
+  // moving part of this reveal is an SVG attribute — viewBox, cx, cy, r, pathLength —
+  // so each is gated by hand. Measured before the gate: the camera still ran its whole
+  // sweep, the ball its whole flight, and runners circled the bases.
+  const parkViewBox = (container: HTMLElement) =>
+    [...container.querySelectorAll('svg[viewBox]')]
+      .map((s) => s.getAttribute('viewBox') ?? '')
+      .find((v) => Number(v.split(' ')[2]) > 200) ?? ''
+
+  it('opens on the settled frame rather than panning out to it', () => {
+    const { container } = render(
+      <RevealMotion scenario={scenario({ outcome: 'HR', headline: 'HOME RUN!', movements: [] })} />,
+    )
+    const [, , width] = parkViewBox(container).split(' ').map(Number)
+    // A ball over the fence earns the open frame; it must already be there.
+    expect(width).toBeGreaterThan(TIGHT_FRAME.w)
+  })
+
+  it('stays tight when nothing was put in play — the frame is still a readout', () => {
+    const { container } = render(
+      <RevealMotion scenario={scenario({ outcome: 'K', movements: [] })} />,
+    )
+    expect(parkViewBox(container)).toBe(frameToViewBox(TIGHT_FRAME))
+  })
+
+  it('puts runners where the play left them, with no journey', () => {
+    render(
+      <RevealMotion
+        scenario={scenario({
+          outcome: '2B',
+          headline: 'DOUBLE',
+          movements: [{ from: FieldSpot.First, to: FieldSpot.Third, retired: false }],
+        })}
+      />,
+    )
+    const token = screen.getAllByTestId('runner-token')[0]
+    const third = spotPoint(FieldSpot.Third)
+    // Not first base, which is where the run would have started from.
+    expect([token.getAttribute('cx'), token.getAttribute('cy')]).toEqual([
+      String(third.x),
+      String(third.y),
+    ])
+  })
+
+  it('never puts a ball in flight', () => {
+    render(
+      <RevealMotion scenario={scenario({ outcome: '2B', headline: 'DOUBLE', movements: [] })} />,
+    )
+    expect(screen.queryByTestId('batted-ball')).toBeNull()
+    // The outcome is still readable: the trail and the mark say where it went.
+    expect(screen.queryByTestId('landing-hit')).not.toBeNull()
   })
 })
 

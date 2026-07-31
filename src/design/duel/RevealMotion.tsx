@@ -159,10 +159,29 @@ function RunnerToken({ path, index, fieldAt, runnersAt, isBatter }: RunnerTokenP
   // HTML: one coordinate space for the whole stage, so the ball, the bases and the
   // runners can never drift apart. `runnerTokenClass` still dresses the HTML tokens
   // on the commit and waiting screens; these are its in-SVG counterpart.
+  const still = useReducedMotion() ?? false
   const fill = isBatter ? 'fill-consequence' : 'fill-clay-bright'
   const glow = isBatter ? 'var(--drop-runner)' : 'var(--drop-runner-clay)'
   const appearAt = fieldAt + slow(0.2 + index * 0.05)
   const moveAt = runnersAt + slow(index * RUNNER_STAGGER)
+
+  if (still) {
+    // Where the play left it, with no journey to get there. cx/cy are SVG attributes,
+    // so Motion's own reduced-motion handling never touches them (ADR-0012).
+    const settled = path.waypoints[path.waypoints.length - 1]
+    return (
+      <circle
+        data-testid="runner-token"
+        className={fill}
+        r={TOKEN_RADIUS}
+        cx={settled.x}
+        cy={settled.y}
+        // A retired runner ends at nothing — the same state the fade lands on.
+        opacity={path.retired ? 0 : 1}
+        style={{ filter: `drop-shadow(${glow})` }}
+      />
+    )
+  }
 
   if (!path.travels) {
     // A held runner sits on the base; a runner retired in place (strikeout / air out)
@@ -230,6 +249,7 @@ interface BattedBallProps {
  * shape rather than colour tells them apart. A home run gets neither; it left.
  */
 function BattedBall({ zone, outcome, ballAt, flight }: BattedBallProps) {
+  const still = useReducedMotion() ?? false
   const trail = ballTrailPath(zone)
   const landedAt = ballAt + flight
   const hit = isHit(outcome)
@@ -239,39 +259,46 @@ function BattedBall({ zone, outcome, ballAt, flight }: BattedBallProps) {
   const steps = Array.from({ length: 9 }, (_, i) => i / 8)
   return (
     <>
+      {/* Still, the trail is already drawn: it says where the ball went, which is
+          information rather than motion. Only the drawing of it is animation. */}
       <motion.path
         d={trail}
         className="stroke-chalk"
         fill="none"
         strokeWidth="2.4"
         strokeLinecap="round"
-        initial={{ pathLength: 0, opacity: 0 }}
+        initial={still ? { pathLength: 1, opacity: 0.85 } : { pathLength: 0, opacity: 0 }}
         animate={{ pathLength: 1, opacity: 0.85 }}
-        transition={{ delay: ballAt, duration: flight, ease: 'linear' }}
+        transition={still ? { duration: 0 } : { delay: ballAt, duration: flight, ease: 'linear' }}
       />
-      <motion.circle
-        className="fill-chalk"
-        initial={{ cx: PLATE.x, cy: PLATE.y, r: BALL_RADIUS, opacity: 0 }}
-        animate={{
-          cx: steps.map((u) => ballPointAt(zone, u).x),
-          cy: steps.map((u) => ballPointAt(zone, u).y),
-          r: steps.map((u) => ballRadiusAt(zone, u)),
-          opacity: [0, 1, 1, 0],
-        }}
-        transition={{
-          cx: { delay: ballAt, duration: flight, ease: 'linear' },
-          cy: { delay: ballAt, duration: flight, ease: 'linear' },
-          r: { delay: ballAt, duration: flight, ease: 'linear' },
-          opacity: { delay: ballAt, duration: flight, times: [0, 0.05, 0.95, 1] },
-        }}
-      />
+      {/* The ball itself is pure flight — it ends invisible either way, so stillness
+          simply omits it rather than parking a dot nobody would see. */}
+      {!still && (
+        <motion.circle
+          data-testid="batted-ball"
+          className="fill-chalk"
+          initial={{ cx: PLATE.x, cy: PLATE.y, r: BALL_RADIUS, opacity: 0 }}
+          animate={{
+            cx: steps.map((u) => ballPointAt(zone, u).x),
+            cy: steps.map((u) => ballPointAt(zone, u).y),
+            r: steps.map((u) => ballRadiusAt(zone, u)),
+            opacity: [0, 1, 1, 0],
+          }}
+          transition={{
+            cx: { delay: ballAt, duration: flight, ease: 'linear' },
+            cy: { delay: ballAt, duration: flight, ease: 'linear' },
+            r: { delay: ballAt, duration: flight, ease: 'linear' },
+            opacity: { delay: ballAt, duration: flight, times: [0, 0.05, 0.95, 1] },
+          }}
+        />
+      )}
       {!gone && (
         <motion.g
           data-testid={hit ? 'landing-hit' : 'landing-out'}
           transform={`translate(${zone.x} ${zone.y})`}
-          initial={{ opacity: 0 }}
+          initial={{ opacity: still ? (hit ? 0.95 : 0.9) : 0 }}
           animate={{ opacity: hit ? 0.95 : 0.9 }}
-          transition={{ delay: landedAt, duration: slow(0.25) }}
+          transition={still ? { duration: 0 } : { delay: landedAt, duration: slow(0.25) }}
         >
           {hit ? (
             <>
@@ -321,10 +348,14 @@ const FieldPlay = memo(function FieldPlay({
   // viewBox is an attribute, not a transform.
   // Sampled in STORY seconds from contact, then played back over the scaled flight:
   // the shape of the move is tempo-independent, only its duration is not.
+  const still = useReducedMotion() ?? false
   const flight = slow(zone?.flight ?? 0)
   const sweep = Array.from({ length: 13 }, (_, i) =>
     frameToViewBox(cameraFrameAt((i / 12) * (zone?.flight ?? 0), { zone, ballAt: 0 })),
   )
+  // Still, the camera opens on the frame it would have come to rest in — the framing
+  // is a readout of how far the ball went, so it is kept; only the move to it goes.
+  const settledFrame = sweep[sweep.length - 1]
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -333,8 +364,8 @@ const FieldPlay = memo(function FieldPlay({
       className="flex w-full justify-center"
     >
       <Ballpark
-        viewBox={sweep[0]}
-        animate={zone ? { viewBox: sweep } : undefined}
+        viewBox={still ? settledFrame : sweep[0]}
+        animate={zone && !still ? { viewBox: sweep } : undefined}
         transition={{ delay: ballAt, duration: flight, ease: 'linear' }}
       >
         {zone && <BattedBall zone={zone} outcome={outcome} ballAt={ballAt} flight={flight} />}
