@@ -1,0 +1,180 @@
+import { type MotionProps, motion } from 'motion/react'
+import type { ReactNode } from 'react'
+import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
+import type { LandingZone } from './ballFlight'
+import { BASE_HALF, BASE_SPOTS, DIAMOND_PATH, spotPoint } from './fieldMovement'
+
+/**
+ * The reveal's stage: a whole ballpark, not just the diamond.
+ *
+ * Deliberately NOT the same field as {@link FieldDiagram}. The commit and waiting
+ * screens want a compact readout of who is on base; the reveal wants somewhere for
+ * a batted ball to actually go. Keeping them as two components makes that
+ * divergence structural — it retires SAN-51's "visually interchangeable" rule by
+ * construction rather than by a prop nobody remembers to set.
+ *
+ * Everything the reveal animates (chrome, ball, runners) lives in this one
+ * coordinate space, so a future camera only has to move the viewBox and the
+ * contents follow for free.
+ */
+
+/**
+ * The park's coordinate window. Wider and taller than the diamond's 240 square: the
+ * outfield runs well above the bases and past both foul poles.
+ *
+ * Held as numbers because the camera has to interpolate it — {@link PARK_VIEWBOX} is
+ * the same window as a viewBox string, derived rather than restated so the two can
+ * never drift into disagreeing about how big the park is.
+ */
+export const PARK_WINDOW = { x: -100, y: -120, w: 440, h: 360 } as const
+
+export const PARK_VIEWBOX = `${PARK_WINDOW.x} ${PARK_WINDOW.y} ${PARK_WINDOW.w} ${PARK_WINDOW.h}`
+
+/**
+ * Fence, warning track and infield arc are the SAME cubic curve nested at three
+ * depths (250 / 232 / 166 units down the foul lines), so the park reads as one
+ * shape language rather than a circle sitting under two curves. The infield's
+ * crest clears second base (170 units) by 19 — half a true-scale infield's
+ * overhang, given up so the outfield still reads in a park whose fences are
+ * compressed relative to a real one.
+ */
+export const PARK_PATHS = {
+  fence: 'M -57 33 C 20 -110, 220 -110, 297 33',
+  warningTrack: 'M -44 46 C 26 -90, 214 -90, 284 46',
+  infieldDirt: 'M 3 93 C 54 -3, 186 -3, 237 93 L 120 210 Z',
+  fairTerritory: 'M 120 210 L -57 33 C 20 -110, 220 -110, 297 33 Z',
+  leftFoulLine: 'M 120 210 L -57 33',
+  rightFoulLine: 'M 120 210 L 297 33',
+  diamond: DIAMOND_PATH,
+} as const
+
+/** Every outcome that actually puts a ball on the field. A walk and a strikeout
+ * are the only two that never do — the type makes their absence structural, so a
+ * new outcome cannot be added without deciding where it lands. */
+export type BattedOutcome = Exclude<OutcomeKey, 'BB' | 'K'>
+
+/**
+ * Where each batted ball finishes, in park coordinates. They belong with the park
+ * geometry: a landing zone only means something relative to the dirt it clears and
+ * the fence it does or doesn't.
+ *
+ * Read against {@link PARK_PATHS}: `HR` clears the fence, `3B` drops in the corner
+ * beyond the dirt's reach, `2B` splits the right-center gap, `1B` falls just onto
+ * shallow grass, and `IF1B` dies on the dirt itself.
+ */
+export const LANDING_ZONES: Record<BattedOutcome, LandingZone> = {
+  HR: { x: 132, y: -96, bow: 24, lift: 5.6, flight: 1.05 },
+  '3B': { x: 262, y: 52, bow: 20, lift: 4.8, flight: 0.9 },
+  '2B': { x: 232, y: 12, bow: 22, lift: 4.6, flight: 0.85 },
+  '1B': { x: 40, y: 28, bow: 16, lift: 3.4, flight: 0.7 },
+  IF1B: { x: 150, y: 152, bow: 12, lift: 2.2, flight: 0.5 },
+  FO: { x: 96, y: 4, bow: 18, lift: 5.0, flight: 0.95 },
+  PO: { x: 112, y: 120, bow: 9, lift: 3.2, flight: 0.75 },
+  GB: { x: 86, y: 158, bow: 7, lift: 0, flight: 0.55 },
+}
+
+/** Max deterministic spray either side of a target, so the same at-bat always
+ * marks the same spot. Landing zones must hold their region across this whole box. */
+export const HIT_SPRAY = { x: 12, y: 8 } as const
+
+const ZONE_OF = new Map<OutcomeKey, LandingZone>(
+  Object.entries(LANDING_ZONES) as [OutcomeKey, LandingZone][],
+)
+
+/**
+ * Where an outcome's ball finishes — undefined for the two that never put one in
+ * play. Every read goes through a Map rather than reaching into the record with a
+ * computed key, the same rule the field geometry follows: a lookup that can miss
+ * should say so in its return type instead of handing back `undefined` from a
+ * `Record` that claims it cannot.
+ */
+export function landingZone(outcome: BattedOutcome): LandingZone
+export function landingZone(outcome: OutcomeKey): LandingZone | undefined
+export function landingZone(outcome: OutcomeKey): LandingZone | undefined {
+  return ZONE_OF.get(outcome)
+}
+
+/** What a camera hands the park: the frame it is in, and how it moves if it moves. */
+export interface BallparkCamera {
+  /** The camera's current frame. Defaults to the whole park, held still. */
+  viewBox?: string
+  /** Camera motion, as a viewBox keyframe track. */
+  animate?: MotionProps['animate']
+  transition?: MotionProps['transition']
+}
+
+interface BallparkProps extends BallparkCamera {
+  /** Anything drawn in park coordinates — the ball, its trail, runner tokens. */
+  children?: ReactNode
+  className?: string
+}
+
+/**
+ * The park as chalk lines on night grass (ADR-0012: a diagram, never an
+ * illustration). Decorative throughout — the reveal states its outcome in the
+ * headline and scoreline, so assistive tech is never asked to read the field.
+ */
+export function Ballpark({
+  children,
+  className = 'w-full max-w-80',
+  viewBox = PARK_VIEWBOX,
+  animate,
+  transition,
+}: BallparkProps) {
+  return (
+    <motion.svg
+      aria-hidden="true"
+      className={`block h-auto w-full ${className}`}
+      viewBox={viewBox}
+      animate={animate}
+      transition={transition}
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <title>Ballpark</title>
+      <path d={PARK_PATHS.fairTerritory} fill="rgb(245 241 230 / 0.028)" />
+      <path className="fill-clay/10" d={PARK_PATHS.infieldDirt} />
+      <path d={PARK_PATHS.diamond} fill="rgb(245 241 230 / 0.04)" />
+      <path className="stroke-chalk" d={PARK_PATHS.leftFoulLine} strokeWidth="1.6" opacity="0.5" />
+      <path className="stroke-chalk" d={PARK_PATHS.rightFoulLine} strokeWidth="1.6" opacity="0.5" />
+      <path
+        className="stroke-chalk"
+        d={PARK_PATHS.warningTrack}
+        fill="none"
+        strokeWidth="1.2"
+        strokeDasharray="3 7"
+        opacity="0.3"
+      />
+      <path
+        className="stroke-chalk"
+        d={PARK_PATHS.fence}
+        fill="none"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        opacity="0.62"
+      />
+      <path
+        className="stroke-chalk"
+        d={PARK_PATHS.diamond}
+        fill="none"
+        strokeWidth="2.5"
+        strokeDasharray="8 6"
+        strokeLinejoin="round"
+      />
+      {BASE_SPOTS.map((spot) => {
+        const { x, y } = spotPoint(spot)
+        return (
+          <rect
+            key={spot}
+            className="fill-chalk"
+            x={x - BASE_HALF}
+            y={y - BASE_HALF}
+            width={BASE_HALF * 2}
+            height={BASE_HALF * 2}
+            transform={`rotate(45 ${x} ${y})`}
+          />
+        )
+      })}
+      {children}
+    </motion.svg>
+  )
+}

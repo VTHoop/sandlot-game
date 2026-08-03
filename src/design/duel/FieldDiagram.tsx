@@ -1,4 +1,4 @@
-import { FIELD_VIEWBOX, spotPoint } from './fieldMovement'
+import { BASE_HALF, BASE_SPOTS, DIAMOND_PATH, FIELD_VIEWBOX, spotPoint } from './fieldMovement'
 import { FieldSpot } from './scenario'
 
 interface FieldDiagramProps {
@@ -12,19 +12,13 @@ interface FieldDiagramProps {
   className?: string
 }
 
-const BASES = [
-  { x: 199, y: 119, cx: 205, cy: 125 },
-  { x: 114, y: 34, cx: 120, cy: 40 },
-  { x: 29, y: 119, cx: 35, cy: 125 },
-  { x: 114, y: 204, cx: 120, cy: 210 },
-]
-
 /**
- * One shared token skin for both fields: the batter reads as the hero color, an
- * on-base runner as clay — so the commit screen's held diamond and the reveal's
- * animated one stay visually interchangeable (SAN-51 consistency).
+ * The token skin for this diagram: the batter reads as the hero color, an on-base
+ * runner as clay. The reveal's ballpark draws its own tokens as SVG circles with the
+ * matching `drop-shadow-runner` glows — the two fields share a palette, not a
+ * component.
  */
-export function runnerTokenClass(isBatter: boolean): string {
+function runnerTokenClass(isBatter: boolean): string {
   return isBatter
     ? 'bg-consequence shadow-(--shadow-runner)'
     : 'bg-clay-bright shadow-(--shadow-runner-clay)'
@@ -54,7 +48,12 @@ export function describeBases(runnersOn: readonly FieldSpot[]): string {
  * The field is a chalk-line diagram, never an illustration (ADR-0012). With
  * `runnersOn` it renders the LIVE game state — one token per occupied spot,
  * described to assistive tech; without it, it is a decorative bare diamond.
- * Tokens sit on the same geometry the reveal animates over (`spotPoint`).
+ *
+ * This is the COMPACT field, for the commit and waiting screens: a readout of who
+ * is on base. The reveal stages its animation on {@link Ballpark} instead, which
+ * has an outfield to hit into. The two are intentionally different — a bare
+ * diamond is the wrong stage for a batted ball, and a whole park is the wrong
+ * readout for base occupancy. Both position from the same `spotPoint` geometry.
  */
 export function FieldDiagram({ runnersOn, className = 'h-60 w-60' }: FieldDiagramProps) {
   const a11y = runnersOn
@@ -68,26 +67,29 @@ export function FieldDiagram({ runnersOn, className = 'h-60 w-60' }: FieldDiagra
         viewBox={`0 0 ${FIELD_VIEWBOX} ${FIELD_VIEWBOX}`}
       >
         <title>Field diagram</title>
-        <path d="M120 210 L205 125 L120 40 L35 125 Z" fill="rgb(245 241 230 / 0.04)" />
+        <path d={DIAMOND_PATH} fill="rgb(245 241 230 / 0.04)" />
         <path
-          d="M120 210 L205 125 L120 40 L35 125 Z"
+          d={DIAMOND_PATH}
           className="stroke-chalk"
           fill="none"
           strokeWidth="2.5"
           strokeDasharray="8 6"
           strokeLinejoin="round"
         />
-        {BASES.map((base) => (
-          <rect
-            key={`${base.cx}-${base.cy}`}
-            className="fill-chalk"
-            x={base.x}
-            y={base.y}
-            width="12"
-            height="12"
-            transform={`rotate(45 ${base.cx} ${base.cy})`}
-          />
-        ))}
+        {BASE_SPOTS.map((spot) => {
+          const { x, y } = spotPoint(spot)
+          return (
+            <rect
+              key={spot}
+              className="fill-chalk"
+              x={x - BASE_HALF}
+              y={y - BASE_HALF}
+              width={BASE_HALF * 2}
+              height={BASE_HALF * 2}
+              transform={`rotate(45 ${x} ${y})`}
+            />
+          )
+        })}
       </svg>
       {runnersOn?.map((spot) => {
         const { x, y } = spotPoint(spot)

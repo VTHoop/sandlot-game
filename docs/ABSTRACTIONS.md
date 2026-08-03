@@ -258,9 +258,56 @@ the same diamond the reveal animates — instead of a decorative runner.
   reveal overlays with its own animated tokens.
 - **One geometry, one skin.** Tokens are positioned by `fieldMovement.spotPoint`
   (percent of `FIELD_VIEWBOX`, so any box size tracks) and colored by
-  `FieldDiagram.runnerTokenClass` (batter = hero, on-base runner = clay) — shared
-  with `RevealMotion`, so the commit field is exactly the reveal field's opening
-  frame and the two screens stay visually interchangeable.
+  `FieldDiagram.runnerTokenClass` (batter = hero, on-base runner = clay).
+
+> **Superseded in part.** The reveal no longer shares this diagram — see *Two
+> fields, on purpose* below. `FieldDiagram` remains the commit/waiting field; the
+> interchangeability the two screens once had with the reveal was retired
+> deliberately, not lost.
+
+## Two fields, on purpose
+
+The reveal stages its hit animation on **`Ballpark`**, not `FieldDiagram`. A bare
+diamond is the wrong stage for a batted ball — it ends at the basepaths, which is
+why the old reveal had to place a home run and a triple a bat's length apart above
+second base. A whole park is equally wrong as a readout of who is on base.
+
+- **`Ballpark`** — the reveal's stage: foul lines, infield dirt, warning track and
+  fence, drawn in a wider `PARK_VIEWBOX` that extends past the bases. Fence, track
+  and dirt are the same cubic nested at three depths, so the park reads as one
+  shape. Bags come from `fieldMovement.spotPoint`, so both fields still share one
+  source of geometry. Decorative throughout (`aria-hidden`) — the reveal states its
+  outcome in the headline and scoreline.
+- **`Ballpark.LANDING_ZONES` / `HIT_SPRAY`** — where each hit finishes, plus the
+  deterministic spray either side of it. These live with the park because a landing
+  zone only means something relative to the dirt it clears and the fence it does or
+  doesn't; `Ballpark.test.tsx` asserts each zone holds its region across the whole
+  spray box.
+- **Runners live inside the SVG.** `RevealMotion` draws its tokens as `motion.circle`
+  in park coordinates (glowing via `--drop-runner` / `--drop-runner-clay`, since
+  `drop-shadow()` takes no spread length). One coordinate space for chrome, ball and
+  runners means the camera moves the viewBox and the contents follow.
+
+## The reveal's camera, flight and tempo (ADR-0022)
+
+Three pure modules carry the reveal's behaviour, so the choreography is unit-testable
+and `RevealMotion` stays a renderer.
+
+- **`revealCamera`** — `cameraFrameAt(t, { zone, ballAt })` returns the viewBox at a
+  moment. Tight on the diamond until contact, opening across exactly the flight so it is
+  widest as the ball lands, then held. `FULL_OPEN_REACH` is *derived* from the deepest
+  landing zone, so the longest ball opens the whole park and moving a zone can never
+  leave the widest frame unreachable. Nothing in play means no widening at all — which
+  matters, because 62% of at-bats never reach the outfield (SAN-15 balance harness).
+- **`ballFlight`** — `ballPointAt` / `ballRadiusAt` / `ballTrailPath` over a
+  `LandingZone`. A plan view has no vertical axis, so altitude is the ball's *radius*;
+  the path bows sideways rather than arcing, and `lift: 0` keeps a grounder on the deck.
+- **`revealTiming`** — `revealBeats(scenario, tempo)` computes the whole sequence in
+  story seconds and multiplies once at the boundary. `REVEAL_TEMPO` (1.5) is the only
+  pace knob; every duration in `RevealMotion` passes through the same `slow()` helper so
+  no beat can keep its old duration and desynchronise.
+- **`Ballpark.LANDING_ZONES`** is keyed by `BattedOutcome` (`OutcomeKey` minus `BB`/`K`),
+  so a new outcome cannot be added without deciding where it lands.
 
 ---
 

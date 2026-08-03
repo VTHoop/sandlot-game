@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { latestScoringArrival, movementPath } from './fieldMovement'
+import { latestScoringArrival, movementPath, spotPoint } from './fieldMovement'
 import { FieldSpot, type RunnerMovement } from './scenario'
 
 const HOME = { x: 120, y: 210 }
@@ -91,5 +91,35 @@ describe('latestScoringArrival', () => {
       { from: FieldSpot.Batter, to: FieldSpot.Home, retired: false },
     ]
     expect(latestScoringArrival(grandSlam, 0)).toBeCloseTo(2.36)
+  })
+})
+
+describe('degenerate movements', () => {
+  // Regression: a backwards journey sliced the running order to nothing, so the
+  // path claimed travels:true with zero waypoints. Consumers read the last waypoint
+  // to place the token and crashed on undefined. Every path must name at least one
+  // point, whatever nonsense it is handed.
+  const BACKWARDS: ReadonlyArray<[FieldSpot, FieldSpot]> = [
+    [FieldSpot.Third, FieldSpot.Second],
+    [FieldSpot.Third, FieldSpot.First],
+    [FieldSpot.Second, FieldSpot.First],
+    [FieldSpot.Home, FieldSpot.Third],
+    [FieldSpot.First, FieldSpot.Batter],
+  ]
+
+  it.each(BACKWARDS)('holds a runner sent backwards from %s to %s', (from, to) => {
+    const path = movementPath({ from, to, retired: false })
+    expect(path.waypoints).toEqual([spotPoint(from)])
+    expect(path.travels).toBe(false)
+  })
+
+  it('never yields a path without somewhere to stand, for any pair of spots', () => {
+    const spots = Object.values(FieldSpot)
+    const empty = spots.flatMap((from) =>
+      spots
+        .map((to) => movementPath({ from, to, retired: false }))
+        .filter((path) => path.waypoints.length === 0),
+    )
+    expect(empty).toEqual([])
   })
 })

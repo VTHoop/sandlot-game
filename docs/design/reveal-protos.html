@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Reveal Animation — Three Directions</title>
+<!--
+  Reveal hit-animation spike: three candidate directions against a six-case stress
+  set. Direction B (Broadcast) was chosen — hold-wide camera at 1.5x pace, with the
+  telemetry distance carried as a broadcast stat bug.
+
+  Throwaway prototype, not production-integrated. Geometry, base-running order,
+  travel durations and stagger mirror src/design/duel/fieldMovement.ts; the outcome
+  taxonomy and per-outcome holds mirror src/design/duel/scenario.ts.
+
+  A published copy lives at https://claude.ai/code/artifact/76b50c08-e0e0-4af5-962b-4932bcae778a
+  and differs in one respect only: it inlines the fonts as data URIs, because the
+  artifact CSP blocks font CDNs. This copy links them, matching direction-protos*.html.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Graduate&family=Archivo:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+
+:root{
+  --canvas:#0c0f20; --canvas-high:#131736; --surface:#1c2230;
+  --edge:#343c66; --edge-dim:#2a3154;
+  --chalk:#f5f1e6; --muted:#8d94b8;
+  --consequence:#ffb454; --consequence-deep:#c98a3a;
+  --clay:#c2502a; --clay-bright:#e8744a;
+  --glow-amber:0 0 14px rgb(255 180 84 / .8);
+  --glow-clay:0 0 14px rgb(232 116 74 / .7);
+  --step-0:.75rem; --step-1:.875rem; --step-2:1rem; --step-3:1.35rem; --step-4:2.1rem; --step-5:3.2rem;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  background:linear-gradient(180deg,var(--canvas-high) 0%,var(--canvas) 100%);
+  background-attachment:fixed;
+  min-height:100dvh; color:var(--chalk);
+  font-family:"Archivo",system-ui,sans-serif; font-size:var(--step-2); line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+
+.wrap{max-width:1560px;margin:0 auto;padding:clamp(1.5rem,4vw,3.25rem) clamp(1rem,3vw,2.5rem) 4rem}
+
+/* ── masthead ─────────────────────────────────────────── */
+.mast{border-bottom:1px solid var(--edge-dim);padding-bottom:1.75rem;margin-bottom:1.75rem}
+.eyebrow{
+  font-size:var(--step-0);letter-spacing:.22em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .7rem
+}
+h1{
+  font-family:"Graduate",serif;font-weight:400;
+  font-size:clamp(1.9rem,4.2vw,var(--step-5));line-height:1.02;
+  margin:0 0 .85rem;text-wrap:balance;letter-spacing:.005em;
+}
+h1 em{font-style:normal;color:var(--consequence)}
+.dek{max-width:66ch;color:var(--muted);margin:0;font-size:var(--step-1)}
+.dek strong{color:var(--chalk);font-weight:600}
+
+/* ── the bar three directions must clear ──────────────── */
+.bar{
+  display:grid;gap:1px;background:var(--edge-dim);border:1px solid var(--edge-dim);
+  grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin:1.75rem 0 0;
+}
+.bar>div{background:var(--canvas);padding:.9rem 1.1rem}
+.bar dt{
+  font-size:var(--step-0);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--consequence);margin:0 0 .3rem;font-weight:700;
+}
+.bar dd{margin:0;font-size:var(--step-1);color:var(--muted);line-height:1.45}
+
+/* ── control deck ─────────────────────────────────────── */
+.deck{
+  position:sticky;top:0;z-index:20;
+  background:color-mix(in srgb,var(--canvas) 88%,transparent);
+  backdrop-filter:blur(10px);
+  border-block:1px solid var(--edge-dim);
+  margin:2.25rem 0 0;padding:.85rem 0;
+  display:flex;flex-direction:column;gap:.7rem;
+}
+.deck-row{display:flex;flex-wrap:wrap;gap:.75rem 1.3rem;align-items:center}
+.seg{display:flex;gap:.4rem}
+.deck-label{
+  font-size:var(--step-0);letter-spacing:.18em;text-transform:uppercase;color:var(--muted);
+  margin-right:-.6rem
+}
+.cases{display:flex;flex-wrap:wrap;gap:.4rem}
+.case{
+  font-family:inherit;font-size:var(--step-0);letter-spacing:.09em;text-transform:uppercase;
+  background:transparent;color:var(--muted);
+  border:1px solid var(--edge);padding:.42rem .7rem;cursor:pointer;
+  transition:color .16s,border-color .16s,background .16s;
+}
+.case:hover{color:var(--chalk);border-color:var(--muted)}
+.case[aria-pressed="true"]{
+  background:var(--consequence);border-color:var(--consequence);
+  color:var(--canvas);font-weight:700;
+}
+.case:focus-visible,.btn:focus-visible,.switch:focus-visible{
+  outline:2px solid var(--consequence);outline-offset:2px
+}
+.deck-right{margin-left:auto;display:flex;gap:1.1rem;align-items:center;flex-wrap:wrap}
+.btn{
+  font-family:inherit;font-size:var(--step-0);letter-spacing:.12em;text-transform:uppercase;
+  background:transparent;border:1px solid var(--edge);color:var(--chalk);
+  padding:.42rem .85rem;cursor:pointer;transition:border-color .16s,color .16s;
+}
+.btn:hover{border-color:var(--consequence);color:var(--consequence)}
+.switch{
+  display:flex;align-items:center;gap:.5rem;cursor:pointer;
+  font-size:var(--step-0);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  background:none;border:0;font-family:inherit;padding:0;
+}
+.switch .track{
+  width:32px;height:16px;border:1px solid var(--edge);position:relative;transition:border-color .16s
+}
+.switch .track::after{
+  content:"";position:absolute;inset:2px auto 2px 2px;width:10px;
+  background:var(--muted);transition:transform .18s,background .18s;
+}
+.switch[aria-pressed="true"]{color:var(--consequence)}
+.switch[aria-pressed="true"] .track{border-color:var(--consequence)}
+.switch[aria-pressed="true"] .track::after{transform:translateX(14px);background:var(--consequence)}
+
+.situation{
+  font-size:var(--step-1);color:var(--muted);margin:1.25rem 0 0;
+}
+.situation b{color:var(--chalk);font-weight:600}
+
+/* ── the three stages ─────────────────────────────────── */
+.rig{
+  display:grid;gap:1.5rem;margin-top:1.5rem;
+  grid-template-columns:repeat(3,1fr);
+}
+@media (max-width:1200px){.rig{grid-template-columns:1fr;max-width:640px;margin-inline:auto}}
+
+.panel{border:1px solid var(--edge-dim);background:rgb(28 34 48 / .32);display:flex;flex-direction:column}
+/* Pinned so a longer thesis in one panel can't push its stage out of line with
+   the other two — the stages have to start at the same y to be comparable. */
+.panel-head{
+  padding:1rem 1.15rem .95rem;border-bottom:1px solid var(--edge-dim);
+  min-height:8.4rem;
+}
+.tag{
+  display:flex;align-items:baseline;gap:.6rem;margin-bottom:.35rem
+}
+.tag .letter{
+  font-family:"Graduate",serif;font-size:var(--step-1);color:var(--consequence);
+  letter-spacing:.06em
+}
+.tag h2{
+  font-family:"Graduate",serif;font-weight:400;font-size:var(--step-3);
+  margin:0;letter-spacing:.02em
+}
+.thesis{margin:0;font-size:var(--step-1);color:var(--muted);line-height:1.45}
+
+/* Fixed box, moving viewBox: direction B's camera must zoom WITHIN the frame,
+   never resize it — otherwise the panel height changes and the three stages
+   stop being comparable side by side. */
+.stage{
+  position:relative;background:var(--canvas);border-bottom:1px solid var(--edge-dim);
+  aspect-ratio:440/360;
+}
+.stage svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+/* C's distance, in B's voice: a broadcast stat bug, not a dashboard panel. */
+.statbug{
+  position:absolute;left:.85rem;bottom:.85rem;display:flex;pointer-events:none;
+  font-variant-numeric:tabular-nums;font-size:var(--step-0);letter-spacing:.12em;
+  text-transform:uppercase;opacity:0;transition:opacity .18s;
+}
+.statbug .spine{width:4px;background:var(--clay)}
+.statbug .body{
+  background:rgb(12 15 32 / .84);border:1px solid var(--edge-dim);border-left:0;
+  padding:.3rem .62rem;color:var(--muted)
+}
+.statbug .n{color:var(--consequence);font-weight:700}
+
+.chosen-flag{
+  display:inline-block;font-size:var(--step-0);letter-spacing:.14em;text-transform:uppercase;
+  background:var(--consequence);color:var(--canvas);font-weight:700;
+  padding:.14rem .48rem;margin-left:.5rem;vertical-align:.12em;
+}
+.panel.is-chosen{border-color:var(--consequence-deep)}
+
+.readout{
+  position:absolute;top:.75rem;right:.85rem;text-align:right;pointer-events:none;
+  font-variant-numeric:tabular-nums;font-size:var(--step-0);letter-spacing:.1em;
+  color:var(--muted);text-transform:uppercase;line-height:1.5;
+}
+.readout .val{color:var(--consequence);font-weight:700}
+
+/* The callout lives ABOVE the field, as it does in the real reveal — overlaying it
+   collided with the fence in A and with second base in B. */
+.marquee{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.45rem;
+  min-height:6.1rem;padding:.6rem 1rem;text-align:center;
+  border-bottom:1px solid var(--edge-dim);
+}
+.marquee .head{
+  font-family:"Graduate",serif;font-size:var(--step-4);color:var(--consequence);
+  line-height:1;text-shadow:0 0 26px rgb(255 180 84 / .45);
+}
+.marquee .chip{
+  display:inline-block;background:var(--clay);color:var(--chalk);
+  font-family:"Graduate",serif;font-size:var(--step-0);letter-spacing:.12em;
+  padding:.22rem .55rem;transform:rotate(-2deg);
+}
+.marquee .chipwrap{min-height:1.6rem}
+
+.text-read{
+  padding:.85rem 1.15rem;border-bottom:1px solid var(--edge-dim);
+  font-size:var(--step-1);color:var(--muted);line-height:1.5;min-height:5.1rem
+}
+.text-read .lede{
+  display:block;font-size:var(--step-0);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--edge);margin-bottom:.3rem
+}
+.scorecard{padding:.9rem 1.15rem 1.1rem;display:flex;flex-direction:column;gap:.55rem;margin-top:auto}
+.score{display:flex;gap:.6rem;align-items:flex-start;font-size:var(--step-0);line-height:1.5}
+.score .k{
+  flex:0 0 5.2rem;letter-spacing:.1em;text-transform:uppercase;color:var(--edge);
+  padding-top:.05rem
+}
+.score .v{color:var(--muted)}
+
+/* ── verdict ──────────────────────────────────────────── */
+.verdict{margin-top:3.25rem;border-top:1px solid var(--edge-dim);padding-top:1.75rem}
+.verdict h3{
+  font-family:"Graduate",serif;font-weight:400;font-size:var(--step-3);margin:0 0 1rem
+}
+.verdict-grid{display:grid;gap:1.25rem;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.verdict-grid section{border-left:2px solid var(--edge);padding-left:1rem}
+.verdict-grid h4{
+  font-family:"Graduate",serif;font-weight:400;font-size:var(--step-2);margin:0 0 .4rem;
+}
+.verdict-grid p{margin:0 0 .6rem;font-size:var(--step-1);color:var(--muted);max-width:60ch}
+.verdict-grid p:last-child{margin-bottom:0}
+.adr{
+  display:inline-block;font-size:var(--step-0);letter-spacing:.11em;text-transform:uppercase;
+  border:1px solid var(--edge);padding:.18rem .5rem;color:var(--muted);margin-bottom:.6rem
+}
+.adr.ok{border-color:var(--consequence-deep);color:var(--consequence)}
+.adr.amend{border-color:var(--clay);color:var(--clay-bright)}
+.foot{
+  margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid var(--edge-dim);
+  font-size:var(--step-0);color:var(--edge);letter-spacing:.05em;max-width:80ch;line-height:1.7
+}
+
+@media (prefers-reduced-motion:reduce){
+  .switch .track::after{transition:none}
+}</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">Reveal overhaul · spike → ship</p>
+    <h1>Three ways to make a hit <em>land</em></h1>
+    <p class="dek">
+      Today the reveal animates inside a 240&nbsp;px square that ends at the basepaths.
+      <code>HIT_TARGETS</code> puts a home run at <strong>y&nbsp;=&nbsp;16</strong> and a triple at
+      <strong>y&nbsp;=&nbsp;52</strong> — both crammed just above second base, because there is nowhere
+      else to put them. Three candidate directions, each rendered against the same six-case stress set.
+    </p>
+
+    <dl class="bar">
+      <div>
+        <dt>Outcome illegible</dt>
+        <dd>A home run, a gapper and a bloop resolve to the same place. Motion carries no information the text doesn't already give.</dd>
+      </div>
+      <div>
+        <dt>Space reads wrong</dt>
+        <dd>A batted ball leaves or stops at an arbitrary edge of an infield-only frame.</dd>
+      </div>
+      <div>
+        <dt>No payoff</dt>
+        <dd>The duel builds tension and the reveal spends it flatly.</dd>
+      </div>
+    </dl>
+  </header>
+
+  <div class="deck">
+    <div class="deck-row">
+      <span class="deck-label">Case</span>
+      <div class="cases" id="cases"></div>
+    </div>
+    <div class="deck-row">
+      <span class="deck-label">Camera</span>
+      <div class="seg" id="cam"></div>
+      <span class="deck-label">Pace</span>
+      <div class="seg" id="pace"></div>
+      <div class="deck-right">
+        <button class="btn" id="replay" type="button">↺ Replay</button>
+        <button class="switch" id="rm" type="button" aria-pressed="false">
+          <span class="track"></span> Reduced motion
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <p class="situation" id="situation"></p>
+
+  <div class="rig" id="rig"></div>
+
+  <div class="verdict">
+    <h3>Where each one stands against ADR-0012</h3>
+    <div class="verdict-grid">
+      <section>
+        <span class="adr ok">Within ADR-0012</span>
+        <h4>A · Full Park</h4>
+        <p>Still chalk lines on navy — it just draws the other 280 feet of them. No illustration, no texture, no rendering. The safest direction to ship and the least surprising to look at.</p>
+        <p>Costs the most vertical space: the field goes from square to a 440×360 frame, which reshapes the reveal layout on a phone.</p>
+      </section>
+      <section>
+        <span class="adr ok">Within ADR-0012 · chosen</span>
+        <h4>B · Broadcast</h4>
+        <p>Identical geometry to A — only the viewBox moves. The chalk direction is untouched because nothing new is drawn; the camera is the entire idea. C's distance readout comes along as a broadcast stat bug rather than a dashboard panel.</p>
+        <p><strong>Chosen because</strong> it gets A's spatial fix and C's numeric legibility without paying for either separately: the ball needs somewhere to go, the frame only widens when the play earns it, and the feet state the outcome outright.</p>
+        <p><strong>Settled:</strong> the camera holds the framing the play earned rather than punching back in for the runners, so the resting frame stays a readout of how far the ball went. Playback runs at 1.5× the original beat.</p>
+        <p>The open question is still reduced motion — strip the camera and it becomes A, which is a perfectly good fallback but should be a deliberate one.</p>
+      </section>
+      <section>
+        <span class="adr amend">Needs an amendment</span>
+        <h4>C · Telemetry</h4>
+        <p>Leans hardest into "diagram, never illustration" — so hard it stops being a ballpark and becomes an instrument. That's arguably more ADR-0012 than ADR-0012, but it's a different product, so the ADR should say so out loud.</p>
+        <p>Reads outcomes numerically, which fixes legibility outright — at the risk of trading warmth for a dashboard.</p>
+      </section>
+    </div>
+  </div>
+
+  <p class="foot">
+    Throwaway prototype code — not production-integrated. Geometry, base-running order, travel
+    durations (0.5&nbsp;s per base, 0.6&nbsp;s floor) and the 0.12&nbsp;s runner stagger are lifted from
+    <code>fieldMovement.ts</code>; per-outcome hold values from <code>scenario.ts</code>. The scoreboard
+    flap pre-roll is elided — the clock here starts at the outcome callout. Pacing is the preserved
+    baseline, not a variable.
+  </p>
+
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ── geometry, lifted from fieldMovement.ts ─────────── */
+  const SPOTS = {
+    batter:[120,210], first:[205,125], second:[120,40], third:[35,125], home:[120,210]
+  };
+  const SEQ = ["batter","first","second","third","home"];
+
+  function pathFor(m){
+    const start = SPOTS[m.from];
+    if (m.from === m.to) return {pts:[start], travels:false, retired:!!m.retired};
+    const a = SEQ.indexOf(m.from), b = SEQ.indexOf(m.to);
+    return {pts:SEQ.slice(a,b+1).map(s=>SPOTS[s]), travels:true, retired:!!m.retired};
+  }
+  const travelDur = p => Math.max(0.6, 0.5*(p.pts.length-1));
+  const STAGGER = 0.12;
+
+  /** Mirrors HIT_OUTCOMES in scenario.ts — the same five keys count as a hit. */
+  const HITS = new Set(["HR","3B","2B","1B","IF1B"]);
+
+  /* ── the six-case stress set ────────────────────────── */
+  const CASES = [
+    {
+      id:"HR", label:"HR · loaded", head:"HOME RUN!", chip:"4 RBI",
+      situation:"Bottom 7th · bases loaded · 1 out — the ball is driven to dead center.",
+      land:[140,-134], bow:24, lift:5.6, flight:"air", ballDur:1.05, dist:412,
+      movements:[
+        {from:"batter",to:"home"},{from:"third",to:"home"},
+        {from:"second",to:"home"},{from:"first",to:"home"}
+      ],
+      read:"Home run with the bases loaded. The ball clears the center-field fence. Four runs score."
+    },
+    {
+      id:"2B", label:"2B · man on 1st", head:"DOUBLE!", chip:"RBI",
+      situation:"Top 4th · runner on first · 0 out — a line drive splits the right-center gap.",
+      land:[248,6], bow:22, lift:4.6, flight:"air", ballDur:.85, dist:338,
+      movements:[{from:"batter",to:"second"},{from:"first",to:"third"}],
+      read:"Double. The ball lands in the right-center gap. The runner from first takes third."
+    },
+    {
+      id:"IF1B", label:"IF1B", head:"INFIELD HIT!", chip:null,
+      situation:"Bottom 2nd · bases empty · 2 out — a chopper dies on the infield dirt.",
+      land:[152,156], bow:12, lift:2.2, flight:"air", ballDur:.5, dist:41,
+      movements:[{from:"batter",to:"first"}],
+      read:"Infield hit. The ball dies on the infield dirt. The batter beats the throw at first."
+    },
+    {
+      id:"GB", label:"GB · force at 2nd", head:"GROUNDOUT", chip:null,
+      situation:"Top 5th · runner on first · 1 out — a grounder to short, flipped to second.",
+      land:[74,150], bow:7, lift:0, flight:"ground", ballDur:.55, dist:62,
+      movements:[{from:"batter",to:"first"},{from:"first",to:"second",retired:true}],
+      read:"Groundout. The ball is fielded in the infield. The runner from first is forced at second."
+    },
+    {
+      id:"K", label:"K", head:"STRIKEOUT", chip:null,
+      situation:"Bottom 8th · bases empty · 2 out — nothing is put in play.",
+      land:null, bow:0, lift:0, flight:"none", ballDur:0, dist:null,
+      movements:[{from:"batter",to:"batter",retired:true}],
+      read:"Strikeout. Nothing is put in play. The batter is retired at the plate."
+    },
+    {
+      id:"BB", label:"BB", head:"WALK", chip:null,
+      situation:"Top 3rd · bases empty · 0 out — ball four, nothing is put in play.",
+      land:null, bow:0, lift:0, flight:"none", ballDur:0, dist:null,
+      movements:[{from:"batter",to:"first"}],
+      read:"Walk. Nothing is put in play. The batter takes first base."
+    }
+  ];
+
+  /* ── shared timeline (pacing is the preserved baseline) ─ */
+  const T_FIELD = .9, T_BALL = 1.25, T_RUN = 1.75;
+  function endOf(c){
+    const last = c.movements.reduce((m,mv,i)=>{
+      const p = pathFor(mv);
+      return Math.max(m, i*STAGGER + (p.travels ? travelDur(p) : .6));
+    },0);
+    return T_RUN + last + 1.1;
+  }
+
+  /* ── maths ──────────────────────────────────────────── */
+  const clamp01 = v => v<0?0:v>1?1:v;
+  const easeInOut = u => u<.5 ? 2*u*u : 1-(-2*u+2) ** 2/2;
+  const easeOut = u => 1-(1-u) ** 3;
+  const lerp = (a,b,t) => a+(b-a)*t;
+  function quad(p0,p1,p2,u){
+    const v = 1-u;
+    return [v*v*p0[0]+2*v*u*p1[0]+u*u*p2[0], v*v*p0[1]+2*v*u*p1[1]+u*u*p2[1]];
+  }
+  /* This is a PLAN view — "up" on screen is center field, not the sky. So the
+     control point bows the path sideways (the natural slice off a bat); altitude
+     is carried by the ball's radius instead, which is what separates a fly ball
+     from a grounder here. */
+  function ctrl(c){
+    if (!c.land) return null;
+    const p0 = SPOTS.batter, p2 = c.land;
+    const vx = p2[0]-p0[0], vy = p2[1]-p0[1], len = Math.hypot(vx,vy) || 1;
+    return [(p0[0]+p2[0])/2 + (-vy/len)*c.bow, (p0[1]+p2[1])/2 + (vx/len)*c.bow];
+  }
+  function runnerPos(p,u){
+    const n = p.pts.length-1;
+    if (n === 0) return p.pts[0];
+    const s = easeInOut(u)*n, i = Math.min(Math.floor(s), n-1), f = s-i;
+    return [lerp(p.pts[i][0],p.pts[i+1][0],f), lerp(p.pts[i][1],p.pts[i+1][1],f)];
+  }
+
+  /* ── park chrome, shared by A and B ─────────────────── */
+  const FENCE = "M -57 33 C 20 -110, 220 -110, 297 33";
+  const TRACK = "M -44 46 C 26 -90, 214 -90, 284 46";
+  const GRASS = "M 120 210 L -57 33 C 20 -110, 220 -110, 297 33 Z";
+  // The infield arc is the SAME CURVE as the fence and warning track, just nested
+  // inside them — one shape language for the whole park rather than a circular arc
+  // sitting under two cubics. Endpoints at 166 units down the foul lines put the
+  // curve's deepest point at 189, clearing the 170-unit bag at second by 19 — half
+  // the overhang of a true-scale infield, traded away to leave the outfield room to
+  // read in a park whose fences are already compressed.
+  const DIRT  = "M 3 93 C 54 -3, 186 -3, 237 93 L 120 210 Z";
+  const DIAMOND = "M120 210 L205 125 L120 40 L35 125 Z";
+  const BASES = [[199,119,205,125],[114,34,120,40],[29,119,35,125],[114,204,120,210]];
+
+  const basesSVG = () => BASES.map(b =>
+    `<rect x="${b[0]}" y="${b[1]}" width="12" height="12" fill="var(--chalk)"
+      transform="rotate(45 ${b[2]} ${b[3]})"/>`).join("");
+
+  function parkSVG(){
+    return `
+      <path d="${GRASS}" fill="rgb(245 241 230 / .028)"/>
+      <path d="${DIRT}" fill="rgb(194 80 42 / .10)"/>
+      <path d="${DIAMOND}" fill="rgb(245 241 230 / .04)"/>
+      <path d="M 120 210 L -57 33" stroke="var(--chalk)" stroke-width="1.6" opacity=".5"/>
+      <path d="M 120 210 L 297 33" stroke="var(--chalk)" stroke-width="1.6" opacity=".5"/>
+      <path d="${TRACK}" fill="none" stroke="var(--chalk)" stroke-width="1.2"
+        stroke-dasharray="3 7" opacity=".3"/>
+      <path class="fence" d="${FENCE}" fill="none" stroke="var(--chalk)"
+        stroke-width="2.6" opacity=".62" stroke-linecap="round"/>
+      <path d="${DIAMOND}" fill="none" stroke="var(--chalk)" stroke-width="2.5"
+        stroke-dasharray="8 6" stroke-linejoin="round"/>
+      ${basesSVG()}`;
+  }
+
+  /* ── telemetry chrome for C ─────────────────────────── */
+  function plotSVG(){
+    const rings = [150,250,330].map(r =>
+      `<path d="M ${120-r*Math.SQRT1_2} ${210-r*Math.SQRT1_2} A ${r} ${r} 0 0 1 ${120+r*Math.SQRT1_2} ${210-r*Math.SQRT1_2}"
+         fill="none" stroke="var(--edge)" stroke-width="1" opacity=".85"/>
+       <text x="${120+r*Math.SQRT1_2+6}" y="${210-r*Math.SQRT1_2}" fill="var(--edge)"
+         font-size="11" letter-spacing="1">${r}</text>`).join("");
+    return `
+      ${rings}
+      <path d="M 120 210 L -57 33" stroke="var(--edge)" stroke-width="1"/>
+      <path d="M 120 210 L 297 33" stroke="var(--edge)" stroke-width="1"/>
+      <path d="${FENCE}" fill="none" stroke="var(--clay-bright)" stroke-width="1.6"
+        stroke-dasharray="10 6" opacity=".75"/>
+      <text x="-52" y="18" fill="var(--clay-bright)" font-size="11" letter-spacing="1.6"
+        opacity=".8">HR THRESHOLD</text>
+      <path d="${DIAMOND}" fill="none" stroke="var(--chalk)" stroke-width="1.4" opacity=".55"/>
+      ${BASES.map(b=>`<rect x="${b[0]+3}" y="${b[1]+3}" width="6" height="6" fill="none"
+        stroke="var(--chalk)" stroke-width="1.2" opacity=".7"
+        transform="rotate(45 ${b[2]} ${b[3]})"/>`).join("")}`;
+  }
+
+  /* ── directions ─────────────────────────────────────── */
+  const DIRECTIONS = [
+    {
+      letter:"A", name:"Full Park", chrome:"park",
+      thesis:"Give the ball somewhere to go. Fixed wide camera, real parabola, a fence that can actually be cleared.",
+      scores:[
+        ["Legible","Landing zone alone names the outcome — infield dirt, gap, or gone over the wall."],
+        ["Space","The frame finally contains a ballpark, so nothing stops at an arbitrary edge."],
+        ["Payoff","The ball exits the frame on a homer and the wall flares amber behind it."]
+      ]
+    },
+    {
+      letter:"B", name:"Broadcast", chrome:"park", camera:true, stat:true, chosen:true,
+      thesis:"Let the camera do the talking. Opens tight on the diamond, pulls back only as far as the ball forces it — with C's distance carried as a broadcast stat bug.",
+      scores:[
+        ["Legible","Framing scale is the tell — you know it left the yard because the camera had to retreat to hold it. The stat bug states the distance outright."],
+        ["Space","Same geometry as A; the diamond stays large for base running instead of shrinking into a wide shot."],
+        ["Payoff","The pull-back is the drama beat, the counter climbs under it, then it punches back in for the runners."]
+      ]
+    },
+    {
+      letter:"C", name:"Telemetry", chrome:"plot",
+      thesis:"Stop staging a ballpark and start reading one. The outcome inscribes itself as a measured vector.",
+      scores:[
+        ["Legible","A distance counter and a marked HR threshold state the outcome numerically — no inference."],
+        ["Space","Distance rings give scale without pretending to be grass; the ground track shows where it actually went."],
+        ["Payoff","The counter spinning past the threshold, not the flight, is the moment."]
+      ]
+    }
+  ];
+
+  /* ── build panels ───────────────────────────────────── */
+  const rig = document.getElementById("rig");
+  const panels = DIRECTIONS.map(d => {
+    const el = document.createElement("article");
+    el.className = `panel${d.chosen ? " is-chosen" : ""}`;
+    el.innerHTML = `
+      <div class="panel-head">
+        <div class="tag"><span class="letter">${d.letter}</span><h2>${d.name}</h2>${
+          d.chosen ? '<span class="chosen-flag">Chosen</span>' : ""}</div>
+        <p class="thesis">${d.thesis}</p>
+      </div>
+      <div class="marquee" aria-hidden="true"><div class="head"></div><div class="chipwrap"></div></div>
+      <div class="stage">
+        <svg viewBox="-100 -120 440 360" role="img" aria-label="${d.name} prototype">
+          <g class="chrome">${d.chrome === "park" ? parkSVG() : plotSVG()}</g>
+          <g class="play">
+            <path class="track-line" fill="none" stroke="var(--chalk)" stroke-width="1.4"
+              stroke-dasharray="4 5" opacity="0"/>
+            <path class="trail" fill="none" stroke="var(--chalk)" stroke-width="2.4"
+              stroke-linecap="round" opacity="0"/>
+            <g class="mark-out" opacity="0">
+              <line x1="-6" y1="-6" x2="6" y2="6" stroke="var(--chalk)" stroke-width="2.6"/>
+              <line x1="-6" y1="6" x2="6" y2="-6" stroke="var(--chalk)" stroke-width="2.6"/>
+            </g>
+            <g class="mark-hit" opacity="0">
+              <circle r="9.5" fill="none" stroke="var(--chalk)" stroke-width="1.5" opacity=".5"/>
+              <circle r="4.2" fill="var(--chalk)"/>
+            </g>
+            <circle class="ball" r="5.5" fill="var(--chalk)" opacity="0"/>
+            <g class="runners"></g>
+          </g>
+        </svg>
+        <div class="readout" aria-hidden="true"></div>
+        ${d.stat ? '<div class="statbug" aria-hidden="true"><span class="spine"></span>' +
+          '<span class="body">Dist <span class="n">0 ft</span></span></div>' : ""}
+      </div>
+      <p class="text-read"><span class="lede">Text read · what assistive tech hears</span><span class="rd"></span></p>
+      <div class="scorecard">${d.scores.map(s =>
+        `<div class="score"><span class="k">${s[0]}</span><span class="v">${s[1]}</span></div>`).join("")}</div>`;
+    rig.appendChild(el);
+
+    const q = s => el.querySelector(s);
+    return {
+      d, el,
+      svg:q("svg"), fence:q(".fence"), trail:q(".trail"), track:q(".track-line"),
+      markOut:q(".mark-out"), markHit:q(".mark-hit"), ball:q(".ball"), runners:q(".runners"),
+      head:q(".marquee .head"), chipwrap:q(".chipwrap"), readout:q(".readout"),
+      statbug:q(".statbug"), statn:q(".statbug .n"), rd:q(".rd")
+    };
+  });
+
+  /* ── render one frame ───────────────────────────────── */
+  const VB_WIDE = [-100,-120,440,360];
+  const VB_TIGHT = [8,14,224,224];
+  const VB_PLATE = [58,128,124,104];
+
+  function setCase(p, c){
+    // runners
+    p.runners.innerHTML = c.movements.map((m,i) => {
+      const isBatter = m.from === "batter";
+      const fill = isBatter ? "var(--consequence)" : "var(--clay-bright)";
+      const glow = isBatter ? "var(--glow-amber)" : "var(--glow-clay)";
+      if (p.d.chrome === "plot")
+        return `<rect data-i="${i}" width="11" height="11" fill="none" stroke="${fill}"
+          stroke-width="2.2" opacity="0"/>`;
+      return `<circle data-i="${i}" r="7.5" fill="${fill}" opacity="0"
+        style="filter:drop-shadow(${glow})"/>`;
+    }).join("");
+    p.tokens = [...p.runners.children];
+    p.paths = c.movements.map(pathFor);
+
+    // ball trajectory
+    if (c.land){
+      const cp = ctrl(c), p0 = SPOTS.batter;
+      const d = `M ${p0[0]} ${p0[1]} Q ${cp[0]} ${cp[1]} ${c.land[0]} ${c.land[1]}`;
+      p.trail.setAttribute("d", d);
+      p.track.setAttribute("d", `M ${p0[0]} ${p0[1]} L ${c.land[0]} ${c.land[1]}`);
+      p.len = p.trail.getTotalLength();
+      p.trail.style.strokeDasharray = p.len;
+      const at = `translate(${c.land[0]} ${c.land[1]})`;
+      p.markOut.setAttribute("transform", at);
+      p.markHit.setAttribute("transform", at);
+    } else {
+      p.trail.removeAttribute("d"); p.track.removeAttribute("d"); p.len = 0;
+    }
+    p.rd.textContent = c.read;
+    p.head.textContent = c.head;
+    p.chipwrap.innerHTML = c.chip ? `<span class="chip">${c.chip}</span>` : "";
+  }
+
+  function render(p, c, t){
+    const cp = c.land ? ctrl(c) : null;
+    const ballU = c.ballDur ? clamp01((t - T_BALL) / c.ballDur) : 0;
+    const shown = t >= T_FIELD;
+
+    // callout
+    const cu = clamp01(t / .45);
+    p.head.style.opacity = cu;
+    p.head.style.transform = `scale(${lerp(2.1, 1, easeOut(cu))})`;
+    const chip = p.chipwrap.firstElementChild;
+    if (chip){
+      const chu = clamp01((t - .55) / .4);
+      chip.style.opacity = chu;
+      chip.style.transform = `rotate(-2deg) scale(${lerp(1.6,1,easeOut(chu))})`;
+    }
+
+    // chrome fade-in
+    p.svg.querySelector(".chrome").style.opacity = clamp01((t - T_FIELD + .45) / .5);
+
+    // ball + trail
+    if (c.land){
+      // The straight line is a GROUND TRACK — meaningful on the telemetry plot,
+      // redundant clutter in A and B where the arc already is the tracer.
+      p.track.style.opacity = p.d.chrome === "plot"
+        ? clamp01((t - T_BALL + .1) / .35) * .5
+        : 0;
+      p.trail.style.opacity = ballU > 0 ? .85 : 0;
+      p.trail.style.strokeDashoffset = p.len * (1 - ballU);
+      const pos = quad(SPOTS.batter, cp, c.land, ballU);
+      p.ball.setAttribute("cx", pos[0]);
+      p.ball.setAttribute("cy", pos[1]);
+      // Altitude, in a view that has no vertical axis: the ball swells as it climbs
+      // and shrinks as it comes down. A grounder never swells, so the two read apart
+      // instantly even before either one lands.
+      p.ball.setAttribute("r", 4.2 + c.lift * Math.sin(Math.PI * ballU));
+      p.ball.style.opacity = ballU > 0 && ballU < 1 ? 1 : 0;
+      p.ball.style.filter = ballU > 0 ? "drop-shadow(var(--glow-amber))" : "none";
+      // Scorer's convention: a hit is a dot where the ball landed, an out is an X.
+      // Shape carries the distinction, not colour, so it survives greyscale and the
+      // chalk palette alike. A homer gets neither — it left the park.
+      const landed = c.id === "HR" ? 0 : clamp01((t - T_BALL - c.ballDur) / .25);
+      p.markHit.style.opacity = HITS.has(c.id) ? landed * .95 : 0;
+      p.markOut.style.opacity = HITS.has(c.id) ? 0 : landed * .9;
+    } else {
+      p.trail.style.opacity = 0; p.ball.style.opacity = 0; p.track.style.opacity = 0;
+      p.markHit.style.opacity = 0; p.markOut.style.opacity = 0;
+    }
+
+    // fence flare when a homer crosses it
+    if (p.fence){
+      const flare = c.id === "HR" ? clamp01((t - T_BALL - c.ballDur * .62) / .18) *
+        Math.max(0, 1 - (t - T_BALL - c.ballDur * .62 - .18) / .9) : 0;
+      p.fence.setAttribute("stroke", flare > .02 ? "var(--consequence)" : "var(--chalk)");
+      p.fence.setAttribute("opacity", .62 + flare * .38);
+      p.fence.style.filter = flare > .02 ? `drop-shadow(0 0 ${flare*14}px var(--consequence))` : "none";
+    }
+
+    // runners
+    c.movements.forEach((_m,i) => {
+      const path = p.paths[i], tok = p.tokens[i];
+      const appear = T_FIELD + .2 + i * .05;
+      const moveAt = T_RUN + i * STAGGER;
+      const dur = travelDur(path);
+      let u = 0, op = clamp01((t - appear) / .4);
+      if (path.travels) u = clamp01((t - moveAt) / dur);
+      const pos = path.travels ? runnerPos(path, u) : path.pts[0];
+      if (path.retired){
+        op = path.travels
+          ? op * (1 - clamp01((u - .75) / .25))
+          : op * (1 - clamp01((t - moveAt) / .6));
+      }
+      tok.style.opacity = shown ? op : 0;
+      if (p.d.chrome === "plot"){
+        tok.setAttribute("x", pos[0] - 5.5); tok.setAttribute("y", pos[1] - 5.5);
+      } else {
+        tok.setAttribute("cx", pos[0]); tok.setAttribute("cy", pos[1]);
+      }
+    });
+
+    // camera (direction B only)
+    if (p.d.camera){
+      let vb;
+      if (c.flight === "none"){
+        vb = c.id === "K" ? VB_PLATE : VB_TIGHT;
+        if (c.id === "K"){
+          const k = clamp01((t - T_BALL) / .7);
+          vb = VB_TIGHT.map((v,i) => lerp(v, VB_PLATE[i], easeInOut(k)));
+        }
+      } else {
+        // How far back the camera goes is DERIVED from where the ball actually
+        // finishes, not hardcoded per outcome — so the four outcomes missing from
+        // this stress set (3B/1B/FO/PO) frame themselves correctly for free.
+        const reach = Math.hypot(c.land[0] - SPOTS.batter[0], c.land[1] - SPOTS.batter[1]);
+        const need = clamp01(reach / 330);
+        const out = clamp01((t - T_BALL + .15) / (c.ballDur + .3));
+        // Never start coming back in while the ball is still up: the punch-in waits
+        // for the landing, then for the runners, whichever is later.
+        const settled = Math.max(T_RUN - .25, T_BALL + c.ballDur);
+        // "Hold wide" keeps whatever framing the play earned for the base running
+        // instead of a second camera move back in.
+        const back = cameraHold ? 0 : clamp01((t - settled) / .75);
+        const spread = easeInOut(out) * need * (1 - easeInOut(back) * .78);
+        vb = VB_TIGHT.map((v,i) => lerp(v, VB_WIDE[i], spread));
+      }
+      p.svg.setAttribute("viewBox", vb.join(" "));
+    }
+
+    // broadcast stat bug (direction B) — nothing in play, no distance to show
+    if (p.statbug){
+      const on = c.dist != null && ballU > 0;
+      p.statbug.style.opacity = on ? 1 : 0;
+      if (on) p.statn.textContent = `${Math.round(c.dist * easeOut(ballU))} ft`;
+    }
+
+    // telemetry readout (direction C only)
+    if (p.d.chrome === "plot"){
+      if (c.dist == null){
+        p.readout.innerHTML = `DIST <span class="val">—</span><br>RESULT <span class="val">${
+          t > .3 ? c.head.replace("!","") : "—"}</span>`;
+      } else {
+        const n = Math.round(c.dist * easeOut(ballU));
+        const over = c.id === "HR" && ballU > .62;
+        p.readout.innerHTML =
+          `DIST <span class="val">${ballU > 0 ? n : 0} FT</span><br>` +
+          `RESULT <span class="val">${ballU >= 1 || over ? c.head.replace("!","") : "—"}</span>`;
+      }
+    }
+  }
+
+  /* ── clock ──────────────────────────────────────────── */
+  let current = CASES[0], raf = 0, t0 = 0, reduced = false;
+  // Decided: hold the framing the play earned (no second camera move), at 1.5×.
+  let cameraHold = true;
+  let tempo = 1.5;          // story-seconds divisor: 1.5 plays the same beat 50% slower
+
+  function paintAll(t){ panels.forEach(p => { render(p, current, t); }); }
+
+  function stop(){ if (raf) cancelAnimationFrame(raf); raf = 0; }
+
+  function play(){
+    stop();
+    if (reduced){ paintAll(endOf(current)); return; }
+    t0 = performance.now();
+    const end = endOf(current);
+    const step = now => {
+      // Every timing in the beat is expressed in story-seconds, so dividing by
+      // tempo stretches the WHOLE sequence uniformly — holds, flight, base running
+      // and stagger all keep their relative proportions.
+      const t = (now - t0) / 1000 / tempo;
+      paintAll(Math.min(t, end));
+      if (t < end) raf = requestAnimationFrame(step); else raf = 0;
+    };
+    raf = requestAnimationFrame(step);
+  }
+
+  function load(c){
+    current = c;
+    document.getElementById("situation").innerHTML =
+      `<b>${c.label.split(" · ")[0]}</b> — ${c.situation}`;
+    panels.forEach(p => { setCase(p, c); });
+    [...document.getElementById("cases").children].forEach(b => {
+      b.setAttribute("aria-pressed", String(b.dataset.id === c.id));
+    });
+    play();
+  }
+
+  /* ── controls ───────────────────────────────────────── */
+  const caseBar = document.getElementById("cases");
+  CASES.forEach(c => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "case"; b.dataset.id = c.id;
+    b.textContent = c.label; b.setAttribute("aria-pressed","false");
+    b.addEventListener("click", () => load(c));
+    caseBar.appendChild(b);
+  });
+
+  // Segmented controls: camera behaviour and playback tempo.
+  function segment(host, opts, initial, onPick){
+    opts.forEach(o => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "case"; b.textContent = o.label;
+      b.setAttribute("aria-pressed", String(o.value === initial));
+      b.addEventListener("click", () => {
+        [...host.children].forEach(c => { c.setAttribute("aria-pressed","false"); });
+        b.setAttribute("aria-pressed","true");
+        onPick(o.value);
+        play();
+      });
+      host.appendChild(b);
+    });
+  }
+
+  segment(document.getElementById("cam"), [
+    {label:"Return", value:false}, {label:"Hold wide", value:true}
+  ], cameraHold, v => { cameraHold = v; });
+
+  segment(document.getElementById("pace"), [
+    {label:"1×", value:1}, {label:"1.25×", value:1.25}, {label:"1.5×", value:1.5},
+    {label:"1.75×", value:1.75}
+  ], tempo, v => { tempo = v; });
+
+  document.getElementById("replay").addEventListener("click", play);
+
+  const rmBtn = document.getElementById("rm");
+  function setReduced(v){
+    reduced = v;
+    rmBtn.setAttribute("aria-pressed", String(v));
+    play();
+  }
+  rmBtn.addEventListener("click", () => setReduced(!reduced));
+
+  const mq = matchMedia("(prefers-reduced-motion: reduce)");
+  reduced = mq.matches;
+  rmBtn.setAttribute("aria-pressed", String(reduced));
+  mq.addEventListener("change", e => setReduced(e.matches));
+
+  load(CASES[0]);
+})();
+</script>
+</body>
+</html>

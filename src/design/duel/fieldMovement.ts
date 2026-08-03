@@ -54,6 +54,27 @@ export const spotPoint = (spot: FieldSpot): Point => {
   return point
 }
 
+/** The four bags, in the order the diamond is drawn. */
+export const BASE_SPOTS = [
+  FieldSpot.Home,
+  FieldSpot.First,
+  FieldSpot.Second,
+  FieldSpot.Third,
+] as const
+
+/** Half a bag's width — bases draw as 12-unit squares centred on their spot. */
+export const BASE_HALF = 6
+
+/**
+ * The diamond, traced through the bags themselves. Both fields draw this shape, and
+ * a hand-written copy of it in either one would be a second definition of where the
+ * bases are — free to disagree with {@link spotPoint} the moment anything moves.
+ */
+export const DIAMOND_PATH = `${BASE_SPOTS.map((spot, i) => {
+  const { x, y } = spotPoint(spot)
+  return `${i === 0 ? 'M' : 'L'}${x} ${y}`
+}).join(' ')} Z`
+
 /** How a movement should render: a held runner (and an in-place out) sits, everyone
  * else — including a forced runner running to the bag — travels. */
 export interface MovementPath {
@@ -90,6 +111,17 @@ export function movementPath(movement: RunnerMovement): MovementPath {
   const startIdx = RUNNING_SEQUENCE.indexOf(from)
   const endIdx = RUNNING_SEQUENCE.indexOf(to)
   const waypoints = RUNNING_SEQUENCE.slice(startIdx, endIdx + 1).map(spotPoint)
+
+  // A journey that walks backwards down the running order slices to nothing — a
+  // runner told to travel with nowhere to travel to. It should not reach here (a
+  // runner does not un-run the bases), but it does: `deriveRunnerMovements` locates
+  // a runner by id, so duplicate ids can land one "behind" where they started.
+  // Hold them at their base rather than emit a travelling path with no waypoints,
+  // which every consumer would have to guard against separately.
+  if (waypoints.length === 0) {
+    return { start, waypoints: [start], travels: false, scored: false, retired }
+  }
+
   return { start, waypoints, travels: true, scored: !retired && to === FieldSpot.Home, retired }
 }
 
