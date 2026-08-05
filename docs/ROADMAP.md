@@ -2,7 +2,7 @@
 
 Mirror of the Linear plan. Structure: **Initiative → Projects → Issues**. Priorities: **P0** = critical path to a playable slice · **P1** = needed for the beta · **P2** = polish / later. *(Linear updates managed manually; MCP disabled.)*
 
-> Suggested build order follows the critical path: **Engine → Multiplayer loop (secret at-bat round-trip) → Data pipeline → Roster/cap → League → UX polish.** Foundation (P0) underpins all of it.
+> Suggested build order follows the critical path: **Engine → Multiplayer loop (secret at-bat round-trip) → First Real Game (the bridge) → Data pipeline → Roster/cap → League → UX polish.** Foundation (P0) underpins all of it.
 
 ---
 
@@ -28,15 +28,28 @@ Prove the core loop is fun and that the async social dynamic creates pull, among
 - [P1] Tune tables vs real MLB rate baselines (independent balance — see ADR-0006)
 - [P1] Ground-ball sub-resolution (FC/DP/TP by base-state + outs + speed)
 - [P1] Steals, bunts, extra-base/deep-fly, park effects
+- [P1] Baseball-rules audit of the engine (one-time domain review) — the balance harness checks aggregate rates only; a misremembered rule would have a unit test encoding the same mistake
 - [P2] Derive attribute → run-value → price from the sim (feeds salary cap)
 
 ### Project: Core Multiplayer Loop  *(P0/P1 — Convex)*
 - [P0] Convex schema: games, teams, lineups, players, **duelCommitments (secret vault)**, at_bats (append-only log), rollups
 - [P0] **Secret at-bat round-trip**: order-independent commit mutations (either side locks first, ADR-0014) → server resolution once both land → result; test asserting neither side can read the other's number pre-lock
 - [P0] Game state machine (innings/outs/bases/score) via authoritative mutations — 6-inning regulation, walk-off / extra innings, client-write invariant (ADR-0017)
-- [P1] Realtime subscriptions (live at-bat: "pitch is in" → swing → shared result)
 - [P1] Web push (VAPID) "it's your turn"; scheduled turn reminders
-- [P1] Async turn handling + timeouts
+- [P1] Async turn handling + timeouts *(deadlines/timeouts only — the waiting-on-opponent flow moved to First Real Game)*
+- ~~Realtime subscriptions (live at-bat)~~ → moved to **First Real Game** as the async turn flow
+
+### Project: First Real Game — the vertical slice  *(P0 — added 2026-08-04)*
+> The bridge. The engine, the Convex backend, and the duel UI are each complete and none of them are connected: `src/App.tsx` still renders `<h1>Sandlot</h1>` for every path but `/design`. This project was added because the join was scattered across three bullets in two other projects and never scoped as one deliverable.
+> **Done when:** one signed-in human plays a full game against a bot, over Convex, on a real route.
+- [P0] Seed path: create a playable game (dev fixtures) — no `teams`/`players`/`lineups`/`games` can be created today, so `startGame` has nothing to start
+- [P0] Provision the authenticated user (Clerk subject → `users` row) — `participants.ts` reads this row; nothing ever writes it, so every gated mutation throws
+- [P0] Secret-safe live game read model (`getGame` query) — no query returns the live game row; highest-risk surface for the secrecy invariant
+- [P1] Convex-backed duel adapter — swap the in-memory state for server round-trips (the adapter was built framework-free for exactly this)
+- [P1] App shell + routing + Clerk auth screens *(was: "PWA shell + Clerk auth screens"; PWA half split out)*
+- [P1] Promote the duel UI out of `/design` into the real app *(was: "At-bat UI + field/bases + scoreboard" — the UI already exists; this moves it and generalizes its batter-fixed perspective)*
+- [P1] Async turn flow: waiting on your opponent *(was: "Realtime subscriptions"; the one genuine functional jump — hotseat has both seats present, async does not)*
+- [P1] Server-side bot opponent — so a single human can play a full game without a second device
 
 ### Project: Data Pipeline  *(P1)*
 - [P1] MLB Stats API ingest (2 calls: hitting + pitching), full-season snapshot
@@ -58,9 +71,10 @@ Prove the core loop is fun and that the async social dynamic creates pull, among
 - [P2] Career / head-to-head stat lines (the "vs your nephew" splits)
 
 ### Project: Web App / UX  *(P1/P2)*
-- [P1] PWA shell (installable, mobile-first), Clerk auth screens
-- [P1] At-bat UI (pitch/swing entry, secret-safe), field + bases, scoreboard
+- [P1] Finish PWA installability (icons + manifest) — the service worker is already wired; `"icons": []` is the only real gap
 - [P1] Lineup management; near-miss/odds preview (client-side engine read)
+- ~~PWA shell + Clerk auth screens~~ → split: auth/shell to **First Real Game**, installability above
+- ~~At-bat UI, field + bases, scoreboard~~ → built (SAN-45→SAN-53); promotion into the app moved to **First Real Game**
 - [P2] Replays from the at-bat log; trash-talk-friendly result sharing
 - [P2] Visual polish; brand pass (lock "Sandlot ___" name)
 
