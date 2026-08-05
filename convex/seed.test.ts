@@ -26,19 +26,7 @@ const NON_PITCHER_POSITIONS = ['1B', '2B', '3B', 'C', 'CF', 'DH', 'LF', 'RF', 'S
 
 type HitterAttributes = Extract<Doc<'players'>['attributes'], { power: number }>
 
-/**
- * The four hitter ratings, each read by a named accessor paired with its label.
- * Deliberately not `block[key]` over a key list: computed member access is a
- * Codacy object-injection finding, and the accessor stays type-checked against
- * the block where a string key would not. Same reason `src/design/duel/roster.ts`
- * reaches for a Map rather than a record.
- */
-const HITTER_ATTRIBUTES = [
-  ['power', (block: HitterAttributes) => block.power],
-  ['contact', (block: HitterAttributes) => block.contact],
-  ['speed', (block: HitterAttributes) => block.speed],
-  ['eye', (block: HitterAttributes) => block.eye],
-] as const
+const distinct = (ratings: readonly number[]): number => new Set(ratings).size
 
 /** Narrow a player's attribute union to the hitter block its role promises. */
 function hitterAttributes(player: Doc<'players'>): HitterAttributes {
@@ -189,10 +177,15 @@ describe('dev seed — what one run creates', () => {
   it('spreads each hitter attribute across at least three ratings', async () => {
     const { home, away } = await seeded()
     for (const side of [home, away]) {
-      for (const [label, read] of HITTER_ATTRIBUTES) {
-        const ratings = side.batters.map((batter) => read(hitterAttributes(batter)))
-        expect(new Set(ratings).size, `${label} spread`).toBeGreaterThanOrEqual(3)
-      }
+      const blocks = side.batters.map(hitterAttributes)
+      // Four reads written out rather than looped over a key list: `block[key]`
+      // is a Codacy object-injection finding, and a label→accessor table would
+      // let the name drift from the field it actually reads. Spelled out, each
+      // read sits on its own assertion and the failure names the line.
+      expect(distinct(blocks.map((block) => block.power)), 'power').toBeGreaterThanOrEqual(3)
+      expect(distinct(blocks.map((block) => block.contact)), 'contact').toBeGreaterThanOrEqual(3)
+      expect(distinct(blocks.map((block) => block.speed)), 'speed').toBeGreaterThanOrEqual(3)
+      expect(distinct(blocks.map((block) => block.eye)), 'eye').toBeGreaterThanOrEqual(3)
     }
   })
 
