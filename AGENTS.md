@@ -62,6 +62,17 @@ Coverage is a **release gate, not a vanity metric**: the 80% floor in `vitest.co
 - Review Medium findings: fix real defects/security issues; otherwise justify in the completion comment.
 - Never silence a rule to pass — remove the finding with a small code change.
 
+### Code conventions
+How we write code, as distinct from the gates above that catch us not doing so. Both rules below were being enforced in review before they were written down — ADR-0021 already cites the first as "the project's prefer-enums convention."
+
+- **Enums over magic strings.** A finite set of internal values is a **TS string enum** (`export enum SwingType { Normal = 'normal', … }`), not an inline string-literal union. Callers get a named symbol, not a quoted string to typo. Examples: `Half`, `GameStatus`, `GroundBallResult`, `BuntResult`, `FieldSpot`, `DuelSeat`.
+  - **The one exception is the Convex schema layer.** `convex/validators.ts` must express its domains as `v.union(v.literal(…))` because Convex infers the persisted types from the validators. Where an engine enum and a validator describe the same domain, lock them together with a compile-time `AssertEqual` guard (coercing the enum to its string values) so the two can never drift — the engine stays the single source of truth. See `convex/validators.ts`.
+- **No computed member access.** Never `obj[key]` with a non-literal key — a variable index, a `for…of` over a key list. Codacy flags every one as a **Generic Object Injection Sink**. This codebase already carries ten of these workarounds; the rule is written down so the eleventh is cheap instead of a review round-trip. Three shapes cover every case:
+  - **id / dynamic-key lookup** → a `ReadonlyMap`. See `src/design/duel/roster.ts` and `convex/schema.test.ts`.
+  - **an exhaustive keyed table** → declare the object literal with `satisfies Record<Key, V>` so a missing key is still a compile error, then read it through a `Map` built from `Object.entries`. Exhaustiveness and injection-safety are not a trade-off. See `OUTCOME_NAMES` / `outcomeName()` in `src/design/duel/scenario.ts`.
+  - **a small fixed field set** → just write the reads out, one per line. A label→accessor table only relocates the problem: `['contact', (b) => b.power]` typechecks and lies.
+  - **The tell:** if you're writing `as Record<string, T>` to make an index compile, you are about to introduce this finding *and* you have just turned off type checking on that read. Both problems have the same fix — narrow the type and read the field by name.
+
 ### PR-readiness checklist → completion comment on the Linear issue
 Before marking the issue done, post a comment covering:
 - **What** was implemented (logic + UX, a few lines).
