@@ -170,8 +170,18 @@ the club's **earliest lineup** and reusing its slots. That is what keeps the
 roster stable across runs without a name-matching upsert.
 
 Both clubs share the one owner, so a single mocked identity can act for both
-sides of a duel. Ownership stays assignable: a seeded team can be re-pointed at
-a real signed-in user once user provisioning exists.
+sides of a duel.
+
+**Known constraint — the seed cannot follow a club that moves.** It identifies a
+club by owner + name, and the product may legitimately change both: a club can be
+renamed, or re-pointed at a real signed-in user. There is no marker on the row to
+follow it by, and adding one would put a throwaway fixture's bookkeeping
+permanently into a production entity — so instead the seed re-checks its
+assumption on every run and **refuses** when a club has moved, naming the clubs it
+actually found. It never mints a replacement, because a replacement would carry no
+prior lineup and would silently fork ten more players off the roster. Handing a
+seeded club to a real user, and whatever should happen to the fixture afterwards,
+belongs to the user-provisioning ticket.
 
 `seedRoster.ts` is data only — two invented clubs, nine distinctly-positioned
 batters and one arm each (**no MLB names or statistics**, ADR-0006). Every

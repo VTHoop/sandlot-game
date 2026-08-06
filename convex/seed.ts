@@ -22,6 +22,12 @@ import { AWAY_TEAM, HOME_TEAM, type PitcherSpec, type TeamSpec } from './seedRos
  * lineups. Nothing is ever deleted or patched, so earlier games stay playable
  * history.
  *
+ * That reuse rests on identifying a club by owner + name, both of which the
+ * product may legitimately change — so {@link assertClubsIntact} re-checks the
+ * assumption on every run and refuses when a club has moved. The seed follows
+ * nothing and guesses at nothing; see that function for why it doesn't just
+ * mark the rows.
+ *
  * The three reuse lookups below are all read-then-insert *into the range they
  * just read*, which is what makes them safe without a unique constraint (none
  * of these tables has one): two concurrent runs overlap read and write sets, so
@@ -86,16 +92,53 @@ async function seedOwner(ctx: MutationCtx): Promise<Id<'users'>> {
   )
 }
 
-/**
- * One club, keyed on its fixed name within the owner's teams. Both clubs share
- * the one owner, so a single identity can act for both sides of a seeded duel.
- */
-async function seedTeam(ctx: MutationCtx, owner: Id<'users'>, name: string): Promise<Id<'teams'>> {
-  const owned = await ctx.db
+/** Every club the seed owner holds — the seed's whole world, read once. */
+function ownedClubs(ctx: MutationCtx, owner: Id<'users'>): Promise<Doc<'teams'>[]> {
+  return ctx.db
     .query('teams')
     .withIndex('by_owner', (q) => q.eq('owner', owner))
     .collect()
-  const existing = owned.find((team) => team.name === name)
+}
+
+/**
+ * The seed identifies a club by owner + name, and the product is free to change
+ * both — a club can be renamed, or re-pointed at a real signed-in user. There is
+ * no marker on the row to follow it by, and adding one would put a throwaway
+ * fixture's bookkeeping permanently into a production entity, so the seed
+ * verifies its assumption every run instead of trusting it.
+ *
+ * Anything other than "no clubs yet" or "exactly my two" means a club left. The
+ * seed refuses rather than minting a replacement: a replacement would carry no
+ * prior lineup, so it would silently fork ten more players off the roster and
+ * split the club's history in half. Re-adopting a moved club is the
+ * user-provisioning ticket's job, not this fixture's.
+ */
+function assertClubsIntact(clubs: Doc<'teams'>[]): void {
+  const names = clubs.map((club) => club.name)
+  const intact =
+    names.length === 0 ||
+    (names.length === 2 && names.includes(HOME_TEAM.name) && names.includes(AWAY_TEAM.name))
+  if (intact) return
+  throw new Error(
+    `Dev seed found ${names.length} club(s) owned by ${SEED_CLERK_SUBJECT} ` +
+      `[${names.join(', ')}] — expected either none or exactly ` +
+      `[${HOME_TEAM.name}, ${AWAY_TEAM.name}]. A seeded club was renamed or ` +
+      `re-pointed at another user; the seed cannot follow it and will not mint a ` +
+      `duplicate. Restore the club's owner and name, or clear the seeded data.`,
+  )
+}
+
+/**
+ * One club, reused from the owner's clubs or created on the first run. Both
+ * clubs share the one owner, so a single identity can act for both sides.
+ */
+async function seedTeam(
+  ctx: MutationCtx,
+  clubs: Doc<'teams'>[],
+  owner: Id<'users'>,
+  name: string,
+): Promise<Id<'teams'>> {
+  const existing = clubs.find((club) => club.name === name)
   return existing?._id ?? ctx.db.insert('teams', { owner, name })
 }
 
@@ -135,7 +178,7 @@ type Roster = Pick<Doc<'lineups'>, 'battingOrder' | 'pitcher'>
  * reused verbatim. Every run after the first therefore fields the same twenty
  * players in the same order without touching a single existing row.
  */
-async function seedRoster(ctx: MutationCtx, team: Id<'teams'>, spec: TeamSpec): Promise<Roster> {
+async function clubRoster(ctx: MutationCtx, team: Id<'teams'>, spec: TeamSpec): Promise<Roster> {
   const prior = await ctx.db
     .query('lineups')
     .withIndex('by_team', (q) => q.eq('team', team))
@@ -157,10 +200,13 @@ export const seedDevGame = internalMutation({
     assertSeedEnabled()
 
     const owner = await seedOwner(ctx)
-    const homeTeam = await seedTeam(ctx, owner, HOME_TEAM.name)
-    const awayTeam = await seedTeam(ctx, owner, AWAY_TEAM.name)
-    const home = await seedRoster(ctx, homeTeam, HOME_TEAM)
-    const away = await seedRoster(ctx, awayTeam, AWAY_TEAM)
+    const clubs = await ownedClubs(ctx, owner)
+    assertClubsIntact(clubs)
+
+    const homeTeam = await seedTeam(ctx, clubs, owner, HOME_TEAM.name)
+    const awayTeam = await seedTeam(ctx, clubs, owner, AWAY_TEAM.name)
+    const home = await clubRoster(ctx, homeTeam, HOME_TEAM)
+    const away = await clubRoster(ctx, awayTeam, AWAY_TEAM)
 
     const game = await ctx.db.insert('games', { homeTeam, awayTeam, ...SCHEDULED_GAME })
     await ctx.db.insert('lineups', { game, team: homeTeam, ...home })
