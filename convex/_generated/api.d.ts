@@ -12,6 +12,7 @@ import type * as atBat from "../atBat.js";
 import type * as game from "../game.js";
 import type * as participants from "../participants.js";
 import type * as seed from "../seed.js";
+import type * as seedRoster from "../seedRoster.js";
 import type * as validators from "../validators.js";
 
 import type {
@@ -25,6 +26,7 @@ declare const fullApi: ApiFromModules<{
   game: typeof game;
   participants: typeof participants;
   seed: typeof seed;
+  seedRoster: typeof seedRoster;
   validators: typeof validators;
 }>;
 

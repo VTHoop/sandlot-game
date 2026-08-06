@@ -22,8 +22,10 @@ type PitcherAttributes = Extract<PlayerAttributes, { velocity: number }>
 /** A batting slot's position — the nine non-`P` slots, one of each per side. */
 type FieldPosition = Exclude<Doc<'players'>['position'], 'P'>
 
-/** One batter: the position it fills in the order and its own attribute block. */
-export interface HitterSpec {
+/** One batter: the position it fills in the order and its own attribute block.
+ * Reachable structurally through {@link TeamSpec}; not exported by name because
+ * nothing outside this module names it. */
+interface HitterSpec {
   name: string
   position: FieldPosition
   attributes: HitterAttributes
@@ -36,8 +38,10 @@ export interface PitcherSpec {
 }
 
 /**
- * One club: a fixed name (the key the seed upserts the `teams` row on), a
- * nine-deep batting order in array order, and the arm behind it.
+ * One club: a fixed name (half of how the seed recognizes the club again —
+ * `assertClubsIntact` in `./seed` explains why that recognition is checked
+ * rather than trusted), a nine-deep batting order in array order, and the arm
+ * behind it.
  */
 export interface TeamSpec {
   name: string

@@ -87,4 +87,13 @@ pnpm e2e:smoke     # Playwright smoke lane (Chromium)
 
 Two engine CLIs support balance work — `pnpm emit-grid` walks the full attribute grid and prints the aggregate slash line, and `pnpm derive-balance` reproduces that aggregate from the committed seed tables and checks it against the public rate-baseline tolerance gates.
 
-Environment: copy [`.env.example`](.env.example). `VITE_CONVEX_URL` is written by `npx convex dev`; `VITE_CLERK_PUBLISHABLE_KEY` comes from the Clerk dashboard; `CLERK_ISSUER_URL` is set on the Convex deployment itself via `npx convex env set`. The smoke lane needs the two `VITE_` values.
+Environment: copy [`.env.example`](.env.example). `VITE_CONVEX_URL` is written by `npx convex dev`; `VITE_CLERK_PUBLISHABLE_KEY` comes from the Clerk dashboard; `CLERK_ISSUER_URL` and `SANDLOT_DEV_SEED` are set on the Convex deployment itself via `npx convex env set`. The smoke lane needs the two `VITE_` values.
+
+Nothing in the app creates a game yet, so a fresh deployment gives the Convex functions nothing to act on. A dev-only fixture seed mints one — two invented clubs, their rosters, and a scheduled game:
+
+```bash
+npx convex env set SANDLOT_DEV_SEED true   # dev deployments only
+npx convex run seed:seedDevGame            # prints the new game's id
+```
+
+It refuses to run without that flag, and it is an internal mutation, so no browser client can reach it in any deployment. Re-running appends another game between the same two clubs.
