@@ -263,3 +263,64 @@ describe('dev seed — re-running', () => {
     expect(after.pitcher._id).toEqual(before.pitcher._id)
   })
 })
+
+/**
+ * The seed identifies its clubs by owner + name, both of which the product is
+ * free to change. It cannot follow a club that moves, so it must not pretend
+ * otherwise: every run re-checks that assumption and refuses rather than
+ * silently minting a duplicate club and a second roster.
+ */
+describe('dev seed — when a club moves out from under it', () => {
+  /** Count the rows a fork would visibly inflate. */
+  function census(t: Harness) {
+    return t.run(async (ctx) => ({
+      teams: (await ctx.db.query('teams').collect()).length,
+      players: (await ctx.db.query('players').collect()).length,
+      games: (await ctx.db.query('games').collect()).length,
+      lineups: (await ctx.db.query('lineups').collect()).length,
+    }))
+  }
+
+  it('refuses to re-run once a club has been adopted by a real user', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('first seeded game vanished')
+
+    // What AC 9 permits: re-point a seeded club at a real signed-in user.
+    await t.run(async (ctx) => {
+      const real = await ctx.db.insert('users', {
+        clerkSubject: 'user_real_person',
+        displayName: 'Real Person',
+      })
+      await ctx.db.patch(row.awayTeam, { owner: real })
+    })
+
+    await expect(runSeed(t)).rejects.toThrow(/expected either none or exactly/)
+    // The refusal is the whole point: no duplicate club, no second roster.
+    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 1, lineups: 2 })
+  })
+
+  it('refuses to re-run once a club has been renamed', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('first seeded game vanished')
+
+    await t.run((ctx) => ctx.db.patch(row.homeTeam, { name: 'Renamed By Its Owner' }))
+
+    await expect(runSeed(t)).rejects.toThrow(/expected either none or exactly/)
+    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 1, lineups: 2 })
+  })
+
+  it('names the clubs it actually found, so the message is diagnosable', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('first seeded game vanished')
+
+    await t.run((ctx) => ctx.db.patch(row.homeTeam, { name: 'Renamed By Its Owner' }))
+
+    await expect(runSeed(t)).rejects.toThrow(/Renamed By Its Owner/)
+  })
+})
