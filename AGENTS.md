@@ -2,7 +2,7 @@
 
 A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) resolved against attribute-sized outcome bands, wrapped in a salary-cap league. Async-first multiplayer. Built largely with AI coding agents — this file is the contract every agent (and human) follows.
 
-> **Status:** foundation in progress. The toolchain (package.json, configs, hooks) lands with `docs/adr/0001-*`. Commands below are the committed target; treat anything not yet wired as the spec to wire, not as already-passing.
+> **Status:** the toolchain is wired and enforcing — Lefthook `pre-commit` (Biome + typecheck) and `pre-push` (lint, typecheck, coverage), the TDD guard hook on every `Edit`/`Write`, CI (lint · typecheck · coverage · Playwright smoke) on every PR, and Vitest suites across the engine, the Convex functions, and the client. Treat every command below as live and binding, with **two exceptions that are still targets, not gates**: the CodeScene code-health ratchet in §1 — `.codescene-thresholds` is zeroed pending hotspot history, and no hook or CI job invokes CodeScene — and the Linear MCP workflow, which is disabled (issue updates are manual).
 
 > **Inspiration & IP:** the core mechanic is adapted from the `r/baseballbythenumbers` community game (credited as prior art). Game *mechanics* are not copyrightable; we use the system, **not** anyone's brand or verbatim content. See Product Rules.
 
@@ -43,10 +43,10 @@ A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) r
 pnpm lint          # Biome (format + lint); zero warnings
 pnpm typecheck     # tsc --noEmit — the single best correctness signal for LLM-written code
 pnpm test          # Vitest
-pnpm test:coverage # Vitest v8 coverage — NEW-code threshold ≥ 80%, ratcheted
+pnpm test:coverage # Vitest v8 coverage — global threshold ≥ 80% on lines/functions/branches/statements, ratcheted
 pnpm e2e:smoke     # Playwright smoke lane — must stay under 5 minutes
 ```
-Coverage is a **release gate, not a vanity metric**: gate on new/changed code (~80%), ratchet only upward (`thresholdAutoUpdate: false`). Don't chase a high global %; meaningful coverage on critical paths (the engine, the secret-pitch flow) beats padded coverage on trivial branches.
+Coverage is a **release gate, not a vanity metric**: the 80% floor in `vitest.config.ts` is a ratchet that only moves upward (`thresholdAutoUpdate` stays off; the TDD guard hook blocks any edit that lowers a threshold). Clearing the floor is not the goal — meaningful coverage on critical paths (the engine, the secret-pitch flow) beats padded coverage on trivial branches.
 
 ### Code health — CodeScene (mandatory; free OSS tier, public repo)
 - Pre-commit/pre-push and the PR check enforce **Hotspot** and **Average** Code Health ≥ `.codescene-thresholds`.
