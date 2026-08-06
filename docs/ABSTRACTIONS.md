@@ -142,6 +142,61 @@ defense at each score / pointer / seating step.
 two server paths. No client mutation writes them directly — the same vault
 discipline as the secret pitch, extended to the whole envelope.
 
+## Dev fixture seed (`convex/seed.ts` + `seedRoster.ts`)
+
+`startGame` needs a `scheduled` game with two owned teams and two complete
+lineups behind it, and nothing in the app creates one yet — the draft, salary
+cap, and MLB ingest that eventually will are their own projects. `seedDevGame`
+(SAN-54) mints that game so local development and manual QA have something to
+play. It is a placeholder fixture, not the real roster-building flow.
+
+**Double-fenced.** It is an `internalMutation`, so it never appears on the
+generated public `api` and no browser client can name it in any deployment; and
+it refuses to run unless `SANDLOT_DEV_SEED` is exactly `"true"` on the
+deployment. The gate is **fail-closed** — an unset variable blocks it, so a
+fresh deployment is safe before anyone thinks about it. `seed.test.ts` asserts
+both halves: the throw, and a compile-time guard that fails `pnpm typecheck` if
+the mutation is ever downgraded to a public one.
+
+**Additive, not idempotent.** One synthetic owner (a fixed `clerkSubject` that
+cannot collide with a real Clerk account), two clubs keyed on fixed names, and
+their twenty players are created on the first run and reused verbatim forever
+after; every run appends a *new* scheduled game plus its two lineups. Nothing is
+deleted or patched, so earlier games stay playable history.
+
+A player carries no team column — the only link from a team to its players is a
+`lineups` row — so "does this club already have players?" is answered by reading
+the club's **earliest lineup** and reusing its slots. That is what keeps the
+roster stable across runs without a name-matching upsert.
+
+Both clubs share the one owner, so a single mocked identity can act for both
+sides of a duel.
+
+**Known constraint — the seed cannot follow a club that moves.** It identifies a
+club by owner + name, and the product may legitimately change both: a club can be
+renamed, or re-pointed at a real signed-in user. There is no marker on the row to
+follow it by, and adding one would put a throwaway fixture's bookkeeping
+permanently into a production entity — so instead the seed re-checks its
+assumption on every run and **refuses** when a club has moved, naming the clubs it
+actually found. It never mints a replacement, because a replacement would carry no
+prior lineup and would silently fork ten more players off the roster. Handing a
+seeded club to a real user, and whatever should happen to the fixture afterwards,
+belongs to the user-provisioning ticket.
+
+`seedRoster.ts` is data only — two invented clubs, nine distinctly-positioned
+batters and one arm each (**no MLB names or statistics**, ADR-0006). Every
+hitter attribute spans at least three distinct 1–5 ratings across the nine
+slots, and the two arms differ, so the `power − velocity` / `speed − awareness`
+/ `eye − command` / `contact − movement` differentials actually vary instead of
+resolving every at-bat off the same band. The seed writes no rollup rows —
+`standings`, `playerStatLine`, and `boxScoreLine` are maintained by their own
+tickets and must tolerate a game existing before any rollup row does.
+
+```bash
+npx convex env set SANDLOT_DEV_SEED true   # dev deployment only
+npx convex run seed:seedDevGame            # → the new game's id
+```
+
 ## Duel adapter (`src/design/duel/adapter.ts` + `roster.ts`)
 
 The pure, headless boundary (SAN-45) that bridges the roster-free engine to the
