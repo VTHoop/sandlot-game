@@ -66,7 +66,11 @@ codacy-cli analyze --tool opengrep src/   # security patterns, 80+ rules over TS
 - **Always fix Critical & High findings introduced by your change** before requesting review.
 - Review Medium findings: fix real defects/security issues; otherwise justify in the completion comment.
 - Never silence a rule to pass — remove the finding with a small code change.
-- **The local CLI is a subset of the PR bot, not a replacement.** `init` reports *"Ignoring plugin rules. ESLint plugins are not supported yet"*, so rules from ESLint plugins — including `security/detect-object-injection`, the **Generic Object Injection Sink** finding this codebase hits repeatedly (see "Code conventions") — appear **only** in the Codacy PR check, never locally. ESLint itself is excluded from `.codacy/codacy.yaml` because the CLI's bundled config has no TypeScript parser and fails on every `.ts` file. Expect the bot to catch things the CLI cannot.
+- **The local CLI is a subset of the PR bot, not a replacement.** The bot runs Codacy's server-side [`codacy-eslint`](https://github.com/codacy/codacy-eslint), which bundles `@typescript-eslint/parser` and the plugin rule sets — it analyses this repo's TypeScript properly. The CLI does not ship either:
+  - Its ESLint install is bare `eslint` + a SARIF formatter, **no TypeScript parser**, yet the config `init` generates lists `**/*.ts`/`**/*.tsx` in `files:` without setting `languageOptions.parser`. Every `.ts` file then fails with `Parsing error: Unexpected token`. That's why ESLint is excluded from `.codacy/codacy.yaml` — it is a CLI config-generation bug, not a limit of Codacy itself.
+  - `init` also reports *"Ignoring plugin rules. ESLint plugins are not supported yet"*, so `security/detect-object-injection` — the **Generic Object Injection Sink** this codebase hits repeatedly (see "Code conventions") — is reachable **only** through the PR check.
+
+  Net: a clean local `trivy`/`opengrep` run does **not** imply a clean Codacy check. Read the bot.
 
 ### Code conventions
 How we write code, as distinct from the gates above that catch us not doing so. Both rules below were being enforced in review before they were written down — ADR-0021 already cites the first as "the project's prefer-enums convention."
