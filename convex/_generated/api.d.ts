@@ -13,6 +13,7 @@ import type * as game from "../game.js";
 import type * as participants from "../participants.js";
 import type * as seed from "../seed.js";
 import type * as seedRoster from "../seedRoster.js";
+import type * as users from "../users.js";
 import type * as validators from "../validators.js";
 
 import type {
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   participants: typeof participants;
   seed: typeof seed;
   seedRoster: typeof seedRoster;
+  users: typeof users;
   validators: typeof validators;
 }>;
 
