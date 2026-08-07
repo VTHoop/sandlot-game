@@ -21,6 +21,34 @@ Wraps the entire tree so Clerk session state is available everywhere. Must be th
 outermost provider (wraps `ConvexProviderWithClerk`). Configured with
 `VITE_CLERK_PUBLISHABLE_KEY`.
 
+## Account provisioning (`convex/users.ts`)
+
+A Clerk session is not an account. Every server function resolves its caller by
+looking `ctx.auth.subject` up in `users.by_clerk_subject` (see
+`convex/participants.ts`), so a `users` row has to exist before a signed-in user
+can do anything. `api.users.provision` mints it (SAN-55, ADR-0023).
+
+**Explicit, not lazy.** The client calls it on sign-in. It cannot be folded into
+`maybeUser`/`authedUser`, which accept a `QueryCtx | MutationCtx` — Convex queries
+cannot write, so a first-time user would still fail every read, and every gated
+mutation would quietly become an account-creation path.
+
+**Self-only and idempotent.** It takes no arguments; the subject comes only from
+`ctx.auth`. Returning callers get the same row id back and nothing is written. The
+upsert reads the index range it inserts into, so concurrent first-time calls (React
+`<StrictMode>` double-invokes effects in dev) conflict under Convex's serializable
+OCC rather than producing a second row — which matters because `by_clerk_subject`
+is read with `.unique()`, and a duplicate would throw on every later lookup.
+
+**`displayName` is write-once.** Seeded from the Clerk identity by a fallback
+chain — full name → username (`nickname` in Clerk's `convex` JWT template) → email
+local-part → `"Manager"` — and never re-synced, so a future in-app profile edit
+cannot be reverted by the next sign-in. Never empty.
+
+`upsertUserBySubject` is the single place a `users` row is created; the dev seed
+(below) is just another caller, holding a subject Clerk cannot issue. Provisioning
+grants no team ownership — claiming a club is SAN-62.
+
 ## UI foundation (`src/components/ui/`)
 
 Extracted from the at-bat duel design spike (ADR-0011/0012,
@@ -181,7 +209,8 @@ assumption on every run and **refuses** when a club has moved, naming the clubs 
 actually found. It never mints a replacement, because a replacement would carry no
 prior lineup and would silently fork ten more players off the roster. Handing a
 seeded club to a real user, and whatever should happen to the fixture afterwards,
-belongs to the user-provisioning ticket.
+belongs to the claiming ticket (SAN-62) — provisioning mints the user and claims
+nothing.
 
 `seedRoster.ts` is data only — two invented clubs, nine distinctly-positioned
 batters and one arm each (**no MLB names or statistics**, ADR-0006). Every

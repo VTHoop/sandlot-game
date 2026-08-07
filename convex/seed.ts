@@ -1,6 +1,7 @@
 import type { Doc, Id } from './_generated/dataModel'
 import { internalMutation, type MutationCtx } from './_generated/server'
 import { AWAY_TEAM, HOME_TEAM, type PitcherSpec, type TeamSpec } from './seedRoster'
+import { upsertUserBySubject } from './users'
 
 /**
  * Dev-only fixture seed (SAN-54).
@@ -28,11 +29,13 @@ import { AWAY_TEAM, HOME_TEAM, type PitcherSpec, type TeamSpec } from './seedRos
  * nothing and guesses at nothing; see that function for why it doesn't just
  * mark the rows.
  *
- * The three reuse lookups below are all read-then-insert *into the range they
- * just read*, which is what makes them safe without a unique constraint (none
- * of these tables has one): two concurrent runs overlap read and write sets, so
- * Convex's serializable OCC conflicts one and retries it, and the retry sees the
- * committed row and reuses it. The same discipline as the duel's ordinal (SAN-20).
+ * Every reuse lookup here is read-then-insert *into the range it just read*,
+ * which is what makes them safe without a unique constraint (none of these
+ * tables has one): two concurrent runs overlap read and write sets, so Convex's
+ * serializable OCC conflicts one and retries it, and the retry sees the
+ * committed row and reuses it. The same discipline as the duel's ordinal
+ * (SAN-20). The owner lookup is the shared `upsertUserBySubject` (SAN-55) — the
+ * seed is just another caller of it, holding a subject Clerk cannot issue.
  *
  * All names and ratings live in `./seedRoster` and are invented — no MLB data
  * (AGENTS.md / ADR-0006).
@@ -77,21 +80,6 @@ function assertSeedEnabled(): void {
   }
 }
 
-/** The seed's owner, created on the first run and reused on every later one. */
-async function seedOwner(ctx: MutationCtx): Promise<Id<'users'>> {
-  const existing = await ctx.db
-    .query('users')
-    .withIndex('by_clerk_subject', (q) => q.eq('clerkSubject', SEED_CLERK_SUBJECT))
-    .unique()
-  return (
-    existing?._id ??
-    ctx.db.insert('users', {
-      clerkSubject: SEED_CLERK_SUBJECT,
-      displayName: SEED_DISPLAY_NAME,
-    })
-  )
-}
-
 /** Every club the seed owner holds — the seed's whole world, read once. */
 function ownedClubs(ctx: MutationCtx, owner: Id<'users'>): Promise<Doc<'teams'>[]> {
   return ctx.db
@@ -110,8 +98,9 @@ function ownedClubs(ctx: MutationCtx, owner: Id<'users'>): Promise<Doc<'teams'>[
  * Anything other than "no clubs yet" or "exactly my two" means a club left. The
  * seed refuses rather than minting a replacement: a replacement would carry no
  * prior lineup, so it would silently fork ten more players off the roster and
- * split the club's history in half. Re-adopting a moved club is the
- * user-provisioning ticket's job, not this fixture's.
+ * split the club's history in half. Handing a club to a real user, and what the
+ * fixture should do afterwards, is the claiming ticket's job (SAN-62) — not this
+ * fixture's. Provisioning (SAN-55) only mints the user; it claims nothing.
  */
 function assertClubsIntact(clubs: Doc<'teams'>[]): void {
   const names = clubs.map((club) => club.name)
@@ -199,7 +188,7 @@ export const seedDevGame = internalMutation({
   handler: async (ctx): Promise<Id<'games'>> => {
     assertSeedEnabled()
 
-    const owner = await seedOwner(ctx)
+    const owner = await upsertUserBySubject(ctx, SEED_CLERK_SUBJECT, SEED_DISPLAY_NAME)
     const clubs = await ownedClubs(ctx, owner)
     assertClubsIntact(clubs)
 
