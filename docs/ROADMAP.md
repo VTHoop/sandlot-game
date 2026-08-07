@@ -42,8 +42,8 @@ Prove the core loop is fun and that the async social dynamic creates pull, among
 ### Project: First Real Game — the vertical slice  *(P0 — added 2026-08-04)*
 > The bridge. The engine, the Convex backend, and the duel UI are each complete and none of them are connected: `src/App.tsx` still renders `<h1>Sandlot</h1>` for every path but `/design`. This project was added because the join was scattered across three bullets in two other projects and never scoped as one deliverable.
 > **Done when:** one signed-in human plays a full game against a bot, over Convex, on a real route.
-- [P0] Seed path: create a playable game (dev fixtures) — no `teams`/`players`/`lineups`/`games` can be created today, so `startGame` has nothing to start
-- [P0] Provision the authenticated user (Clerk subject → `users` row) — `participants.ts` reads this row; nothing ever writes it, so every gated mutation throws
+- ~~Seed path: create a playable game (dev fixtures)~~ → built (SAN-54): `seedDevGame` mints an owner, two clubs, twenty players, and a scheduled game
+- ~~Provision the authenticated user (Clerk subject → `users` row)~~ → built (SAN-55): `api.users.provision` writes the row `participants.ts` reads. Backend only — nothing calls it until the sign-in wiring below lands
 - [P0] Secret-safe live game read model (`getGame` query) — no query returns the live game row; highest-risk surface for the secrecy invariant
 - [P1] Convex-backed duel adapter — swap the in-memory state for server round-trips (the adapter was built framework-free for exactly this)
 - [P1] App shell + routing + Clerk auth screens *(was: "PWA shell + Clerk auth screens"; PWA half split out)*
