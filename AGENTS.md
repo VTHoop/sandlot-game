@@ -2,7 +2,7 @@
 
 A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) resolved against attribute-sized outcome bands, wrapped in a salary-cap league. Async-first multiplayer. Built largely with AI coding agents — this file is the contract every agent (and human) follows.
 
-> **Status:** the toolchain is wired and enforcing — Lefthook `pre-commit` (Biome + typecheck) and `pre-push` (lint, typecheck, coverage), the TDD guard hook on every `Edit`/`Write`, CI (lint · typecheck · coverage · Playwright smoke) on every PR, and Vitest suites across the engine, the Convex functions, and the client. Treat every command below as live and binding, with **two exceptions that are still targets, not gates**: the CodeScene code-health ratchet in §1 — `.codescene-thresholds` is zeroed pending hotspot history, and no hook or CI job invokes CodeScene — and the Linear MCP workflow, which is disabled (issue updates are manual).
+> **Status:** the toolchain is wired and enforcing — Lefthook `pre-commit` (Biome + typecheck) and `pre-push` (lint, typecheck, coverage), the TDD guard hook on every `Edit`/`Write`, CI (lint · typecheck · coverage · Playwright smoke) on every PR, and Vitest suites across the engine, the Convex functions, and the client. Linear MCP is connected — read and write issues directly. Treat every command below as live and binding, with **one exception that is still a target, not a gate**: the CodeScene code-health ratchet in §1 — `.codescene-thresholds` is zeroed pending hotspot history, and no hook or CI job invokes it. See §1 "Code health" for what CodeScene actually enforces today.
 
 > **Inspiration & IP:** the core mechanic is adapted from the `r/baseballbythenumbers` community game (credited as prior art). Game *mechanics* are not copyrightable; we use the system, **not** anyone's brand or verbatim content. See Product Rules.
 
@@ -11,20 +11,19 @@ A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) r
 ## 1. Development Process
 
 ### Starting a task
-- Read the **Linear** issue and all comments fully. The issue is the source of truth for scope. *(Linear MCP disabled; manual modifications made as needed.)*
+- Read the **Linear** issue and all comments fully (`mcp__linear__get_issue`, `mcp__linear__list_comments`). The issue is the source of truth for scope.
 - Check `docs/adr/` for relevant architecture decisions before any structural choice.
 - Check `docs/ARCHITECTURE.md` and `docs/ABSTRACTIONS.md` for existing structure and patterns.
 - For engine/balance work: consult the private engine reference (see Product Rules — it is **not** in this repo). **Run `pnpm emit-grid` immediately** to get the current aggregate slash line before any analysis — don't hand-compute what the harness already answers exactly.
 - For UI tasks: study the existing visual language and components first. **Reuse before recreating** (components, hooks, tokens).
-- Post a Linear comment: `🚀 Starting: <brief approach>`.
-- **Health pre-check:** run the CodeScene MCP code-health score against `.codescene-thresholds`. If already below the gate, **refactor first**, commit, then start. Never start feature work on a codebase that's already below the bar.
+- Post a Linear comment: `🚀 Starting: <brief approach>` (`mcp__linear__save_comment`).
 
 ### Branches & PRs (light PR flow)
 - One short-lived branch per task: `feat/…`, `fix/…`, `refactor/…`. Branch off `main`.
 - Open a **PR** for every change, even solo. Keep PRs small and single-purpose — the PR is the visible record of review discipline.
 - The PR must show: passing check suite, `/code-review` agent pass, and green Codacy + CodeScene checks.
 - Squash-merge to `main`. Delete the branch.
-- **A task is not done until the PR is merged and the issue's completion comment is posted.** *(Completion comments posted manually since Linear MCP is disabled.)*
+- **A task is not done until the PR is merged and the issue's completion comment is posted.**
 - **⛔ NEVER `--no-verify`.** If a hook blocks you, read the error and fix the code — never bypass, never lower a gate.
 
 ### TDD (mandatory)
@@ -48,19 +47,30 @@ pnpm e2e:smoke     # Playwright smoke lane — must stay under 5 minutes
 ```
 Coverage is a **release gate, not a vanity metric**: the 80% floor in `vitest.config.ts` is a ratchet that only moves upward (`thresholdAutoUpdate` stays off; the TDD guard hook blocks any edit that lowers a threshold). Clearing the floor is not the goal — meaningful coverage on critical paths (the engine, the secret-pitch flow) beats padded coverage on trivial branches.
 
-### Code health — CodeScene (mandatory; free OSS tier, public repo)
-- Pre-commit/pre-push and the PR check enforce **Hotspot** and **Average** Code Health ≥ `.codescene-thresholds`.
-- Thresholds are a **ratchet — only go up.** When remote scores improve, update `.codescene-thresholds` and commit the new floor.
-- **Boy Scout Rule:** every file you touch leaves with a *higher* score; if it was already `10.0`, it stays `10.0`. Every **new** scorable file must reach `10.0` (or zero findings if unscorable).
-- **Before editing a file:** capture its file-level score. **After:** re-check and verify it improved/held.
-- **⛔ NEVER edit `.codescene-thresholds` downward. NEVER add `eslint-disable`, `// @ts-ignore`, or `as any` to dodge a finding.** Fix the code.
-- Access order: CodeScene MCP → `cs` CLI → CodeScene API (`CODESCENE_PAT` + `CODESCENE_PROJECT_ID`).
+### Code health — CodeScene (PR bot only; free OSS tier, public repo)
+**What runs:** the CodeScene GitHub app posts a Code Health Review check on every PR. That is the only CodeScene surface set up here, and there is **no local CodeScene check** — the `cs` CLI is not installed and no access token is provisioned, so a file's score cannot be captured before/after an edit. (CodeScene's CLI requires an admin-issued access token and is not listed among the free OSS plan's features; whether the OSS tier can mint one is unconfirmed. If that changes, this section should change with it.)
+- **Read the bot's PR check** and address what it flags. It is advisory today: no hook or CI job gates on it.
+- **Boy Scout Rule (still binding, judged by eye):** every file you touch should leave more readable than you found it — smaller functions, fewer branches, clearer names. The bot verifies this after the fact; you don't need a score to know when you've made a function worse.
+- **⛔ NEVER add `biome-ignore`, `// @ts-ignore`, or `as any` to dodge a finding.** Fix the code.
+- `.codescene-thresholds` is **aspirational, not enforced** — it is zeroed pending hotspot history, and nothing reads it. Do not treat it as a gate, and don't cite it as one.
 
 ### Security & static analysis — Codacy (mandatory)
-- Run **Codacy Guardrails** (MCP, or `.codacy/cli.sh analyze <path>`) on every touched file before a PR is marked ready.
+**What runs:** the Codacy GitHub app posts a static-analysis check on every PR, and CI uploads coverage to it. Locally, [Codacy CLI v2](https://github.com/codacy/codacy-cli-v2) is free and needs no account or token — it is installed via `brew install codacy/codacy-cli-v2/codacy-cli-v2` and configured by the committed `.codacy/codacy.yaml`.
+
+```bash
+codacy-cli install                    # once, after cloning — pulls the pinned tools
+codacy-cli analyze --tool trivy       # secrets + dependency CVEs (whole repo)
+codacy-cli analyze --tool opengrep src/   # security patterns, 80+ rules over TS
+```
+- Run both **before marking a PR ready**. They are fast (seconds) and need no network beyond the first install.
 - **Always fix Critical & High findings introduced by your change** before requesting review.
 - Review Medium findings: fix real defects/security issues; otherwise justify in the completion comment.
 - Never silence a rule to pass — remove the finding with a small code change.
+- **The local CLI is a subset of the PR bot, not a replacement.** The bot runs Codacy's server-side [`codacy-eslint`](https://github.com/codacy/codacy-eslint), which bundles `@typescript-eslint/parser` and the plugin rule sets — it analyses this repo's TypeScript properly. The CLI does not ship either:
+  - Its ESLint install is bare `eslint` + a SARIF formatter, **no TypeScript parser**, yet the config `init` generates lists `**/*.ts`/`**/*.tsx` in `files:` without setting `languageOptions.parser`. Every `.ts` file then fails with `Parsing error: Unexpected token`. That's why ESLint is excluded from `.codacy/codacy.yaml` — it is a CLI config-generation bug, not a limit of Codacy itself.
+  - `init` also reports *"Ignoring plugin rules. ESLint plugins are not supported yet"*, so `security/detect-object-injection` — the **Generic Object Injection Sink** this codebase hits repeatedly (see "Code conventions") — is reachable **only** through the PR check.
+
+  Net: a clean local `trivy`/`opengrep` run does **not** imply a clean Codacy check. Read the bot.
 
 ### Code conventions
 How we write code, as distinct from the gates above that catch us not doing so. Both rules below were being enforced in review before they were written down — ADR-0021 already cites the first as "the project's prefer-enums convention."
@@ -77,8 +87,8 @@ How we write code, as distinct from the gates above that catch us not doing so. 
 Before marking the issue done, post a comment covering:
 - **What** was implemented (logic + UX, a few lines).
 - **Tests/coverage:** commands run, final coverage on changed code.
-- **CodeScene:** before/after touched-file scores; final Hotspot & Average pass `.codescene-thresholds`.
-- **Codacy:** scan summary; confirm no new Critical/High.
+- **CodeScene:** what the PR bot's Code Health Review flagged, and what you did about it (or "clean").
+- **Codacy:** the PR check's result, plus the local `trivy` / `opengrep` runs; confirm no new Critical/High.
 - **ADRs:** new/updated, or "none".
 - **Docs:** updated `ARCHITECTURE.md`/`ABSTRACTIONS.md`/etc., or "none".
 - **Data hygiene:** confirm no MLB data and no secret-state leaks were committed (see Product Rules).
@@ -155,14 +165,6 @@ Then present your work to the user followed by a **Review Findings** block in th
 - **Notifications (beta):** **web push (VAPID)** via the PWA — acceptable at this scale (~half the family on Android, where web push is solid; iOS users guided through Add-to-Home-Screen manually). Email/SMS available as a fallback if needed.
 - **Future (if it grows):** Expo/React Native native app + real APNs/FCM push (Convex push component), when reliable cross-platform push matters at scale. Engine + Convex backend port over; only the UI shell is rebuilt.
 - **Data shape:** append-only at-bat log + authoritative current-state rows (**NOT full event sourcing**); stats via maintained rollups, aggregated in TS. Never aggregate raw events on the client.
-- **Quality:** Biome · tsc · Vitest (v8 coverage) · Playwright · Codacy · CodeScene · Lefthook (git hooks)
-- **PM:** Linear (roadmap & issues). Package manager: pnpm.
-
-### Key paths
-- `docs/adr/` — architecture decisions (the "why")
-- `docs/ARCHITECTURE.md`, `docs/ABSTRACTIONS.md` — the "what" and "how"
-- `docs/ROADMAP.md` — Linear roadmap mirror
-- engine package — the at-bat resolution core + Monte Carlo harness (balance validator + price derivation)
 
 ### Diagrams
 Prefer Mermaid (`flowchart`, `sequenceDiagram`, `stateDiagram-v2`). ASCII only for spatial wireframes.
