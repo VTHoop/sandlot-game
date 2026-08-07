@@ -24,7 +24,8 @@ outermost provider (wraps `ConvexProviderWithClerk`). Configured with
 ## Account provisioning (`convex/users.ts`)
 
 A Clerk session is not an account. Every participant-gated server function
-resolves its caller by looking `ctx.auth.subject` up in `users.by_clerk_subject`
+resolves its caller by looking the Clerk subject (`subject` on the `UserIdentity`
+from `ctx.auth.getUserIdentity()`) up in `users.by_clerk_subject`
 (see `convex/participants.ts`), so a `users` row has to exist before a signed-in
 user can do anything. `api.users.provision` mints it (SAN-55, ADR-0023) — it is
 the one function that creates rather than resolves, and the dev seed reaches the

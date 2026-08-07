@@ -33,8 +33,9 @@ import {
  * added in later tickets.
  */
 export default defineSchema({
-  // Clerk-backed account: `clerkSubject` is `ctx.auth.subject` from the Clerk
-  // JWT (see docs/ARCHITECTURE.md). Owns teams.
+  // Clerk-backed account: `clerkSubject` is the `subject` field of the
+  // `UserIdentity` from `ctx.auth.getUserIdentity()` — the JWT's `sub` claim
+  // (see docs/ARCHITECTURE.md). Owns teams.
   users: defineTable({
     clerkSubject: v.string(),
     displayName: v.string(),

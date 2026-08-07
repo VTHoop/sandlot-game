@@ -6,7 +6,8 @@
 ## Context
 
 `convex/participants.ts` resolves the caller of every server function by looking
-`ctx.auth.subject` up in `users.by_clerk_subject`, and `convex/atBat.ts` /
+the Clerk subject (`subject` on the `UserIdentity` from
+`ctx.auth.getUserIdentity()`) up in `users.by_clerk_subject`, and `convex/atBat.ts` /
 `convex/game.ts` gate every mutation behind the result. Nothing in the codebase
 ever inserted a `users` row, so for a real signed-in Clerk user `authedUser`
 threw `Not authenticated` unconditionally, forever — the whole vertical slice was
