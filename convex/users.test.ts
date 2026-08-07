@@ -173,13 +173,16 @@ describe('provision — calling it again', () => {
     expect((await soleUser(t)).displayName).toBe('Sandlot Legend')
   })
 
+  // Named for what it actually does. convex-test serializes mutation calls, so
+  // this does NOT reproduce an OCC conflict — it pins the observable requirement
+  // (one subject, one row) across overlapping callers and nothing more. What
+  // holds the concurrent half up is structural, at `upsertUserBySubject`: it
+  // reads the index range it then inserts into, so Convex's serializable OCC
+  // conflicts the loser and the retry finds the committed row (SAN-20's
+  // discipline). Proving that needs an integration test against a local backend,
+  // which this repo does not have.
   it('cannot produce two rows for one subject from overlapping first-time calls', async () => {
     const t = harness()
-    // convex-test executes mutations serially, so this asserts the observable
-    // requirement (one subject, one row) rather than reproducing a real race.
-    // Safety under genuine concurrency comes from the upsert reading the index
-    // range it then inserts into: Convex's serializable OCC conflicts the loser,
-    // and the retry sees the committed row (see the module comment in seed.ts).
     const ids = await Promise.all([
       t.withIdentity({ subject: 'user_racer' }).mutation(api.users.provision, {}),
       t.withIdentity({ subject: 'user_racer' }).mutation(api.users.provision, {}),
@@ -187,6 +190,30 @@ describe('provision — calling it again', () => {
 
     expect(new Set(ids).size).toBe(1)
     expect(await users(t)).toHaveLength(1)
+  })
+
+  /**
+   * The stakes behind that requirement, which *are* testable: `participants.ts`
+   * reads `by_clerk_subject` with `.unique()`, so a duplicate does not degrade
+   * the account — it throws on every later lookup, permanently. This pins that,
+   * so relaxing `.unique()` to `.first()` to "fix" a duplicate has to argue with
+   * a failing test rather than silently handing the account to whichever row
+   * sorted first.
+   */
+  it('would break every later lookup for a subject if a duplicate row existed', async () => {
+    const t = harness()
+    const as = t.withIdentity({ subject: 'user_dupe' })
+    await as.mutation(api.users.provision, {})
+    await t.run((ctx) =>
+      ctx.db.insert('users', { clerkSubject: 'user_dupe', displayName: 'Impostor' }),
+    )
+
+    // `.unique()` throws rather than picking a winner, so a duplicate is not a
+    // cosmetic problem to be papered over by relaxing it to `.first()` — that
+    // would hand the account to whichever row sorted first. Both paths must stay
+    // loud, which is the whole reason the upsert has to be race-proof.
+    await expect(as.run((ctx) => authedUser(ctx))).rejects.toThrow()
+    await expect(as.mutation(api.users.provision, {})).rejects.toThrow()
   })
 
   it('keeps separate subjects on separate rows', async () => {

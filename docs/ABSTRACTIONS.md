@@ -23,12 +23,15 @@ outermost provider (wraps `ConvexProviderWithClerk`). Configured with
 
 ## Account provisioning (`convex/users.ts`)
 
-A Clerk session is not an account. Every server function resolves its caller by
-looking `ctx.auth.subject` up in `users.by_clerk_subject` (see
-`convex/participants.ts`), so a `users` row has to exist before a signed-in user
-can do anything. `api.users.provision` mints it (SAN-55, ADR-0023).
+A Clerk session is not an account. Every participant-gated server function
+resolves its caller by looking `ctx.auth.subject` up in `users.by_clerk_subject`
+(see `convex/participants.ts`), so a `users` row has to exist before a signed-in
+user can do anything. `api.users.provision` mints it (SAN-55, ADR-0023) — it is
+the one function that creates rather than resolves, and the dev seed reaches the
+same upsert by an internal path.
 
-**Explicit, not lazy.** The client calls it on sign-in. It cannot be folded into
+**Explicit, not lazy.** The client is meant to call it at sign-in; that wiring
+belongs to SAN-38 and is not in place yet. It cannot be folded into
 `maybeUser`/`authedUser`, which accept a `QueryCtx | MutationCtx` — Convex queries
 cannot write, so a first-time user would still fail every read, and every gated
 mutation would quietly become an account-creation path.
