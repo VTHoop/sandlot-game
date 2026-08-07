@@ -52,6 +52,12 @@ cannot be reverted by the next sign-in. Never empty.
 (below) is just another caller, holding a subject Clerk cannot issue. Provisioning
 grants no team ownership — claiming a club is SAN-62.
 
+Auth itself still lives entirely in `convex/participants.ts`: `provision` takes the
+raw identity from `authedIdentity` and the row lookup from `userBySubject` rather
+than reading `ctx.auth` or the index itself. That is not tidiness — the OCC
+argument above only holds while the range the upsert reads is the same range every
+gate reads, and `.unique()`'s throw-on-duplicate has to stay loud in both.
+
 ## UI foundation (`src/components/ui/`)
 
 Extracted from the at-bat duel design spike (ADR-0011/0012,

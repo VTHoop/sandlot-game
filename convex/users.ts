@@ -1,6 +1,7 @@
 import type { UserIdentity } from 'convex/server'
 import type { Id } from './_generated/dataModel'
 import { type MutationCtx, mutation } from './_generated/server'
+import { authedIdentity, userBySubject } from './participants'
 
 /**
  * Account provisioning (SAN-55, ADR-0023) — the one place a `users` row is born.
@@ -15,8 +16,9 @@ import { type MutationCtx, mutation } from './_generated/server'
  * cannot write, so a first-time user would still fail every read — and every
  * gated mutation would quietly become an account-creation path.
  *
- * The subject is read only from `ctx.auth` and the mutation takes no arguments,
- * so a caller can provision itself and nothing else. The dev fixture's owner row
+ * The subject is read only from `ctx.auth` (via `participants.authedIdentity`,
+ * which is where every auth rule lives) and the mutation takes no arguments, so a
+ * caller can provision itself and nothing else. The dev fixture's owner row
  * (`SEED_CLERK_SUBJECT`) is keyed the same way on a subject shape Clerk cannot
  * issue, so neither side can reach the other's row.
  */
@@ -59,9 +61,13 @@ function displayNameFor(identity: UserIdentity): string {
  * the index range it then inserts into: two concurrent first-time calls for the
  * same subject overlap read and write sets, so Convex's serializable OCC
  * conflicts one and its retry finds the committed row. That matters more here
- * than it looks — `by_clerk_subject` is read with `.unique()`, which *throws* on
- * a duplicate, so a lost race would not degrade the account, it would break every
+ * than it looks — `userBySubject` reads with `.unique()`, which *throws* on a
+ * duplicate, so a lost race would not degrade the account, it would break every
  * later lookup for it. Same discipline as the duel's ordinal (SAN-20).
+ *
+ * The read is `participants.userBySubject` rather than a second copy of the same
+ * query: the OCC argument above only holds while the range read here is the range
+ * every gate reads, and two copies would be free to drift apart.
  *
  * Never patches an existing row: `displayName` is the user's own column, seeded
  * from Clerk once and thereafter owned by the app (a profile screen, eventually).
@@ -72,10 +78,7 @@ export async function upsertUserBySubject(
   clerkSubject: string,
   displayName: string,
 ): Promise<Id<'users'>> {
-  const existing = await ctx.db
-    .query('users')
-    .withIndex('by_clerk_subject', (q) => q.eq('clerkSubject', clerkSubject))
-    .unique()
+  const existing = await userBySubject(ctx, clerkSubject)
   return existing?._id ?? ctx.db.insert('users', { clerkSubject, displayName })
 }
 
@@ -88,8 +91,7 @@ export async function upsertUserBySubject(
 export const provision = mutation({
   args: {},
   handler: async (ctx): Promise<Id<'users'>> => {
-    const identity = await ctx.auth.getUserIdentity()
-    if (!identity) throw new Error('Not authenticated')
+    const identity = await authedIdentity(ctx)
     return upsertUserBySubject(ctx, identity.subject, displayNameFor(identity))
   },
 })
