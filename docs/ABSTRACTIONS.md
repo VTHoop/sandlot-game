@@ -220,7 +220,9 @@ Splitting player creation into a game-less "league" step would leave orphaned
 set. Standing rosters belong to the draft/salary-cap project; a dev fixture does
 not get to reshape the schema for its own tidiness. `mintDevGame` therefore
 **refuses** a club with no roster rather than inventing one — same fork, same
-refusal as below.
+refusal as below. It likewise refuses two identical ids: both checks catch the
+same caller mistake (the wrong id), and are questions about the arguments rather
+than about ownership.
 
 Both clubs share the one owner, so a single mocked identity can act for both
 sides of a duel.

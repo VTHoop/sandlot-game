@@ -277,11 +277,22 @@ export const bootstrapDevLeague = internalMutation({
  * behaves identically before and after a real user claims one (SAN-62). That is
  * the whole reason it is separate from {@link bootstrapDevLeague}, whose
  * owner + name lookup a claim breaks by design.
+ *
+ * It does check that the two ids are *usable* — distinct, and each carrying a
+ * roster — which is a question about the arguments, not about ownership. Both
+ * refusals catch the same caller mistake: the wrong id. Writing the game anyway
+ * would leave a club playing itself, or a fork of its roster.
  */
 export const mintDevGame = internalMutation({
   args: { homeTeam: v.id('teams'), awayTeam: v.id('teams') },
   handler: async (ctx, { homeTeam, awayTeam }): Promise<Id<'games'>> => {
     assertSeedEnabled()
+    if (homeTeam === awayTeam) {
+      throw new Error(
+        `Dev seed cannot mint a game for team ${homeTeam} against itself. Bootstrap builds two ` +
+          `distinct clubs; pass both of their ids.`,
+      )
+    }
 
     return mintScheduledGame(
       ctx,
