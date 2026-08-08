@@ -337,8 +337,16 @@ describe('claiming a club — a caller who already holds one', () => {
  * then patches, so two claims on one club overlap read and write sets and
  * Convex's serializable OCC conflicts the loser — whose retry re-reads a club
  * the seed owner no longer holds and refuses. Same discipline as the duel's
- * ordinal (SAN-20) and the provisioning upsert (SAN-55). Proving it needs an
- * integration test against a local backend, which this repo does not have.
+ * ordinal (SAN-20) and the provisioning upsert (SAN-55). Proving the conflict
+ * itself needs an integration test against a local backend, which this repo does
+ * not have.
+ *
+ * What *is* proved here is the half that matters if the conflict fires: a retry
+ * re-runs the whole handler, so the losing caller executes exactly the refusals
+ * the two `describe`s above pin — "refuses to take a club from another real
+ * user" and "refuses a second club". Those are the same code path a retry takes,
+ * exercised deterministically; the untestable step is only whether Convex
+ * conflicts the loser rather than letting both commit.
  */
 describe('claiming a club — two callers at once', () => {
   it('cannot give one club to two overlapping callers', async () => {
