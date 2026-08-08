@@ -194,7 +194,7 @@ players, and a scheduled game — and is run once on a fresh deployment.
 `mintDevGame({ homeTeam, awayTeam })` appends another scheduled game between two
 already-bootstrapped clubs, and is run whenever you want a fresh one.
 `assignClubToUser({ team, clerkSubject })` hands one club to a real signed-in
-account, and is run once per human.
+account, and is run once per club a human should hold.
 
 **Double-fenced.** Each is an `internalMutation`, so none appears on the
 generated public `api` and no browser client can name them in any deployment;
@@ -258,6 +258,13 @@ keeps `upsertUserBySubject` the single writer of that table — `by_clerk_subjec
 has no unique constraint, so the `.unique()` read every gate depends on is safe
 only while one function does the inserting.
 
+**Sequencing caveat:** that row is minted by `users.provision`, which the client
+calls at sign-in — wiring SAN-38 owns and which is not in place yet. Until it
+lands there is no way to mint one, since `provision` reads `ctx.auth` and
+`npx convex run` carries no identity. So the assignment below is usable against a
+real account only once SAN-38 has shipped; the seed owner's two clubs are what
+make the fixture playable before then.
+
 Two things it deliberately does not check, both of which self-serve claiming
 (SAN-63) must:
 
@@ -285,7 +292,8 @@ tickets and must tolerate a game existing before any rollup row does.
 npx convex env set SANDLOT_DEV_SEED true        # dev deployment only
 npx convex run seed:bootstrapDevLeague         # once → the new game's id
 npx convex run seed:mintDevGame '{"homeTeam":"…","awayTeam":"…"}'   # another game
-# once per human, after they have signed in at least once:
+# once per club a human should hold; needs users.provision to have run for that
+# subject first (SAN-38 wires it into sign-in):
 npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
 ```
 

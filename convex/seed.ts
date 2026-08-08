@@ -20,7 +20,8 @@ import { upsertUserBySubject } from './users'
  * - {@link mintDevGame} takes two club ids and appends another scheduled game
  *   between them. Run whenever you want a fresh game.
  * - {@link assignClubToUser} hands one club to a real signed-in account, which
- *   is what turns it into a game participant. Run once per human (SAN-62).
+ *   is what turns it into a game participant. Run once per club a human should
+ *   hold (SAN-62).
  *
  * Bootstrap cannot stop short of that first game. A player row carries no team
  * column, so the *only* link from a club to its players is a `lineups` row, and
@@ -290,7 +291,7 @@ export const bootstrapDevLeague = internalMutation({
  */
 /**
  * Re-point one club at the user behind a Clerk subject (SAN-62). Run from the
- * CLI after signing in once, to turn that account into a game participant:
+ * CLI to turn a real account into a game participant:
  *
  * ```bash
  * npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
@@ -300,6 +301,11 @@ export const bootstrapDevLeague = internalMutation({
  * provisioning one, which keeps `upsertUserBySubject` (SAN-55) the single writer
  * of `users`. `by_clerk_subject` carries no unique constraint, so the `.unique()`
  * read every gate depends on is safe only while one function does the inserting.
+ *
+ * That row is minted by `users.provision`, which the client calls at sign-in —
+ * wiring SAN-38 owns and which is not in place yet. Until it is, there is no way
+ * to mint one: `provision` reads `ctx.auth`, and `npx convex run` carries no
+ * identity, so it cannot be driven from the CLI either.
  *
  * Two things it deliberately does NOT check, both of which self-serve claiming
  * (SAN-63) must:
