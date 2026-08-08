@@ -95,8 +95,10 @@ function roster(t: Harness, game: Id<'games'>, team: Id<'teams'>): Promise<Roste
     if (!lineup) throw new Error('seeded game is missing a lineup')
     const batters = await Promise.all(lineup.battingOrder.map((slot) => ctx.db.get(slot.player)))
     const pitcher = await ctx.db.get(lineup.pitcher)
-    if (!pitcher || batters.some((b) => b === null)) throw new Error('lineup references a ghost')
-    return { battingOrder: lineup.battingOrder, batters: batters as Doc<'players'>[], pitcher }
+    // `every` with an inferred type predicate (TS 5.5) narrows `batters` itself,
+    // so the ghost check is also what drops the nulls — no cast to re-assert it.
+    if (!pitcher || !batters.every((b) => b !== null)) throw new Error('lineup references a ghost')
+    return { battingOrder: lineup.battingOrder, batters, pitcher }
   })
 }
 
@@ -474,5 +476,21 @@ describe('minting an extra game — a club with no roster', () => {
 
     // The bootstrap's rows, plus the bare club this test added — nothing else.
     expect(await census(t)).toEqual({ teams: 3, players: 20, games: 1, lineups: 2 })
+  })
+
+  it('names the bare id when the club row is gone entirely', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+    const owner = (await t.run((ctx) => ctx.db.get(row.homeTeam)))?.owner
+    if (!owner) throw new Error('seeded club has no owner')
+    // A stale id in someone's shell history is the likeliest way to reach this.
+    const ghost = await t.run((ctx) => ctx.db.insert('teams', { owner, name: 'Deleted' }))
+    await t.run((ctx) => ctx.db.delete(ghost))
+
+    // No club to name, so the message falls back to the id it was handed —
+    // which is the thing the caller has to go fix.
+    await expect(runMint(t, row.homeTeam, ghost)).rejects.toThrow(ghost)
   })
 })

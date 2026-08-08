@@ -30,11 +30,12 @@ import { upsertUserBySubject } from './users'
  * is explicitly set to `true` on the deployment. Absence blocks — a fresh
  * deployment is safe before anyone thinks about it.
  *
- * Re-running either is a supported, additive operation, not an idempotent one:
- * the owner, both clubs, and their twenty players are created once and reused
- * forever after, while every run appends a *new* scheduled game and its two
- * lineups. Nothing is ever deleted or patched, so earlier games stay playable
- * history.
+ * Re-running either is a supported, additive operation, not an idempotent one.
+ * Bootstrap creates the owner, both clubs, and their twenty players on its first
+ * run and reuses all of them verbatim forever after; minting creates none of
+ * that, reusing whatever roster the clubs it was handed already field. Every run
+ * of either appends a *new* scheduled game and its two lineups. Nothing is ever
+ * deleted or patched, so earlier games stay playable history.
  *
  * Only bootstrap identifies a club by owner + name, and the product may change
  * both — so {@link assertClubsIntact} re-checks that assumption on every run and
