@@ -9,6 +9,7 @@
  */
 
 import type * as atBat from "../atBat.js";
+import type * as clubs from "../clubs.js";
 import type * as game from "../game.js";
 import type * as participants from "../participants.js";
 import type * as seed from "../seed.js";
@@ -24,6 +25,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   atBat: typeof atBat;
+  clubs: typeof clubs;
   game: typeof game;
   participants: typeof participants;
   seed: typeof seed;
