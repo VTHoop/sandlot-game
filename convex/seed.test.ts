@@ -431,6 +431,18 @@ describe('minting an extra game — after a club has been claimed', () => {
   })
 })
 
+describe('minting an extra game — a club against itself', () => {
+  it('refuses rather than minting a game a club plays against itself', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+
+    await expect(runMint(t, row.homeTeam, row.homeTeam)).rejects.toThrow(/itself/i)
+    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 1, lineups: 2 })
+  })
+})
+
 /**
  * A club's players exist by the time this path is reachable, so a rosterless
  * club means the caller passed the wrong id. Inventing a roster on the spot
