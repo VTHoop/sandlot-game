@@ -11,10 +11,10 @@ import { SEED_CLERK_SUBJECT, SEED_ENV_FLAG } from './seed'
 const modules = import.meta.glob(['./**/*.ts', '!./**/*.test.ts'])
 
 /**
- * Compile-time guard for the "no client reach" rule: `seedDevGame` is an
- * `internalMutation`, so the generated public `api` must not carry a `seed`
- * module at all. Downgrade it to a plain `mutation` and `api` gains the key,
- * this type resolves to `never`, and `pnpm typecheck` fails.
+ * Compile-time guard for the "no client reach" rule: both seed mutations are
+ * `internalMutation`s, so the generated public `api` must not carry a `seed`
+ * module at all. Downgrade either one to a plain `mutation` and `api` gains the
+ * key, this type resolves to `never`, and `pnpm typecheck` fails.
  */
 type SeedStaysInternal = 'seed' extends keyof typeof api ? never : true
 const _seedStaysInternal: SeedStaysInternal = true
@@ -41,10 +41,41 @@ function harness() {
 
 type Harness = ReturnType<typeof harness>
 
-/** Run the seed with the opt-in flag on. Each call is one `seedDevGame` run. */
+/** Run the seed with the opt-in flag on. Each call is one bootstrap run. */
 function runSeed(t: Harness): Promise<Id<'games'>> {
   vi.stubEnv(SEED_ENV_FLAG, 'true')
-  return t.mutation(internal.seed.seedDevGame, {})
+  return t.mutation(internal.seed.bootstrapDevLeague, {})
+}
+
+/** Mint one extra game between two clubs, with the opt-in flag on. */
+function runMint(t: Harness, homeTeam: Id<'teams'>, awayTeam: Id<'teams'>): Promise<Id<'games'>> {
+  vi.stubEnv(SEED_ENV_FLAG, 'true')
+  return t.mutation(internal.seed.mintDevGame, { homeTeam, awayTeam })
+}
+
+/**
+ * Hand a seeded club to a real signed-in user — what SAN-62 will do for real.
+ * Patched directly here because this ticket blocks that one: there is no claim
+ * flow to call yet, and the seed's behaviour after a claim is what's under test.
+ */
+function claimClub(t: Harness, team: Id<'teams'>): Promise<void> {
+  return t.run(async (ctx) => {
+    const real = await ctx.db.insert('users', {
+      clerkSubject: 'user_real_person',
+      displayName: 'Real Person',
+    })
+    await ctx.db.patch(team, { owner: real })
+  })
+}
+
+/** Count the rows a fork would visibly inflate. */
+function census(t: Harness) {
+  return t.run(async (ctx) => ({
+    teams: (await ctx.db.query('teams').collect()).length,
+    players: (await ctx.db.query('players').collect()).length,
+    games: (await ctx.db.query('games').collect()).length,
+    lineups: (await ctx.db.query('lineups').collect()).length,
+  }))
 }
 
 interface Roster {
@@ -64,8 +95,10 @@ function roster(t: Harness, game: Id<'games'>, team: Id<'teams'>): Promise<Roste
     if (!lineup) throw new Error('seeded game is missing a lineup')
     const batters = await Promise.all(lineup.battingOrder.map((slot) => ctx.db.get(slot.player)))
     const pitcher = await ctx.db.get(lineup.pitcher)
-    if (!pitcher || batters.some((b) => b === null)) throw new Error('lineup references a ghost')
-    return { battingOrder: lineup.battingOrder, batters: batters as Doc<'players'>[], pitcher }
+    // `every` with an inferred type predicate (TS 5.5) narrows `batters` itself,
+    // so the ghost check is also what drops the nulls — no cast to re-assert it.
+    if (!pitcher || !batters.every((b) => b !== null)) throw new Error('lineup references a ghost')
+    return { battingOrder: lineup.battingOrder, batters, pitcher }
   })
 }
 
@@ -92,19 +125,19 @@ describe('dev seed — the environment gate', () => {
   it('refuses to run when the opt-in flag is absent', async () => {
     const t = harness()
     vi.stubEnv(SEED_ENV_FLAG, undefined)
-    await expect(t.mutation(internal.seed.seedDevGame, {})).rejects.toThrow(SEED_ENV_FLAG)
+    await expect(t.mutation(internal.seed.bootstrapDevLeague, {})).rejects.toThrow(SEED_ENV_FLAG)
   })
 
   it('refuses to run when the flag is set to anything else', async () => {
     const t = harness()
     vi.stubEnv(SEED_ENV_FLAG, '1')
-    await expect(t.mutation(internal.seed.seedDevGame, {})).rejects.toThrow(SEED_ENV_FLAG)
+    await expect(t.mutation(internal.seed.bootstrapDevLeague, {})).rejects.toThrow(SEED_ENV_FLAG)
   })
 
   it('writes nothing when it refuses', async () => {
     const t = harness()
     vi.stubEnv(SEED_ENV_FLAG, undefined)
-    await expect(t.mutation(internal.seed.seedDevGame, {})).rejects.toThrow()
+    await expect(t.mutation(internal.seed.bootstrapDevLeague, {})).rejects.toThrow()
 
     const rows = await t.run(async (ctx) => ({
       users: await ctx.db.query('users').collect(),
@@ -271,16 +304,6 @@ describe('dev seed — re-running', () => {
  * silently minting a duplicate club and a second roster.
  */
 describe('dev seed — when a club moves out from under it', () => {
-  /** Count the rows a fork would visibly inflate. */
-  function census(t: Harness) {
-    return t.run(async (ctx) => ({
-      teams: (await ctx.db.query('teams').collect()).length,
-      players: (await ctx.db.query('players').collect()).length,
-      games: (await ctx.db.query('games').collect()).length,
-      lineups: (await ctx.db.query('lineups').collect()).length,
-    }))
-  }
-
   it('refuses to re-run once a club has been adopted by a real user', async () => {
     const t = harness()
     const first = await runSeed(t)
@@ -288,13 +311,7 @@ describe('dev seed — when a club moves out from under it', () => {
     if (!row) throw new Error('first seeded game vanished')
 
     // What AC 9 permits: re-point a seeded club at a real signed-in user.
-    await t.run(async (ctx) => {
-      const real = await ctx.db.insert('users', {
-        clerkSubject: 'user_real_person',
-        displayName: 'Real Person',
-      })
-      await ctx.db.patch(row.awayTeam, { owner: real })
-    })
+    await claimClub(t, row.awayTeam)
 
     await expect(runSeed(t)).rejects.toThrow(/expected either none or exactly/)
     // The refusal is the whole point: no duplicate club, no second roster.
@@ -322,5 +339,158 @@ describe('dev seed — when a club moves out from under it', () => {
     await t.run((ctx) => ctx.db.patch(row.homeTeam, { name: 'Renamed By Its Owner' }))
 
     await expect(runSeed(t)).rejects.toThrow(/Renamed By Its Owner/)
+  })
+})
+
+describe('minting an extra game — the environment gate', () => {
+  it('refuses to mint when the opt-in flag is absent', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+
+    vi.stubEnv(SEED_ENV_FLAG, undefined)
+    await expect(
+      t.mutation(internal.seed.mintDevGame, { homeTeam: row.homeTeam, awayTeam: row.awayTeam }),
+    ).rejects.toThrow(SEED_ENV_FLAG)
+    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 1, lineups: 2 })
+  })
+})
+
+/**
+ * The whole point of the split: minting a game needs two team ids and nothing
+ * else, so a club leaving the seed owner — which is what claiming *is* — cannot
+ * take the fixture down with it. Bootstrap still refuses after a claim (above);
+ * this is the path that replaces it.
+ */
+describe('minting an extra game — after a club has been claimed', () => {
+  it('mints for clubs the seed owner no longer holds', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+    await claimClub(t, row.awayTeam)
+
+    const second = await runMint(t, row.homeTeam, row.awayTeam)
+
+    expect(second).not.toBe(first)
+    expect(await t.run((ctx) => ctx.db.get(second))).toMatchObject({
+      status: 'scheduled',
+      homeTeam: row.homeTeam,
+      awayTeam: row.awayTeam,
+    })
+    // No fork: the same two clubs and the same twenty players, one more game.
+    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 2, lineups: 4 })
+  })
+
+  it('fields the same players the bootstrap game did', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+    const before = await roster(t, first, row.homeTeam)
+    await claimClub(t, row.awayTeam)
+
+    const second = await runMint(t, row.homeTeam, row.awayTeam)
+
+    const after = await roster(t, second, row.homeTeam)
+    expect(after.battingOrder).toEqual(before.battingOrder)
+    expect(after.pitcher._id).toEqual(before.pitcher._id)
+  })
+
+  it('leaves ownership exactly as it found it', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+    await claimClub(t, row.awayTeam)
+    const owners = await t.run(async (ctx) => {
+      const teams = await ctx.db.query('teams').collect()
+      return teams.map((team) => `${team.name}:${team.owner}`).sort()
+    })
+
+    await runMint(t, row.homeTeam, row.awayTeam)
+
+    expect(
+      await t.run(async (ctx) => {
+        const teams = await ctx.db.query('teams').collect()
+        return teams.map((team) => `${team.name}:${team.owner}`).sort()
+      }),
+    ).toEqual(owners)
+  })
+
+  it('mints repeatedly, so a claimed league keeps producing games', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+    await claimClub(t, row.awayTeam)
+
+    await runMint(t, row.homeTeam, row.awayTeam)
+    await runMint(t, row.homeTeam, row.awayTeam)
+
+    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 3, lineups: 6 })
+  })
+})
+
+describe('minting an extra game — a club against itself', () => {
+  it('refuses rather than minting a game a club plays against itself', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+
+    await expect(runMint(t, row.homeTeam, row.homeTeam)).rejects.toThrow(/itself/i)
+    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 1, lineups: 2 })
+  })
+})
+
+/**
+ * A club's players exist by the time this path is reachable, so a rosterless
+ * club means the caller passed the wrong id. Inventing a roster on the spot
+ * would be the same silent fork `assertClubsIntact` refuses to make.
+ */
+describe('minting an extra game — a club with no roster', () => {
+  it('refuses rather than minting a second roster', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+    const owner = (await t.run((ctx) => ctx.db.get(row.homeTeam)))?.owner
+    if (!owner) throw new Error('seeded club has no owner')
+    const stranger = await t.run((ctx) => ctx.db.insert('teams', { owner, name: 'No Roster' }))
+
+    await expect(runMint(t, row.homeTeam, stranger)).rejects.toThrow(/no roster/i)
+  })
+
+  it('writes nothing when it refuses', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+    const owner = (await t.run((ctx) => ctx.db.get(row.homeTeam)))?.owner
+    if (!owner) throw new Error('seeded club has no owner')
+    const stranger = await t.run((ctx) => ctx.db.insert('teams', { owner, name: 'No Roster' }))
+
+    await expect(runMint(t, row.homeTeam, stranger)).rejects.toThrow()
+
+    // The bootstrap's rows, plus the bare club this test added — nothing else.
+    expect(await census(t)).toEqual({ teams: 3, players: 20, games: 1, lineups: 2 })
+  })
+
+  it('names the bare id when the club row is gone entirely', async () => {
+    const t = harness()
+    const first = await runSeed(t)
+    const row = await t.run((ctx) => ctx.db.get(first))
+    if (!row) throw new Error('bootstrapped game vanished')
+    const owner = (await t.run((ctx) => ctx.db.get(row.homeTeam)))?.owner
+    if (!owner) throw new Error('seeded club has no owner')
+    // A stale id in someone's shell history is the likeliest way to reach this.
+    const ghost = await t.run((ctx) => ctx.db.insert('teams', { owner, name: 'Deleted' }))
+    await t.run((ctx) => ctx.db.delete(ghost))
+
+    // No club to name, so the message falls back to the id it was handed —
+    // which is the thing the caller has to go fix.
+    await expect(runMint(t, row.homeTeam, ghost)).rejects.toThrow(ghost)
   })
 })
