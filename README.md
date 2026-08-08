@@ -93,7 +93,13 @@ Nothing in the app creates a game yet, so a fresh deployment gives the Convex fu
 
 ```bash
 npx convex env set SANDLOT_DEV_SEED true   # dev deployments only
-npx convex run seed:seedDevGame            # prints the new game's id
+npx convex run seed:bootstrapDevLeague     # prints the new game's id
 ```
 
 It refuses to run without that flag, and it is an internal mutation, so no browser client can reach it in any deployment. Re-running appends another game between the same two clubs.
+
+Once a club has been claimed by a real signed-in user, `bootstrapDevLeague` refuses — it finds its clubs by owner and will not mint duplicates. Mint further games from the two club ids instead, which asks nothing about ownership:
+
+```bash
+npx convex run seed:mintDevGame '{"homeTeam":"<id>","awayTeam":"<id>"}'
+```

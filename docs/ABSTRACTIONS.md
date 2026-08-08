@@ -184,43 +184,62 @@ discipline as the secret pitch, extended to the whole envelope.
 
 `startGame` needs a `scheduled` game with two owned teams and two complete
 lineups behind it, and nothing in the app creates one yet — the draft, salary
-cap, and MLB ingest that eventually will are their own projects. `seedDevGame`
+cap, and MLB ingest that eventually will are their own projects. The seed
 (SAN-54) mints that game so local development and manual QA have something to
 play. It is a placeholder fixture, not the real roster-building flow.
 
-**Double-fenced.** It is an `internalMutation`, so it never appears on the
-generated public `api` and no browser client can name it in any deployment; and
-it refuses to run unless `SANDLOT_DEV_SEED` is exactly `"true"` on the
+**Two mutations, because the work has two lifecycles** (SAN-61).
+`bootstrapDevLeague` stands the league up — the owner, both clubs, their twenty
+players, and a scheduled game — and is run once on a fresh deployment.
+`mintDevGame({ homeTeam, awayTeam })` appends another scheduled game between two
+already-bootstrapped clubs, and is run whenever you want a fresh one.
+
+**Double-fenced.** Each is an `internalMutation`, so neither appears on the
+generated public `api` and no browser client can name them in any deployment;
+and neither runs unless `SANDLOT_DEV_SEED` is exactly `"true"` on the
 deployment. The gate is **fail-closed** — an unset variable blocks it, so a
 fresh deployment is safe before anyone thinks about it. `seed.test.ts` asserts
 both halves: the throw, and a compile-time guard that fails `pnpm typecheck` if
-the mutation is ever downgraded to a public one.
+either mutation is ever downgraded to a public one.
 
 **Additive, not idempotent.** One synthetic owner (a fixed `clerkSubject` that
 cannot collide with a real Clerk account), two clubs keyed on fixed names, and
 their twenty players are created on the first run and reused verbatim forever
-after; every run appends a *new* scheduled game plus its two lineups. Nothing is
-deleted or patched, so earlier games stay playable history.
+after; every run of either mutation appends a *new* scheduled game plus its two
+lineups. Nothing is deleted or patched, so earlier games stay playable history.
 
 A player carries no team column — the only link from a team to its players is a
 `lineups` row — so "does this club already have players?" is answered by reading
 the club's **earliest lineup** and reusing its slots. That is what keeps the
 roster stable across runs without a name-matching upsert.
 
+That link is also **why bootstrap cannot stop short of the first game**:
+`lineups.game` is required, so a roster has nowhere to live until a game exists.
+Splitting player creation into a game-less "league" step would leave orphaned
+`players` rows and the next mint would find no prior lineup and insert a second
+set. Standing rosters belong to the draft/salary-cap project; a dev fixture does
+not get to reshape the schema for its own tidiness. `mintDevGame` therefore
+**refuses** a club with no roster rather than inventing one — same fork, same
+refusal as below.
+
 Both clubs share the one owner, so a single mocked identity can act for both
 sides of a duel.
 
-**Known constraint — the seed cannot follow a club that moves.** It identifies a
+**Known constraint — bootstrap cannot follow a club that moves.** It identifies a
 club by owner + name, and the product may legitimately change both: a club can be
 renamed, or re-pointed at a real signed-in user. There is no marker on the row to
 follow it by, and adding one would put a throwaway fixture's bookkeeping
-permanently into a production entity — so instead the seed re-checks its
+permanently into a production entity — so instead bootstrap re-checks its
 assumption on every run and **refuses** when a club has moved, naming the clubs it
 actually found. It never mints a replacement, because a replacement would carry no
-prior lineup and would silently fork ten more players off the roster. Handing a
-seeded club to a real user, and whatever should happen to the fixture afterwards,
-belongs to the claiming ticket (SAN-62) — provisioning mints the user and claims
-nothing.
+prior lineup and would silently fork ten more players off the roster.
+
+**`mintDevGame` is the answer to that constraint**, not an exception to it. It is
+handed two ids and never looks up, infers, or asserts anything about who owns
+them, so it behaves identically before and after a real user claims a seeded club
+(SAN-62). Once a club is claimed, re-running *bootstrap* refuses — permanently,
+by design — and minting is the supported path. Provisioning (SAN-55) mints the
+user and claims nothing.
 
 `seedRoster.ts` is data only — two invented clubs, nine distinctly-positioned
 batters and one arm each (**no MLB names or statistics**, ADR-0006). Every
@@ -232,8 +251,9 @@ resolving every at-bat off the same band. The seed writes no rollup rows —
 tickets and must tolerate a game existing before any rollup row does.
 
 ```bash
-npx convex env set SANDLOT_DEV_SEED true   # dev deployment only
-npx convex run seed:seedDevGame            # → the new game's id
+npx convex env set SANDLOT_DEV_SEED true        # dev deployment only
+npx convex run seed:bootstrapDevLeague         # once → the new game's id
+npx convex run seed:mintDevGame '{"homeTeam":"…","awayTeam":"…"}'   # another game
 ```
 
 ## Duel adapter (`src/design/duel/adapter.ts` + `roster.ts`)

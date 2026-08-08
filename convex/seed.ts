@@ -1,41 +1,58 @@
+import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { internalMutation, type MutationCtx } from './_generated/server'
 import { AWAY_TEAM, HOME_TEAM, type PitcherSpec, type TeamSpec } from './seedRoster'
 import { upsertUserBySubject } from './users'
 
 /**
- * Dev-only fixture seed (SAN-54).
+ * Dev-only fixture seed (SAN-54, split in SAN-61).
  *
  * `game.startGame` needs a scheduled game with two owned teams and two complete
  * lineups behind it, and nothing in the app creates one yet — the draft, salary
  * cap, and MLB ingest that eventually will are their own projects. This mints
  * that game so local development and manual QA have something to play.
  *
- * It is deliberately a fixture, not the real roster-building flow, so it is
- * fenced twice: it is an `internalMutation` (no browser client can name it in
- * any deployment) **and** it refuses to run unless {@link SEED_ENV_FLAG} is
- * explicitly set to `true` on the deployment. Absence blocks — a fresh
+ * Two mutations, because the work has two lifecycles:
+ *
+ * - {@link bootstrapDevLeague} stands the league up — the owner, both clubs,
+ *   their twenty players, and a scheduled game. Run once on a fresh deployment.
+ * - {@link mintDevGame} takes two club ids and appends another scheduled game
+ *   between them. Run whenever you want a fresh game.
+ *
+ * Bootstrap cannot stop short of that first game. A player row carries no team
+ * column, so the *only* link from a club to its players is a `lineups` row, and
+ * `lineups.game` is required — a roster therefore cannot be persisted before a
+ * game exists. Standing rosters are the draft/salary-cap project's to invent;
+ * a dev fixture does not get to reshape the schema for its own tidiness.
+ *
+ * Both are fenced twice: each is an `internalMutation` (no browser client can
+ * name it in any deployment) **and** neither runs unless {@link SEED_ENV_FLAG}
+ * is explicitly set to `true` on the deployment. Absence blocks — a fresh
  * deployment is safe before anyone thinks about it.
  *
- * Re-running is a supported, additive operation, not an idempotent one: the
- * owner, both clubs, and their twenty players are created once and reused
+ * Re-running either is a supported, additive operation, not an idempotent one:
+ * the owner, both clubs, and their twenty players are created once and reused
  * forever after, while every run appends a *new* scheduled game and its two
  * lineups. Nothing is ever deleted or patched, so earlier games stay playable
  * history.
  *
- * That reuse rests on identifying a club by owner + name, both of which the
- * product may legitimately change — so {@link assertClubsIntact} re-checks the
- * assumption on every run and refuses when a club has moved. The seed follows
- * nothing and guesses at nothing; see that function for why it doesn't just
- * mark the rows.
+ * Only bootstrap identifies a club by owner + name, and the product may change
+ * both — so {@link assertClubsIntact} re-checks that assumption on every run and
+ * refuses when a club has moved. Minting deliberately asks no such question: it
+ * is handed two ids, and never looks up, infers, or asserts anything about who
+ * owns them. That is what keeps the fixture working after a real user claims a
+ * seeded club (SAN-62) — the claim breaks bootstrap by design, and minting is
+ * the path that survives it.
  *
  * Every reuse lookup here is read-then-insert *into the range it just read*,
  * which is what makes them safe without a unique constraint (none of these
  * tables has one): two concurrent runs overlap read and write sets, so Convex's
  * serializable OCC conflicts one and retries it, and the retry sees the
- * committed row and reuses it. The same discipline as the duel's ordinal
- * (SAN-20). The owner lookup is the shared `upsertUserBySubject` (SAN-55) — the
- * seed is just another caller of it, holding a subject Clerk cannot issue.
+ * committed row and reuses it. That holds for minting too — it reads a club's
+ * `by_team` lineup range and then writes a lineup into it. The same discipline
+ * as the duel's ordinal (SAN-20). The owner lookup is the shared
+ * `upsertUserBySubject` (SAN-55) — the seed is just another caller of it,
+ * holding a subject Clerk cannot issue.
  *
  * All names and ratings live in `./seedRoster` and are invented — no MLB data
  * (AGENTS.md / ADR-0006).
@@ -160,19 +177,34 @@ async function insertBattingOrder(
 
 type Roster = Pick<Doc<'lineups'>, 'battingOrder' | 'pitcher'>
 
+/** One side of a game: a club and the nine-plus-one it fields. */
+interface Side {
+  team: Id<'teams'>
+  roster: Roster
+}
+
 /**
- * The club's standing roster. A player has no team column — the only link from
- * a team to its players is a `lineups` row — so "does this club already have
- * players?" is answered by its earliest lineup, and that lineup's slots are
- * reused verbatim. Every run after the first therefore fields the same twenty
- * players in the same order without touching a single existing row.
+ * The club's standing roster, or null on a club that has never played. A player
+ * has no team column — the only link from a team to its players is a `lineups`
+ * row — so "does this club already have players?" is answered by its earliest
+ * lineup, and that lineup's slots are reused verbatim.
  */
-async function clubRoster(ctx: MutationCtx, team: Id<'teams'>, spec: TeamSpec): Promise<Roster> {
+async function priorRoster(ctx: MutationCtx, team: Id<'teams'>): Promise<Roster | null> {
   const prior = await ctx.db
     .query('lineups')
     .withIndex('by_team', (q) => q.eq('team', team))
     .first()
-  if (prior) return { battingOrder: prior.battingOrder, pitcher: prior.pitcher }
+  return prior ? { battingOrder: prior.battingOrder, pitcher: prior.pitcher } : null
+}
+
+/**
+ * Bootstrap's roster: reused when the club has played, invented on the first
+ * run. Every run after the first therefore fields the same twenty players in
+ * the same order without touching a single existing row.
+ */
+async function clubRoster(ctx: MutationCtx, team: Id<'teams'>, spec: TeamSpec): Promise<Roster> {
+  const prior = await priorRoster(ctx, team)
+  if (prior) return prior
   return {
     battingOrder: await insertBattingOrder(ctx, spec),
     pitcher: await insertPitcher(ctx, spec.pitcher),
@@ -180,10 +212,44 @@ async function clubRoster(ctx: MutationCtx, team: Id<'teams'>, spec: TeamSpec): 
 }
 
 /**
- * Mint a scheduled game the seed owner can start immediately, returning its id.
- * See the module comment for the two fences and the re-run contract.
+ * Minting's roster: the club's players already exist by the time this path is
+ * reachable, so a club without them means the caller passed the wrong id.
+ * Inventing a second set here would be the same silent fork
+ * {@link assertClubsIntact} refuses to make — ten more players off the roster
+ * and the club's history split in half — so this refuses instead.
  */
-export const seedDevGame = internalMutation({
+async function requireRoster(ctx: MutationCtx, team: Id<'teams'>): Promise<Roster> {
+  const roster = await priorRoster(ctx, team)
+  if (roster) return roster
+  const club = await ctx.db.get(team)
+  throw new Error(
+    `Dev seed cannot mint a game for ${club ? `club "${club.name}"` : `team ${team}`}: it has ` +
+      `no roster, and minting one here would fork the club's players. Only the bootstrap ` +
+      `mutation creates players. Run it first, or pass the ids of two bootstrapped clubs.`,
+  )
+}
+
+/** The scheduled game plus a lineup a side, returning the new game's id. */
+async function mintScheduledGame(ctx: MutationCtx, home: Side, away: Side): Promise<Id<'games'>> {
+  const game = await ctx.db.insert('games', {
+    homeTeam: home.team,
+    awayTeam: away.team,
+    ...SCHEDULED_GAME,
+  })
+  await ctx.db.insert('lineups', { game, team: home.team, ...home.roster })
+  await ctx.db.insert('lineups', { game, team: away.team, ...away.roster })
+  return game
+}
+
+/**
+ * Stand up the dev league and mint a game the seed owner can start immediately,
+ * returning that game's id. Run once on a fresh deployment; re-running reuses
+ * the owner, both clubs, and their rosters and appends another game.
+ *
+ * See the module comment for the two fences, the re-run contract, and why this
+ * cannot stop short of the first game.
+ */
+export const bootstrapDevLeague = internalMutation({
   args: {},
   handler: async (ctx): Promise<Id<'games'>> => {
     assertSeedEnabled()
@@ -194,12 +260,33 @@ export const seedDevGame = internalMutation({
 
     const homeTeam = await seedTeam(ctx, clubs, owner, HOME_TEAM.name)
     const awayTeam = await seedTeam(ctx, clubs, owner, AWAY_TEAM.name)
-    const home = await clubRoster(ctx, homeTeam, HOME_TEAM)
-    const away = await clubRoster(ctx, awayTeam, AWAY_TEAM)
 
-    const game = await ctx.db.insert('games', { homeTeam, awayTeam, ...SCHEDULED_GAME })
-    await ctx.db.insert('lineups', { game, team: homeTeam, ...home })
-    await ctx.db.insert('lineups', { game, team: awayTeam, ...away })
-    return game
+    return mintScheduledGame(
+      ctx,
+      { team: homeTeam, roster: await clubRoster(ctx, homeTeam, HOME_TEAM) },
+      { team: awayTeam, roster: await clubRoster(ctx, awayTeam, AWAY_TEAM) },
+    )
+  },
+})
+
+/**
+ * Append another scheduled game between two already-bootstrapped clubs,
+ * returning its id.
+ *
+ * Two ids in, a game out: this asks nothing about who owns the clubs, so it
+ * behaves identically before and after a real user claims one (SAN-62). That is
+ * the whole reason it is separate from {@link bootstrapDevLeague}, whose
+ * owner + name lookup a claim breaks by design.
+ */
+export const mintDevGame = internalMutation({
+  args: { homeTeam: v.id('teams'), awayTeam: v.id('teams') },
+  handler: async (ctx, { homeTeam, awayTeam }): Promise<Id<'games'>> => {
+    assertSeedEnabled()
+
+    return mintScheduledGame(
+      ctx,
+      { team: homeTeam, roster: await requireRoster(ctx, homeTeam) },
+      { team: awayTeam, roster: await requireRoster(ctx, awayTeam) },
+    )
   },
 })
