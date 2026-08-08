@@ -202,11 +202,13 @@ fresh deployment is safe before anyone thinks about it. `seed.test.ts` asserts
 both halves: the throw, and a compile-time guard that fails `pnpm typecheck` if
 either mutation is ever downgraded to a public one.
 
-**Additive, not idempotent.** One synthetic owner (a fixed `clerkSubject` that
-cannot collide with a real Clerk account), two clubs keyed on fixed names, and
-their twenty players are created on the first run and reused verbatim forever
-after; every run of either mutation appends a *new* scheduled game plus its two
-lineups. Nothing is deleted or patched, so earlier games stay playable history.
+**Additive, not idempotent.** Bootstrap creates one synthetic owner (a fixed
+`clerkSubject` that cannot collide with a real Clerk account), two clubs keyed on
+fixed names, and their twenty players on its first run, then reuses all of them
+verbatim forever after. `mintDevGame` creates none of that — it reuses whatever
+roster the clubs it was handed already field. Every run of either appends a *new*
+scheduled game plus its two lineups. Nothing is deleted or patched, so earlier
+games stay playable history.
 
 A player carries no team column — the only link from a team to its players is a
 `lineups` row — so "does this club already have players?" is answered by reading
