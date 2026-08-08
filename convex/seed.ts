@@ -284,6 +284,14 @@ export const bootstrapDevLeague = internalMutation({
  * refusals catch the same caller mistake: the wrong id. Writing the game anyway
  * would leave a club playing itself, or a fork of its roster.
  */
+/** Red checkpoint (SAN-62): declared so the suite compiles, unimplemented so it fails. */
+export const assignClubToUser = internalMutation({
+  args: { team: v.id('teams'), clerkSubject: v.string() },
+  handler: (): Promise<void> => {
+    throw new Error('assignClubToUser is not implemented yet')
+  },
+})
+
 export const mintDevGame = internalMutation({
   args: { homeTeam: v.id('teams'), awayTeam: v.id('teams') },
   handler: async (ctx, { homeTeam, awayTeam }): Promise<Id<'games'>> => {

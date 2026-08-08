@@ -22,6 +22,13 @@ void _seedStaysInternal
 
 const SEED_IDENTITY = { subject: SEED_CLERK_SUBJECT }
 
+/** A real signed-in Clerk account — the kind a seeded club gets handed to. */
+const REAL_SUBJECT = 'user_real_person'
+const REAL_IDENTITY = { subject: REAL_SUBJECT }
+
+/** A second one, for moving a club that a real user already holds. */
+const OTHER_SUBJECT = 'user_second_tester'
+
 const NON_PITCHER_POSITIONS = ['1B', '2B', '3B', 'C', 'CF', 'DH', 'LF', 'RF', 'SS']
 
 type HitterAttributes = Extract<Doc<'players'>['attributes'], { power: number }>
@@ -53,19 +60,40 @@ function runMint(t: Harness, homeTeam: Id<'teams'>, awayTeam: Id<'teams'>): Prom
   return t.mutation(internal.seed.mintDevGame, { homeTeam, awayTeam })
 }
 
-/**
- * Hand a seeded club to a real signed-in user — what SAN-62 will do for real.
- * Patched directly here because this ticket blocks that one: there is no claim
- * flow to call yet, and the seed's behaviour after a claim is what's under test.
- */
-function claimClub(t: Harness, team: Id<'teams'>): Promise<void> {
+/** Mint a real user's row the one way the app mints one (SAN-55). */
+function provision(t: Harness, subject: string): Promise<Id<'users'>> {
+  return t.withIdentity({ subject }).mutation(api.users.provision, {})
+}
+
+/** Re-point one club at a Clerk subject, with the opt-in flag on. The mutation
+ * answers nothing, which reaches a caller as `null`. */
+function runAssign(t: Harness, team: Id<'teams'>, clerkSubject: string): Promise<null> {
+  vi.stubEnv(SEED_ENV_FLAG, 'true')
+  return t.mutation(internal.seed.assignClubToUser, { team, clerkSubject })
+}
+
+/** Who holds this club right now. */
+function ownerOf(t: Harness, team: Id<'teams'>): Promise<Id<'users'> | undefined> {
+  return t.run(async (ctx) => (await ctx.db.get(team))?.owner)
+}
+
+/** Every club as `name:owner`, sorted — the whole ownership picture in one value. */
+function ownership(t: Harness): Promise<string[]> {
   return t.run(async (ctx) => {
-    const real = await ctx.db.insert('users', {
-      clerkSubject: 'user_real_person',
-      displayName: 'Real Person',
-    })
-    await ctx.db.patch(team, { owner: real })
+    const teams = await ctx.db.query('teams').collect()
+    return teams.map((team) => `${team.name}:${team.owner}`).sort()
   })
+}
+
+/**
+ * Hand a seeded club to a real signed-in user, through both real paths: SAN-55
+ * mints the row, SAN-62's dev-only assignment moves the club. Nothing here
+ * patches `owner` directly, so the seed's behaviour after a claim is tested
+ * against the mechanism that actually performs one.
+ */
+async function claimClub(t: Harness, team: Id<'teams'>, subject = REAL_SUBJECT): Promise<void> {
+  await provision(t, subject)
+  await runAssign(t, team, subject)
 }
 
 /** Count the rows a fork would visibly inflate. */
@@ -404,19 +432,11 @@ describe('minting an extra game — after a club has been claimed', () => {
     const row = await t.run((ctx) => ctx.db.get(first))
     if (!row) throw new Error('bootstrapped game vanished')
     await claimClub(t, row.awayTeam)
-    const owners = await t.run(async (ctx) => {
-      const teams = await ctx.db.query('teams').collect()
-      return teams.map((team) => `${team.name}:${team.owner}`).sort()
-    })
+    const before = await ownership(t)
 
     await runMint(t, row.homeTeam, row.awayTeam)
 
-    expect(
-      await t.run(async (ctx) => {
-        const teams = await ctx.db.query('teams').collect()
-        return teams.map((team) => `${team.name}:${team.owner}`).sort()
-      }),
-    ).toEqual(owners)
+    expect(await ownership(t)).toEqual(before)
   })
 
   it('mints repeatedly, so a claimed league keeps producing games', async () => {
@@ -492,5 +512,164 @@ describe('minting an extra game — a club with no roster', () => {
     // No club to name, so the message falls back to the id it was handed —
     // which is the thing the caller has to go fix.
     await expect(runMint(t, row.homeTeam, ghost)).rejects.toThrow(ghost)
+  })
+})
+
+describe('dev club assignment — the environment gate', () => {
+  it('refuses to assign when the opt-in flag is absent', async () => {
+    const { t, row } = await seeded()
+    await provision(t, REAL_SUBJECT)
+    const before = await ownerOf(t, row.awayTeam)
+
+    vi.stubEnv(SEED_ENV_FLAG, undefined)
+    await expect(
+      t.mutation(internal.seed.assignClubToUser, {
+        team: row.awayTeam,
+        clerkSubject: REAL_SUBJECT,
+      }),
+    ).rejects.toThrow(SEED_ENV_FLAG)
+    expect(await ownerOf(t, row.awayTeam)).toBe(before)
+  })
+})
+
+/**
+ * The subject must already resolve to a `users` row. Provisioning it here would
+ * make this a second writer of `users`, and the `.unique()` safety on
+ * `by_clerk_subject` — which has no unique constraint behind it — rests on
+ * `upsertUserBySubject` (SAN-55) being the only one.
+ */
+describe('dev club assignment — naming the user', () => {
+  it('refuses a Clerk subject with no users row rather than provisioning one', async () => {
+    const { t, row } = await seeded()
+
+    await expect(runAssign(t, row.awayTeam, 'user_never_signed_in')).rejects.toThrow(
+      /user_never_signed_in/,
+    )
+    // Only the seed owner — the refusal minted nothing.
+    const users = await t.run((ctx) => ctx.db.query('users').collect())
+    expect(users.map((user) => user.clerkSubject)).toEqual([SEED_CLERK_SUBJECT])
+  })
+
+  it('leaves the club where it was when it refuses', async () => {
+    const { t, row } = await seeded()
+    const before = await ownership(t)
+
+    await expect(runAssign(t, row.awayTeam, 'user_never_signed_in')).rejects.toThrow()
+
+    expect(await ownership(t)).toEqual(before)
+  })
+
+  it('names the bare id when the club row is gone entirely', async () => {
+    const { t, row } = await seeded()
+    await provision(t, REAL_SUBJECT)
+    const owner = await ownerOf(t, row.homeTeam)
+    if (!owner) throw new Error('seeded club has no owner')
+    // A stale id in someone's shell history, same as minting's ghost club.
+    const ghost = await t.run((ctx) => ctx.db.insert('teams', { owner, name: 'Deleted' }))
+    await t.run((ctx) => ctx.db.delete(ghost))
+
+    await expect(runAssign(t, ghost, REAL_SUBJECT)).rejects.toThrow(ghost)
+  })
+})
+
+describe('dev club assignment — what it moves', () => {
+  it('hands the named club to the named user', async () => {
+    const { t, row } = await seeded()
+    const user = await provision(t, REAL_SUBJECT)
+
+    await runAssign(t, row.awayTeam, REAL_SUBJECT)
+
+    expect(await ownerOf(t, row.awayTeam)).toBe(user)
+  })
+
+  it('leaves the club it was not named holding whoever held it', async () => {
+    const { t, row } = await seeded()
+    const seedOwner = await ownerOf(t, row.homeTeam)
+    await provision(t, REAL_SUBJECT)
+
+    await runAssign(t, row.awayTeam, REAL_SUBJECT)
+
+    // The seed owner keeps a club, which is what leaves a team for a bot to
+    // play (SAN-58).
+    expect(await ownerOf(t, row.homeTeam)).toBe(seedOwner)
+  })
+
+  it('lets one user hold both clubs, so a solo developer can play both sides', async () => {
+    const { t, row } = await seeded()
+    const user = await provision(t, REAL_SUBJECT)
+
+    await runAssign(t, row.awayTeam, REAL_SUBJECT)
+    await runAssign(t, row.homeTeam, REAL_SUBJECT)
+
+    expect(await ownerOf(t, row.awayTeam)).toBe(user)
+    expect(await ownerOf(t, row.homeTeam)).toBe(user)
+  })
+
+  it('succeeds as a no-op when the named user already holds the club', async () => {
+    const { t, row } = await seeded()
+    await claimClub(t, row.awayTeam)
+    const before = await t.run((ctx) => ctx.db.get(row.awayTeam))
+
+    // Running the same command twice is a normal dev move, not an error.
+    await runAssign(t, row.awayTeam, REAL_SUBJECT)
+
+    expect(await t.run((ctx) => ctx.db.get(row.awayTeam))).toEqual(before)
+  })
+})
+
+/**
+ * Taking a club from a real user is allowed here by design, and it is the one
+ * place this tool differs sharply from self-serve claiming (SAN-63), where the
+ * same operation must be refused. Resetting a club is a normal dev move.
+ */
+describe('dev club assignment — moving a club a real user already holds', () => {
+  it('re-points it to another test account', async () => {
+    const { t, row } = await seeded()
+    await claimClub(t, row.awayTeam)
+    const other = await provision(t, OTHER_SUBJECT)
+
+    await runAssign(t, row.awayTeam, OTHER_SUBJECT)
+
+    expect(await ownerOf(t, row.awayTeam)).toBe(other)
+  })
+
+  it('re-points it back to the seed owner', async () => {
+    const { t, row } = await seeded()
+    const seedOwner = await ownerOf(t, row.awayTeam)
+    await claimClub(t, row.awayTeam)
+
+    await runAssign(t, row.awayTeam, SEED_CLERK_SUBJECT)
+
+    expect(await ownerOf(t, row.awayTeam)).toBe(seedOwner)
+  })
+})
+
+/**
+ * The point of the whole ticket: an assignment is what turns a signed-in
+ * account into a game participant. The away club bats in the top half, so its
+ * new owner swings while the seed owner — still holding the home club —
+ * pitches.
+ */
+describe('dev club assignment — the assigned user can play', () => {
+  it('refuses the real user before the assignment', async () => {
+    const { t, game } = await seeded()
+    await provision(t, REAL_SUBJECT)
+
+    await expect(
+      t.withIdentity(REAL_IDENTITY).mutation(api.game.startGame, { game }),
+    ).rejects.toThrow(/not authorized/i)
+  })
+
+  it('lets them start the game and swing once the club is theirs', async () => {
+    const { t, game, row, away } = await seeded()
+    await claimClub(t, row.awayTeam)
+
+    await t.withIdentity(REAL_IDENTITY).mutation(api.game.startGame, { game })
+    await t.withIdentity(SEED_IDENTITY).mutation(api.atBat.commitPitch, { game, number: 500 })
+    await t.withIdentity(REAL_IDENTITY).mutation(api.atBat.commitSwing, { game, number: 500 })
+
+    const atBats = await t.run((ctx) => ctx.db.query('atBats').collect())
+    expect(atBats).toHaveLength(1)
+    expect(atBats[0].batter).toBe(away.batters[0]._id)
   })
 })
