@@ -188,19 +188,21 @@ cap, and MLB ingest that eventually will are their own projects. The seed
 (SAN-54) mints that game so local development and manual QA have something to
 play. It is a placeholder fixture, not the real roster-building flow.
 
-**Two mutations, because the work has two lifecycles** (SAN-61).
+**Three mutations, because the work has three lifecycles** (SAN-61, SAN-62).
 `bootstrapDevLeague` stands the league up — the owner, both clubs, their twenty
 players, and a scheduled game — and is run once on a fresh deployment.
 `mintDevGame({ homeTeam, awayTeam })` appends another scheduled game between two
 already-bootstrapped clubs, and is run whenever you want a fresh one.
+`assignClubToUser({ team, clerkSubject })` hands one club to a real signed-in
+account, and is run once per club a human should hold.
 
-**Double-fenced.** Each is an `internalMutation`, so neither appears on the
+**Double-fenced.** Each is an `internalMutation`, so none appears on the
 generated public `api` and no browser client can name them in any deployment;
-and neither runs unless `SANDLOT_DEV_SEED` is exactly `"true"` on the
+and none runs unless `SANDLOT_DEV_SEED` is exactly `"true"` on the
 deployment. The gate is **fail-closed** — an unset variable blocks it, so a
 fresh deployment is safe before anyone thinks about it. `seed.test.ts` asserts
 both halves: the throw, and a compile-time guard that fails `pnpm typecheck` if
-either mutation is ever downgraded to a public one.
+any of them is ever downgraded to a public one.
 
 **Additive, not idempotent.** Bootstrap creates one synthetic owner (a fixed
 `clerkSubject` that cannot collide with a real Clerk account), two clubs keyed on
@@ -240,10 +242,42 @@ prior lineup and would silently fork ten more players off the roster.
 
 **`mintDevGame` is the answer to that constraint**, not an exception to it. It is
 handed two ids and never looks up, infers, or asserts anything about who owns
-them, so it behaves identically before and after a real user claims a seeded club
-(SAN-62). Once a club is claimed, re-running *bootstrap* refuses — permanently,
+them, so it behaves identically before and after a real user claims a seeded club.
+Once a club is claimed, re-running *bootstrap* refuses — permanently,
 by design — and minting is the supported path. Provisioning (SAN-55) mints the
 user and claims nothing.
+
+**`assignClubToUser` is what performs a claim** (SAN-62). Provisioning gives a
+signed-in human a `users` row; it does not make them a *participant*, because
+every gate in `atBat.ts` / `game.ts` runs through `ownsTeam`. This re-points one
+club's `owner` at the user behind a Clerk subject, and that single write is the
+whole difference between "signed in" and "can commit a pitch".
+
+It **refuses a subject with no `users` row** rather than provisioning one, which
+keeps `upsertUserBySubject` the single writer of that table — `by_clerk_subject`
+has no unique constraint, so the `.unique()` read every gate depends on is safe
+only while one function does the inserting.
+
+**Sequencing caveat:** that row is minted by `users.provision`, which the client
+calls at sign-in — wiring SAN-38 owns and which is not in place yet. Until it
+lands there is no way to mint one, since `provision` reads `ctx.auth` and
+`npx convex run` carries no identity. So the assignment below is usable against a
+real account only once SAN-38 has shipped; the seed owner's two clubs are what
+make the fixture playable before then.
+
+Two things it deliberately does not check, both of which self-serve claiming
+(SAN-63) must:
+
+- **Who currently holds the club.** Taking one back from a real user is a normal
+  dev move — resetting the fixture, or handing it to a second test account.
+- **How many clubs the user ends up with.** One club per user is the durable
+  product rule (the league is one club per family member) and it is enforced on
+  the path a real user can drive. This tool exists precisely so that rule never
+  has to bend for local development: a solo developer holding both clubs can play
+  both sides of a duel with two mocked identities.
+
+Re-running it with the club's current holder is a **no-op that succeeds**, so the
+command is safe to repeat.
 
 `seedRoster.ts` is data only — two invented clubs, nine distinctly-positioned
 batters and one arm each (**no MLB names or statistics**, ADR-0006). Every
@@ -258,6 +292,9 @@ tickets and must tolerate a game existing before any rollup row does.
 npx convex env set SANDLOT_DEV_SEED true        # dev deployment only
 npx convex run seed:bootstrapDevLeague         # once → the new game's id
 npx convex run seed:mintDevGame '{"homeTeam":"…","awayTeam":"…"}'   # another game
+# once per club a human should hold; needs users.provision to have run for that
+# subject first (SAN-38 wires it into sign-in):
+npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
 ```
 
 ## Duel adapter (`src/design/duel/adapter.ts` + `roster.ts`)

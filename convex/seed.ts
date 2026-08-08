@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { internalMutation, type MutationCtx } from './_generated/server'
+import { userBySubject } from './participants'
 import { AWAY_TEAM, HOME_TEAM, type PitcherSpec, type TeamSpec } from './seedRoster'
 import { upsertUserBySubject } from './users'
 
@@ -12,12 +13,15 @@ import { upsertUserBySubject } from './users'
  * cap, and MLB ingest that eventually will are their own projects. This mints
  * that game so local development and manual QA have something to play.
  *
- * Two mutations, because the work has two lifecycles:
+ * Three mutations, because the work has three lifecycles:
  *
  * - {@link bootstrapDevLeague} stands the league up — the owner, both clubs,
  *   their twenty players, and a scheduled game. Run once on a fresh deployment.
  * - {@link mintDevGame} takes two club ids and appends another scheduled game
  *   between them. Run whenever you want a fresh game.
+ * - {@link assignClubToUser} hands one club to a real signed-in account, which
+ *   is what turns it into a game participant. Run once per club a human should
+ *   hold (SAN-62).
  *
  * Bootstrap cannot stop short of that first game. A player row carries no team
  * column, so the *only* link from a club to its players is a `lineups` row, and
@@ -25,12 +29,13 @@ import { upsertUserBySubject } from './users'
  * game exists. Standing rosters are the draft/salary-cap project's to invent;
  * a dev fixture does not get to reshape the schema for its own tidiness.
  *
- * Both are fenced twice: each is an `internalMutation` (no browser client can
- * name it in any deployment) **and** neither runs unless {@link SEED_ENV_FLAG}
+ * All three are fenced twice: each is an `internalMutation` (no browser client
+ * can name it in any deployment) **and** none runs unless {@link SEED_ENV_FLAG}
  * is explicitly set to `true` on the deployment. Absence blocks — a fresh
  * deployment is safe before anyone thinks about it.
  *
- * Re-running either is a supported, additive operation, not an idempotent one.
+ * Re-running either game-creating mutation is a supported, additive operation,
+ * not an idempotent one.
  * Bootstrap creates the owner, both clubs, and their twenty players on its first
  * run and reuses all of them verbatim forever after; minting creates none of
  * that, reusing whatever roster the clubs it was handed already field. Every run
@@ -42,8 +47,8 @@ import { upsertUserBySubject } from './users'
  * refuses when a club has moved. Minting deliberately asks no such question: it
  * is handed two ids, and never looks up, infers, or asserts anything about who
  * owns them. That is what keeps the fixture working after a real user claims a
- * seeded club (SAN-62) — the claim breaks bootstrap by design, and minting is
- * the path that survives it.
+ * seeded club ({@link assignClubToUser}) — the claim breaks bootstrap by design,
+ * and minting is the path that survives it.
  *
  * Every reuse lookup here is read-then-insert *into the range it just read*,
  * which is what makes them safe without a unique constraint (none of these
@@ -284,6 +289,60 @@ export const bootstrapDevLeague = internalMutation({
  * refusals catch the same caller mistake: the wrong id. Writing the game anyway
  * would leave a club playing itself, or a fork of its roster.
  */
+/**
+ * Re-point one club at the user behind a Clerk subject (SAN-62). Run from the
+ * CLI to turn a real account into a game participant:
+ *
+ * ```bash
+ * npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
+ * ```
+ *
+ * The subject must already resolve to a `users` row — this refuses rather than
+ * provisioning one, which keeps `upsertUserBySubject` (SAN-55) the single writer
+ * of `users`. `by_clerk_subject` carries no unique constraint, so the `.unique()`
+ * read every gate depends on is safe only while one function does the inserting.
+ *
+ * That row is minted by `users.provision`, which the client calls at sign-in —
+ * wiring SAN-38 owns and which is not in place yet. Until it is, there is no way
+ * to mint one: `provision` reads `ctx.auth`, and `npx convex run` carries no
+ * identity, so it cannot be driven from the CLI either.
+ *
+ * Two things it deliberately does NOT check, both of which self-serve claiming
+ * (SAN-63) must:
+ *
+ * - **Who holds the club.** Taking one back from a real user is a normal dev
+ *   move — resetting the fixture, or handing it to a second test account.
+ * - **How many clubs the user ends up with.** One club per user is the durable
+ *   product rule, and it is enforced on the path a real user can drive. This
+ *   tool exists precisely so that rule never has to bend for local development:
+ *   a solo developer holding both clubs can play both sides of a duel.
+ *
+ * Re-running with the club's current holder is a no-op that succeeds, so the
+ * command is safe to repeat.
+ */
+export const assignClubToUser = internalMutation({
+  args: { team: v.id('teams'), clerkSubject: v.string() },
+  handler: async (ctx, { team, clerkSubject }): Promise<void> => {
+    assertSeedEnabled()
+
+    const user = await userBySubject(ctx, clerkSubject)
+    if (!user) {
+      throw new Error(
+        `Dev seed cannot assign a club to Clerk subject "${clerkSubject}": no users row for it. ` +
+          `Only users:provision creates one — sign in as that account once, then re-run.`,
+      )
+    }
+
+    const club = await ctx.db.get(team)
+    if (!club) {
+      throw new Error(`Dev seed cannot assign team ${team}: no club by that id.`)
+    }
+
+    if (club.owner === user._id) return
+    await ctx.db.patch(team, { owner: user._id })
+  },
+})
+
 export const mintDevGame = internalMutation({
   args: { homeTeam: v.id('teams'), awayTeam: v.id('teams') },
   handler: async (ctx, { homeTeam, awayTeam }): Promise<Id<'games'>> => {
