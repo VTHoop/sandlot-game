@@ -51,7 +51,9 @@ cannot be reverted by the next sign-in. Never empty.
 
 `upsertUserBySubject` is the single place a `users` row is created; the dev seed
 (below) is just another caller, holding a subject Clerk cannot issue. Provisioning
-grants no team ownership — claiming a club is SAN-62.
+grants no team ownership — a provisioned user is a spectator until a club is
+theirs, by the dev-only assignment (SAN-62) or by self-serve claiming (SAN-63,
+both below).
 
 Auth itself still lives entirely in `convex/participants.ts`: `provision` takes the
 raw identity from `authedIdentity` and the row lookup from `userBySubject` rather
@@ -266,7 +268,7 @@ real account only once SAN-38 has shipped; the seed owner's two clubs are what
 make the fixture playable before then.
 
 Two things it deliberately does not check, both of which self-serve claiming
-(SAN-63) must:
+(`convex/clubs.ts`, below) does:
 
 - **Who currently holds the club.** Taking one back from a real user is a normal
   dev move — resetting the fixture, or handing it to a second test account.
@@ -296,6 +298,60 @@ npx convex run seed:mintDevGame '{"homeTeam":"…","awayTeam":"…"}'   # anothe
 # subject first (SAN-38 wires it into sign-in):
 npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
 ```
+
+## Self-serve club claiming (`convex/clubs.ts`)
+
+The browser-reachable half of becoming a participant (SAN-63, ADR-0024). The
+assignment above is enough for one developer with a CLI; this is the path five
+family members can drive themselves. No schema change — one query and one
+mutation over the existing `teams.owner` / `by_owner`.
+
+**A club is claimable exactly when the seed owner holds it.** That predicate is
+deliberately neither a `claimable` column (fixture-era bookkeeping, permanently
+in a production entity, owing a migration for a mechanism expected to be deleted)
+nor a check on the Clerk subject's *shape* (which would promote `seed.ts`'s
+defensive aside into a load-bearing external contract, and one that fails **open**
+— a change to Clerk's subject formatting would silently put real users' clubs on
+offer). It does mean a public surface depends on a dev fixture's constant, and it
+fails **safe**: no seed-owner row, nothing claimable.
+
+**`availability` answers the caller's status, not a list.** Four cases, because
+they are four screens: `unauthenticated` (no identity *or* no `users` row — the
+same thing to every gate), `available` (the clubs on offer), `holding` (the club
+they already have), `none_left` (signed in, holding nothing, nothing left). An
+empty array plus a guess renders the wrong screen for one of the last two.
+Unauthenticated is an answer rather than a throw, matching every other
+participant-gated read: until SAN-38 wires `provision` into sign-in, a valid
+signed-in caller has no row, and the screen still has to render.
+
+**Each club is `{ id, name }` and nothing else.** The read reaches a signed-in
+*non-participant*, so a roster or live game state here would be a game-integrity
+leak. `owner` is withheld too — it answers "who else is playing" for someone who
+has not joined, and no picker needs it.
+
+**`claim({ team })` names the club and nothing else**, so the recipient is always
+`ctx.auth` — a compile-time guard in `clubs.test.ts` fails `pnpm typecheck` if a
+recipient argument is ever added, which is precisely what would turn this into
+the dev assignment tool with its fences off. Three refusals, in the order a
+caller meets them: not provisioned, already holding a club (**one club per user**
+— the durable product rule, enforced here because this is the only path a real
+user can drive), and reaching for a club the seed owner no longer holds (**a real
+user's club cannot be taken**). Re-claiming your own club is refused by the
+one-club rule rather than passing as a no-op: the client sending it is working
+from a stale view.
+
+**Race-proof by structure, not by check order.** `claim` reads the club row it
+then patches, so two callers reaching for one club overlap read and write sets —
+Convex's serializable OCC conflicts the loser, whose retry re-reads a club the
+seed owner no longer holds and refuses. One caller reaching for two clubs at once
+is the same argument on the other index: both attempts read the caller's
+`by_owner` range, and the patch writes into it. Same discipline as the duel's
+ordinal (SAN-20) and the provisioning upsert (SAN-55).
+
+The bot's team (SAN-58) survives claiming for free: taking one club leaves the
+seed owner holding the other, and only what the seed owner holds is on offer.
+Where the claim is *offered* — screen, routing — belongs to the app shell
+(SAN-38), not here; nothing calls either function yet.
 
 ## Duel adapter (`src/design/duel/adapter.ts` + `roster.ts`)
 
