@@ -339,6 +339,19 @@ describe('getGame — live', () => {
 
     await expect(read(t, AWAY, game)).rejects.toThrow()
   })
+
+  it('refuses a base whose runner no longer exists rather than reading it empty', async () => {
+    const { t, game, awaySecond } = await seedScheduledGame()
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    await t.run(async (ctx) => {
+      await ctx.db.patch(game, { bases: { ...EMPTY_BASES, second: awaySecond } })
+      await ctx.db.delete(awaySecond)
+    })
+
+    // An empty second base is a different situation than a runner in scoring
+    // position, and the batter would commit against the wrong one.
+    await expect(read(t, AWAY, game)).rejects.toThrow()
+  })
 })
 
 describe('getGame — the vault holds', () => {

@@ -356,6 +356,31 @@ export const commitSwing = mutation({
 
 // ─── Reveal query ───────────────────────────────────────────────────────────
 
+/**
+ * Which sides have locked for the at-bat currently on the field, and the ordinal
+ * it will be logged as. The only duel information that may cross to an opponent
+ * before both numbers land (ADR-0014) — so this is what a caller outside this
+ * module gets, and `duelCommitments` keeps exactly one reader.
+ *
+ * Exported for the game read model (SAN-56), which needs the lock state without
+ * a path to the numbers behind it.
+ */
+export interface DuelLocks {
+  sequence: number
+  pitchCommitted: boolean
+  swingCommitted: boolean
+}
+
+export async function duelLocks(ctx: Ctx, game: Id<'games'>): Promise<DuelLocks> {
+  const sequence = await currentSequence(ctx, game)
+  // Independent index reads — one round-trip, not two.
+  const [pitching, batting] = await Promise.all([
+    commitmentAt(ctx, game, sequence, Participant.Pitching),
+    commitmentAt(ctx, game, sequence, Participant.Batting),
+  ])
+  return { sequence, pitchCommitted: pitching !== null, swingCommitted: batting !== null }
+}
+
 function revealed(row: Doc<'atBats'>): DuelView {
   return {
     status: DuelStatus.Resolved,
@@ -381,19 +406,12 @@ export const getActiveDuel = query({
     // Non-participants (incl. the unauthenticated) can read neither number.
     if (!user || (await roleOf(ctx, game, user)) === Participant.None) return null
 
-    const sequence = await currentSequence(ctx, game._id)
-    const pitching = await commitmentAt(ctx, game._id, sequence, Participant.Pitching)
-    const batting = await commitmentAt(ctx, game._id, sequence, Participant.Batting)
+    const { sequence, pitchCommitted, swingCommitted } = await duelLocks(ctx, game._id)
     // Both present would have resolved (and advanced the sequence), so at the
     // in-progress sequence at most one side is on file. While one is, the number
     // stays secret — only the "locked" booleans cross to the opponent.
-    if (pitching || batting) {
-      return {
-        status: DuelStatus.AwaitingOpponent,
-        sequence,
-        pitchCommitted: pitching !== null,
-        swingCommitted: batting !== null,
-      }
+    if (pitchCommitted || swingCommitted) {
+      return { status: DuelStatus.AwaitingOpponent, sequence, pitchCommitted, swingCommitted }
     }
     if (sequence > 0) {
       const last = await atBatAt(ctx, game._id, sequence - 1)
