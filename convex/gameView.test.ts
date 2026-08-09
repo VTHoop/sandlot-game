@@ -5,6 +5,7 @@ import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from './_generated/api'
 import type { Id } from './_generated/dataModel'
+import type { MutationCtx } from './_generated/server'
 import { ClubSide, type GameView, SeatRole } from './gameView'
 import schema from './schema'
 
@@ -34,15 +35,68 @@ const AWAY_ARM_ATTRS = { velocity: 2, movement: 3, awareness: 4, command: 5 } as
 const PITCH = 737
 const SWING = 313
 
-interface Seed {
+/** The five invented players the two lineups field. */
+interface Roster {
+  awayLeadoff: Id<'players'>
+  awaySecond: Id<'players'>
+  awayPitcher: Id<'players'>
+  homeLeadoff: Id<'players'>
+  homePitcher: Id<'players'>
+}
+
+interface Seed extends Roster {
   game: Id<'games'>
   homeTeam: Id<'teams'>
   awayTeam: Id<'teams'>
-  awayLeadoff: Id<'players'>
-  awaySecond: Id<'players'>
-  homeLeadoff: Id<'players'>
-  homePitcher: Id<'players'>
-  awayPitcher: Id<'players'>
+}
+
+/** A fresh `games` row for two clubs, in the state `startGame` opens. */
+const scheduledRow = (homeTeam: Id<'teams'>, awayTeam: Id<'teams'>) =>
+  ({
+    homeTeam,
+    awayTeam,
+    inning: 1,
+    half: 'top',
+    outs: 0,
+    bases: EMPTY_BASES,
+    homeScore: 0,
+    awayScore: 0,
+    status: 'scheduled',
+    currentBatter: null,
+    currentPitcher: null,
+    homeBattingIndex: 0,
+    awayBattingIndex: 0,
+    lastResolvedSequence: -1,
+  }) as const
+
+async function insertRoster(ctx: MutationCtx): Promise<Roster> {
+  return {
+    awayLeadoff: await ctx.db.insert('players', {
+      name: 'R. VANCE',
+      ...HITTER,
+      attributes: AWAY_LEADOFF_ATTRS,
+    }),
+    awaySecond: await ctx.db.insert('players', {
+      name: 'T. JULIEN',
+      ...HITTER,
+      attributes: AWAY_SECOND_ATTRS,
+    }),
+    awayPitcher: await ctx.db.insert('players', {
+      name: 'G. PIKE',
+      ...ARM,
+      attributes: AWAY_ARM_ATTRS,
+    }),
+    homeLeadoff: await ctx.db.insert('players', {
+      name: 'J. WHITLOCK',
+      ...HITTER,
+      attributes: HOME_LEADOFF_ATTRS,
+    }),
+    homePitcher: await ctx.db.insert('players', {
+      name: 'H. MARSH',
+      ...ARM,
+      attributes: HOME_ARM_ATTRS,
+    }),
+  }
 }
 
 /**
@@ -58,74 +112,25 @@ async function seedScheduledGame() {
 
     const homeTeam = await ctx.db.insert('teams', { owner: homeUser, name: 'Ridgeview Rail' })
     const awayTeam = await ctx.db.insert('teams', { owner: awayUser, name: 'Harbor Kingfishers' })
+    const roster = await insertRoster(ctx)
 
-    const awayLeadoff = await ctx.db.insert('players', {
-      name: 'R. VANCE',
-      ...HITTER,
-      attributes: AWAY_LEADOFF_ATTRS,
-    })
-    const awaySecond = await ctx.db.insert('players', {
-      name: 'T. JULIEN',
-      ...HITTER,
-      attributes: AWAY_SECOND_ATTRS,
-    })
-    const awayPitcher = await ctx.db.insert('players', {
-      name: 'G. PIKE',
-      ...ARM,
-      attributes: AWAY_ARM_ATTRS,
-    })
-    const homeLeadoff = await ctx.db.insert('players', {
-      name: 'J. WHITLOCK',
-      ...HITTER,
-      attributes: HOME_LEADOFF_ATTRS,
-    })
-    const homePitcher = await ctx.db.insert('players', {
-      name: 'H. MARSH',
-      ...ARM,
-      attributes: HOME_ARM_ATTRS,
-    })
-
-    const game = await ctx.db.insert('games', {
-      homeTeam,
-      awayTeam,
-      inning: 1,
-      half: 'top',
-      outs: 0,
-      bases: EMPTY_BASES,
-      homeScore: 0,
-      awayScore: 0,
-      status: 'scheduled',
-      currentBatter: null,
-      currentPitcher: null,
-      homeBattingIndex: 0,
-      awayBattingIndex: 0,
-      lastResolvedSequence: -1,
-    })
+    const game = await ctx.db.insert('games', scheduledRow(homeTeam, awayTeam))
     await ctx.db.insert('lineups', {
       game,
       team: awayTeam,
       battingOrder: [
-        { player: awayLeadoff, position: 'CF' },
-        { player: awaySecond, position: 'SS' },
+        { player: roster.awayLeadoff, position: 'CF' },
+        { player: roster.awaySecond, position: 'SS' },
       ],
-      pitcher: awayPitcher,
+      pitcher: roster.awayPitcher,
     })
     await ctx.db.insert('lineups', {
       game,
       team: homeTeam,
-      battingOrder: [{ player: homeLeadoff, position: 'CF' }],
-      pitcher: homePitcher,
+      battingOrder: [{ player: roster.homeLeadoff, position: 'CF' }],
+      pitcher: roster.homePitcher,
     })
-    return {
-      game,
-      homeTeam,
-      awayTeam,
-      awayLeadoff,
-      awaySecond,
-      homeLeadoff,
-      homePitcher,
-      awayPitcher,
-    }
+    return { game, homeTeam, awayTeam, ...roster }
   })
   return { t, ...ids }
 }
@@ -170,12 +175,15 @@ function numbersIn(value: unknown): number[] {
  * ring allows — the worst band for the batter, so the half flips without scoring. */
 async function strikeOutTheSide(t: Harness, game: Id<'games'>) {
   const fielding = live(await read(t, HOME, game))
-  const pitcher = fielding.viewerSeat === SeatRole.Pitching ? HOME : AWAY
-  const batter = pitcher === HOME ? AWAY : HOME
-  for (let i = 0; i < 3; i += 1) {
-    await t.withIdentity(pitcher).mutation(api.atBat.commitPitch, { game, number: 1 })
-    await t.withIdentity(batter).mutation(api.atBat.commitSwing, { game, number: 500 })
+  const pitching = fielding.viewerSeat === SeatRole.Pitching ? HOME : AWAY
+  const batting = pitching === HOME ? AWAY : HOME
+  const strikeout = async (): Promise<void> => {
+    await t.withIdentity(pitching).mutation(api.atBat.commitPitch, { game, number: 1 })
+    await t.withIdentity(batting).mutation(api.atBat.commitSwing, { game, number: 500 })
   }
+  await strikeout()
+  await strikeout()
+  await strikeout()
 }
 
 describe('getGame — the participant gate', () => {
@@ -188,22 +196,7 @@ describe('getGame — the participant gate', () => {
     // A well-formed id for a game that is not there — indistinguishable from the
     // two refusals above, so no caller can probe which games exist.
     const vanished = await t.run(async (ctx) => {
-      const id = await ctx.db.insert('games', {
-        homeTeam,
-        awayTeam,
-        inning: 1,
-        half: 'top',
-        outs: 0,
-        bases: EMPTY_BASES,
-        homeScore: 0,
-        awayScore: 0,
-        status: 'scheduled',
-        currentBatter: null,
-        currentPitcher: null,
-        homeBattingIndex: 0,
-        awayBattingIndex: 0,
-        lastResolvedSequence: -1,
-      })
+      const id = await ctx.db.insert('games', scheduledRow(homeTeam, awayTeam))
       await ctx.db.delete(id)
       return id
     })
