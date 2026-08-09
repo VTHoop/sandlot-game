@@ -52,10 +52,11 @@ nobody remembers to set.
 **Perspective belongs to the client; the server answers absolutely.** Scores and
 hit totals are returned per club (`home`/`away`), together with which club the
 caller owns (`viewer`) and, while live, whether that club is batting or pitching
-(`viewerSeat`). Both participants receive the byte-identical situation and each
-flips it locally. This is precisely the `viewer` input the duel adapter's module
-header anticipated. A caller who owns both clubs — the dev seed's single-owner
-hotseat — reads as the home side.
+(`viewerSeat`). The situation itself is therefore identical for both
+participants — only those two fields are resolved per caller — and each client
+flips the shared half locally. This is precisely the `viewer` input the duel
+adapter's module header anticipated. A caller who owns both clubs — the dev
+seed's single-owner hotseat — reads as the home side.
 
 **The query cannot reach a committed number, structurally.** `gameView.ts` never
 queries `duelCommitments`. It calls `atBat.duelLocks`, which lives in the vault's

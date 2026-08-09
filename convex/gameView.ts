@@ -24,11 +24,12 @@ import { type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
  * pre-resolution cross-player signal (ADR-0014); a resolved at-bat's numbers are
  * `getActiveDuel`'s to reveal, not this query's.
  *
- * PERSPECTIVE — every number here is ABSOLUTE (home/away), never "you"/"them".
- * Both participants receive the identical payload plus {@link ClubSide} saying
- * which club they own, and the client flips it. The prototype adapter keys "you"
- * off the batting side (`src/design/duel/adapter.ts` module header); that is the
- * `viewer` input it was waiting for.
+ * PERSPECTIVE — every number here is ABSOLUTE (home/away), never "you"/"them",
+ * so the situation itself reads the same for both participants. Exactly two
+ * fields are resolved per caller: `viewer` (which club they own) and, while live,
+ * `viewerSeat`. The client flips the shared half against those. The prototype
+ * adapter keys "you" off the batting side (`src/design/duel/adapter.ts` module
+ * header); that is the `viewer` input it was waiting for.
  */
 
 /** Which club of the matchup a value belongs to. */

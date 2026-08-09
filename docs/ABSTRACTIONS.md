@@ -200,12 +200,13 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
 | `live` | inning · half · outs · runner-aware bases · both scores · both hit totals · the seated batter and pitcher · the caller's seat · the two lock booleans |
 | `final` | both scores · both hit totals · the winning club |
 
-- **Perspective is the client's.** Every number is absolute (`home`/`away`);
-  the payload also names which club the caller owns (`viewer`) and, while live,
-  whether that club is batting or pitching (`viewerSeat`). Both participants
-  receive the identical situation and each flips it — this is the `viewer` input
-  the duel adapter's module header was waiting for. A caller who owns *both*
-  clubs (the dev seed's hotseat) reads as the home side.
+- **Perspective is the client's.** Every number is absolute (`home`/`away`), so
+  the situation itself — score, hits, bases, seats, inning, locks — is the same
+  for both participants. Exactly two fields are resolved per caller: which club
+  they own (`viewer`) and, while live, whether that club is batting or pitching
+  (`viewerSeat`). The client flips the shared half against those two — this is
+  the `viewer` input the duel adapter's module header was waiting for. A caller
+  who owns *both* clubs (the dev seed's hotseat) reads as the home side.
 - **Seats and runners resolve to renderable data** — `{ id, name }` for anyone on
   the field, plus the attribute block on the batter and pitcher. Runner identity
   is in the model whether or not a screen names one today.
