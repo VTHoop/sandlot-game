@@ -280,6 +280,25 @@ describe('getGame — live', () => {
     expect(homeSeat).toBe(SeatRole.Pitching)
   })
 
+  it('reads a caller who owns both clubs as the home side, seated by the half', async () => {
+    // The dev seed's hotseat: one synthetic owner holds both clubs (SAN-54), and
+    // SAN-57 plays both sides through it. Home wins the tie so the seat still
+    // follows the half like anyone else's.
+    const { t, game, awayTeam } = await seedScheduledGame()
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    await t.run(async (ctx) => {
+      const home = await ctx.db
+        .query('users')
+        .withIndex('by_clerk_subject', (q) => q.eq('clerkSubject', HOME.subject))
+        .unique()
+      if (home) await ctx.db.patch(awayTeam, { owner: home._id })
+    })
+
+    const view = live(await read(t, HOME, game))
+    expect(view.viewer).toBe(ClubSide.Home)
+    expect(view.viewerSeat).toBe(SeatRole.Pitching) // home fields the top half
+  })
+
   it('swaps each side’s seat when the half flips', async () => {
     const { t, game, homeLeadoff, awayPitcher } = await seedScheduledGame()
     await t.withIdentity(HOME).mutation(api.game.startGame, { game })
