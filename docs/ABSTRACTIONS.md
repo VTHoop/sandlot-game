@@ -182,6 +182,52 @@ defense at each score / pointer / seating step.
 two server paths. No client mutation writes them directly — the same vault
 discipline as the secret pitch, extended to the whole envelope.
 
+## Live game read model (`convex/gameView.ts`)
+
+`getGame({ game })` — the query a client subscribes to for the situation around
+the duel (SAN-56), and the read half of the Convex-backed adapter. It is a
+separate module from `game.ts` on purpose: that file's contract is
+*authoritative writer, no client read path*, and this is the opposite — the
+surface a batter's client watches while the pitch is already in the vault, so
+what crosses the wire is reviewable in one place.
+
+**A discriminated union on status**, not one shape with nullable seats, so a
+screen cannot read a batter off a finished game or bases off a scheduled one:
+
+| `status` | carries |
+|---|---|
+| `scheduled` | the matchup — both clubs, and which one the caller owns |
+| `live` | inning · half · outs · runner-aware bases · both scores · both hit totals · the seated batter and pitcher · the caller's seat · the two lock booleans |
+| `final` | both scores · both hit totals · the winning club |
+
+- **Perspective is the client's.** Every number is absolute (`home`/`away`), so
+  the situation itself — score, hits, bases, seats, inning, locks — is the same
+  for both participants. Exactly two fields are resolved per caller: which club
+  they own (`viewer`) and, while live, whether that club is batting or pitching
+  (`viewerSeat`). The client flips the shared half against those two — this is
+  the `viewer` input the duel adapter's module header was waiting for. A caller
+  who owns *both* clubs (the dev seed's hotseat) reads as the home side.
+- **Seats and runners resolve to renderable data** — `{ id, name }` for anyone on
+  the field, plus the attribute block on the batter and pitcher. Runner identity
+  is in the model whether or not a screen names one today.
+- **No committed number is reachable from here, structurally.** The module never
+  queries `duelCommitments`; it calls `atBat.duelLocks` and gets two booleans.
+  The locks reset on their own — they are read at the current at-bat ordinal, and
+  resolution advances it. A resolved at-bat's numbers stay `getActiveDuel`'s to
+  reveal.
+- **Not an existence oracle** — a non-participant, a caller with no identity (or
+  no `users` row), and an id that resolves to nothing all return `null`
+  identically. The participant-only gate is the safe default, not a law: roadmap
+  result sharing will want a stranger to read a `final` game, and relaxing it
+  there is that work's deliberate call.
+- **Hit totals are derived, not stored.** Nothing on the `games` row tracks them,
+  so they are folded out of the `atBats` log — `isHitBand` (engine) over each
+  entry, credited to the club batting that half. The maintained `boxScoreLine`
+  rollup is where they belong if the per-read fold ever stops being cheap.
+- **It refuses rather than guesses.** A live row with an empty seat, or a base
+  holding a player that no longer exists, throws — corrupt authoritative state,
+  and an empty base would show the batter a situation that is not the real one.
+
 ## Dev fixture seed (`convex/seed.ts` + `seedRoster.ts`)
 
 `startGame` needs a `scheduled` game with two owned teams and two complete

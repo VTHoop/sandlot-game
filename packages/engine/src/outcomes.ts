@@ -32,6 +32,23 @@ export const OUTCOME_BAND_KEYS = [
   'K',
 ] as const satisfies readonly OutcomeBandKey[]
 
+/**
+ * The bands that are a base hit — the top of the stack, down to the infield
+ * single. A walk is not a hit, and neither is anything below it.
+ *
+ * Which bands count is a rule of the game, so it belongs beside the bands
+ * themselves rather than beside whichever consumer asks first. Box-score hit
+ * totals (`convex/gameView.ts`) read it. Two older copies of the same set
+ * predate this one — `src/design/duel/scenario.ts` and
+ * `src/components/ui/OutcomeLadder.tsx` — and should collapse onto it
+ * (ADR-0025 § Consequences); until they do, this is the canonical one, not the
+ * only one.
+ */
+const HIT_BANDS: ReadonlySet<OutcomeBandKey> = new Set(['HR', '3B', '2B', '1B', 'IF1B'])
+
+/** Whether an outcome band is a base hit. */
+export const isHitBand = (band: OutcomeBandKey): boolean => HIT_BANDS.has(band)
+
 // Compile-time single-source-of-truth guard: the tuple must list every band key
 // exactly once. If a band is added/removed/renamed in the RangeFinder without
 // updating OUTCOME_BAND_KEYS, one of these assignments stops type-checking.
