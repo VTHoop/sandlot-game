@@ -44,6 +44,14 @@ interface AnalysisRecord {
   analysedAt: Date | null
 }
 
+// One threshold check. Bundled rather than passed as (label, actual, floor) — three
+// loose primitives describing one thing is the shape CodeScene calls Primitive Obsession.
+interface Gate {
+  label: string
+  actual: number
+  floor: number
+}
+
 function fail(message: string): never {
   console.error(`✗ ${message}`)
   process.exit(2)
@@ -80,20 +88,20 @@ function sleep(ms: number): Promise<void> {
 }
 
 // Wraps the project's endpoints in domain methods so callers pass intent rather than
-// threading a token and a URL fragment through every call.
+// threading a token and a URL fragment through every call. Each method builds its own
+// request URL from the module constant, so no variable URL ever reaches fetch.
 function codeSceneProject(token: string) {
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
-  async function send(url: string, method: string): Promise<unknown> {
-    const response = await fetch(url, { method, headers })
+  async function body(response: Response, endpoint: string): Promise<Record<string, unknown>> {
     if (!response.ok) {
-      fail(`${method} ${url} returned HTTP ${response.status}. Check CS_ACCESS_TOKEN.`)
+      fail(`${endpoint} returned HTTP ${response.status}. Check CS_ACCESS_TOKEN.`)
     }
-    return response.json()
+    return asObject(await response.json(), endpoint)
   }
 
   async function currentScores(): Promise<Scores> {
-    const payload = asObject(await send(PROJECT_URL, 'GET'), 'project response')
+    const payload = await body(await fetch(PROJECT_URL, { headers }), 'project')
     const analysis = asObject(payload.analysis, 'analysis')
     return {
       average: scoreOf(analysis.code_health, 'code_health'),
@@ -102,7 +110,7 @@ function codeSceneProject(token: string) {
   }
 
   async function latestAnalysis(): Promise<AnalysisRecord | null> {
-    const payload = asObject(await send(`${PROJECT_URL}/analyses`, 'GET'), 'analyses response')
+    const payload = await body(await fetch(`${PROJECT_URL}/analyses`, { headers }), 'analyses')
     const analyses = payload.analyses
     if (!Array.isArray(analyses) || analyses.length === 0) return null
     const newest = asObject(analyses.at(0), 'analysis record')
@@ -115,7 +123,8 @@ function codeSceneProject(token: string) {
   }
 
   async function scheduleAnalysis(): Promise<number> {
-    const payload = asObject(await send(`${PROJECT_URL}/run-analysis`, 'POST'), 'run-analysis')
+    const request = fetch(`${PROJECT_URL}/run-analysis`, { method: 'POST', headers })
+    const payload = await body(await request, 'run-analysis')
     if (typeof payload.id !== 'number') {
       fail('Unexpected API shape: run-analysis returned no analysis id')
     }
@@ -153,10 +162,12 @@ function reportAge(analysis: AnalysisRecord | null): void {
   }
 }
 
-function compare(label: string, actual: number, floor: number): boolean {
-  const passed = actual >= floor
+function evaluate(gate: Gate): boolean {
+  const passed = gate.actual >= gate.floor
+  const mark = passed ? '✓' : '✗'
+  const verb = passed ? '≥' : '<'
   console.log(
-    `${passed ? '✓' : '✗'} ${label}: ${actual.toFixed(2)} ${passed ? '≥' : '<'} ${floor.toFixed(2)} floor`,
+    `${mark} ${gate.label}: ${gate.actual.toFixed(2)} ${verb} ${gate.floor.toFixed(2)} floor`,
   )
   return passed
 }
@@ -179,10 +190,12 @@ if (process.argv.includes('--refresh')) {
 const scores = await project.currentScores()
 reportAge(await project.latestAnalysis())
 
-const averageOk = compare('Average code health', scores.average, thresholds.average_code_health)
-const hotspotOk = compare('Hotspot code health', scores.hotspot, thresholds.hotspot_code_health)
+const gates: Gate[] = [
+  { label: 'Average code health', actual: scores.average, floor: thresholds.average_code_health },
+  { label: 'Hotspot code health', actual: scores.hotspot, floor: thresholds.hotspot_code_health },
+]
 
-if (!averageOk || !hotspotOk) {
+if (gates.map(evaluate).includes(false)) {
   console.error(
     '\nCode health fell below the committed floor. Fix the code — never lower .codescene-thresholds to go green.',
   )
