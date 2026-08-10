@@ -57,15 +57,17 @@ function fail(message: string): never {
   process.exit(2)
 }
 
-function asObject(value: unknown, subject: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) {
-    fail(`Unexpected API shape: ${subject} is not an object`)
-  }
-  return value as Record<string, unknown>
+// A type guard rather than a validate-or-exit helper: it composes into each caller's own
+// narrowing, so the failure message can be written where the context is.
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 function parseThresholds(raw: string): Thresholds {
-  const parsed = asObject(JSON.parse(raw), '.codescene-thresholds')
+  const parsed: unknown = JSON.parse(raw)
+  if (!isObject(parsed)) {
+    fail('.codescene-thresholds is not a JSON object')
+  }
   const { average_code_health, hotspot_code_health } = parsed as Partial<Thresholds>
   if (typeof average_code_health !== 'number' || typeof hotspot_code_health !== 'number') {
     fail('.codescene-thresholds must define numeric average_code_health and hotspot_code_health')
@@ -75,12 +77,9 @@ function parseThresholds(raw: string): Thresholds {
 
 // Takes the metric value, not its key: reading it out by literal name at the call site
 // keeps this off the computed-member-access path Codacy flags as an injection sink.
-function scoreOf(metric: unknown, label: string): number {
-  const now = asObject(metric, label).now
-  if (typeof now !== 'number') {
-    fail(`Unexpected API shape: ${label}.now is not a number`)
-  }
-  return now
+function scoreNow(metric: unknown): number | null {
+  if (!isObject(metric) || typeof metric.now !== 'number') return null
+  return metric.now
 }
 
 function sleep(ms: number): Promise<void> {
@@ -93,28 +92,39 @@ function sleep(ms: number): Promise<void> {
 function codeSceneProject(token: string) {
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
-  async function body(response: Response, endpoint: string): Promise<Record<string, unknown>> {
+  // Reports against response.url rather than a caller-supplied label, so the message
+  // names the endpoint that actually failed and cannot drift from it.
+  async function body(response: Response): Promise<Record<string, unknown>> {
     if (!response.ok) {
-      fail(`${endpoint} returned HTTP ${response.status}. Check CS_ACCESS_TOKEN.`)
+      fail(`${response.url} returned HTTP ${response.status}. Check CS_ACCESS_TOKEN.`)
     }
-    return asObject(await response.json(), endpoint)
+    const payload: unknown = await response.json()
+    if (!isObject(payload)) {
+      fail(`${response.url} did not return a JSON object`)
+    }
+    return payload
   }
 
   async function currentScores(): Promise<Scores> {
-    const payload = await body(await fetch(PROJECT_URL, { headers }), 'project')
-    const analysis = asObject(payload.analysis, 'analysis')
-    return {
-      average: scoreOf(analysis.code_health, 'code_health'),
-      hotspot: scoreOf(analysis.hotspot_code_health, 'hotspot_code_health'),
+    const payload = await body(await fetch(PROJECT_URL, { headers }))
+    const analysis = payload.analysis
+    if (!isObject(analysis)) {
+      fail('Unexpected API shape: no analysis on the project response')
     }
+    const average = scoreNow(analysis.code_health)
+    const hotspot = scoreNow(analysis.hotspot_code_health)
+    if (average === null || hotspot === null) {
+      fail('Unexpected API shape: code_health.now or hotspot_code_health.now is not a number')
+    }
+    return { average, hotspot }
   }
 
   async function latestAnalysis(): Promise<AnalysisRecord | null> {
-    const payload = await body(await fetch(`${PROJECT_URL}/analyses`, { headers }), 'analyses')
+    const payload = await body(await fetch(`${PROJECT_URL}/analyses`, { headers }))
     const analyses = payload.analyses
     if (!Array.isArray(analyses) || analyses.length === 0) return null
-    const newest = asObject(analyses.at(0), 'analysis record')
-    if (typeof newest.id !== 'number') return null
+    const newest: unknown = analyses.at(0)
+    if (!isObject(newest) || typeof newest.id !== 'number') return null
     const time = typeof newest.analysistime === 'string' ? new Date(newest.analysistime) : null
     return {
       id: newest.id,
@@ -123,8 +133,9 @@ function codeSceneProject(token: string) {
   }
 
   async function scheduleAnalysis(): Promise<number> {
-    const request = fetch(`${PROJECT_URL}/run-analysis`, { method: 'POST', headers })
-    const payload = await body(await request, 'run-analysis')
+    const payload = await body(
+      await fetch(`${PROJECT_URL}/run-analysis`, { method: 'POST', headers }),
+    )
     if (typeof payload.id !== 'number') {
       fail('Unexpected API shape: run-analysis returned no analysis id')
     }
