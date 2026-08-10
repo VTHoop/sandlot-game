@@ -2,7 +2,7 @@
 
 A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) resolved against attribute-sized outcome bands, wrapped in a salary-cap league. Async-first multiplayer. Built largely with AI coding agents — this file is the contract every agent (and human) follows.
 
-> **Status:** the toolchain is wired and enforcing — Lefthook `pre-commit` (Biome + typecheck) and `pre-push` (lint, typecheck, coverage), the TDD guard hook on every `Edit`/`Write`, CI (lint · typecheck · coverage · Playwright smoke) on every PR, the CodeScene code-health ratchet after every merge to `main`, and Vitest suites across the engine, the Convex functions, and the client. Linear MCP is connected — read and write issues directly. Treat every command below as live and binding. **One caveat about what "enforcing" means:** `main` currently has *no required status checks*, so every gate below reports but none can block a merge — the discipline is human, not mechanical.
+> **Status:** the toolchain is wired and enforcing — Lefthook `pre-commit` (Biome + typecheck) and `pre-push` (lint, typecheck, CodeScene delta, coverage), the TDD guard hook on every `Edit`/`Write`, CI (lint · typecheck · coverage · Playwright smoke) on every PR, the CodeScene code-health ratchet after every merge to `main`, and Vitest suites across the engine, the Convex functions, and the client. Linear MCP is connected — read and write issues directly. Treat every command below as live and binding. **One caveat about what "enforcing" means:** `main` currently has *no required status checks*, so every gate below reports but none can block a merge — the discipline is human, not mechanical.
 
 > **Inspiration & IP:** the core mechanic is adapted from the `r/baseballbythenumbers` community game (credited as prior art). Game *mechanics* are not copyrightable; we use the system, **not** anyone's brand or verbatim content. See Product Rules.
 
@@ -61,6 +61,8 @@ cs review path/to/file.ts           # the score plus the specific findings
 cs delta --staged                   # only what's staged
 ```
 A new file must score **10.00** to clear the "New code is healthy" gate, and per-rule deductions are fixed — a partial fix scores the same as no fix, so eliminate a flagged rule entirely rather than easing it. Do not push blind and read the bot; it is a ~60s round trip that `cs delta main` answers in seconds.
+
+`pre-push` runs `cs delta --error-on-warnings main` for you, so a finding blocks the push. It *skips* if the CLI or token is missing rather than blocking a fresh clone — so a passing hook with neither installed means nothing was checked. Two gaps to know: `cs delta` only sees git-tracked files (fine at pre-push, everything is committed), and it compares against `main`, so it says nothing about work already merged there.
 
 **2. The ratchet — absolute.** `.codescene-thresholds` commits a floor for the whole repo's aggregate score, enforced by `scripts/check-code-health.ts` via the `Code Health` workflow after every merge to `main` (and weekly). This exists because the PR bot stays green while the repo slides downward one acceptable PR at a time; only the aggregate catches that.
 
