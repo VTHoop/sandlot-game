@@ -52,6 +52,16 @@ Two surfaces that answer different questions. Both are live.
 
 **1. The PR bot — relative.** The CodeScene GitHub app posts a Code Health Review on every PR, evaluating the *change* against `main` under the "Clean Code Collective" quality-gate profile (Hotspot Goals · Code Health Decline · Low Code Health in New Code · Absent Change Patterns). Configured server-side at [the project's delta-analysis config](https://codescene.io/projects/81097/config/delta-analysis) — not from any file in this repo. **Read what it flags and address it.**
 
+**Reproduce it locally before pushing.** The [`cs` CLI](https://codescene.io/docs/cli/index.html) is installed (`curl https://downloads.codescene.io/enterprise/cli/install-codescene-cli.sh | sh`) and runs the same analysis the bot does, using the same `CS_ACCESS_TOKEN`:
+
+```bash
+cs delta main                       # what the PR check will say — run this before pushing
+cs check path/to/file.ts            # one file's code health score (1–10)
+cs review path/to/file.ts           # the score plus the specific findings
+cs delta --staged                   # only what's staged
+```
+A new file must score **10.00** to clear the "New code is healthy" gate, and per-rule deductions are fixed — a partial fix scores the same as no fix, so eliminate a flagged rule entirely rather than easing it. Do not push blind and read the bot; it is a ~60s round trip that `cs delta main` answers in seconds.
+
 **2. The ratchet — absolute.** `.codescene-thresholds` commits a floor for the whole repo's aggregate score, enforced by `scripts/check-code-health.ts` via the `Code Health` workflow after every merge to `main` (and weekly). This exists because the PR bot stays green while the repo slides downward one acceptable PR at a time; only the aggregate catches that.
 
 ```bash
@@ -64,6 +74,7 @@ Needs `CS_ACCESS_TOKEN` — a free personal token from https://codescene.io/user
 - The ratchet runs *after* the merge, so it is an alarm, not a blocker: CodeScene analyses `main`, not arbitrary branches. Pre-merge enforcement is the PR bot's job.
 - **Boy Scout Rule (binding, judged by eye):** every file you touch should leave more readable than you found it — smaller functions, fewer branches, clearer names. You don't need a score to know when you've made a function worse.
 - **⛔ NEVER add `biome-ignore`, `// @ts-ignore`, or `as any` to dodge a finding.** Fix the code.
+- **⛔ NEVER use the Suppress link CodeScene offers next to a finding.** It is one click and it is always the wrong click. `scripts/check-code-health.ts` was itself flagged (Primitive Obsession, String Heavy Function Arguments) and refactored to 10.00 instead — the fix improved the code, which is the usual outcome when the gate looks like the problem.
 
 ### Security & static analysis — Codacy (mandatory)
 **What runs:** the Codacy GitHub app posts a static-analysis check on every PR, and CI uploads coverage to it. Locally, [Codacy CLI v2](https://github.com/codacy/codacy-cli-v2) is free and needs no account or token — it is installed via `brew install codacy/codacy-cli-v2/codacy-cli-v2` and configured by the committed `.codacy/codacy.yaml`.
