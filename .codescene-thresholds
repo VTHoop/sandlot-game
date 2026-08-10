@@ -1,5 +1,5 @@
 {
-  "_note": "Scores deferred — CodeScene composite KPI requires hotspot history. Run a full scan and update after ~10+ commits exist across multiple files.",
-  "average_code_health": 0,
-  "hotspot_code_health": 0
+  "_note": "Whole-repo code-health floor, enforced by scripts/check-code-health.ts (pnpm codescene:check) against CodeScene's analysis of main. Distinct from the PR delta gates, which judge a change relative to main; these are absolute. Ratchet upward only — raise deliberately after a sustained improvement, never lower to make a build pass. Baseline set 2026-08-10 from a measured 9.98 average / 10.0 hotspot, with headroom for normal churn.",
+  "average_code_health": 9.9,
+  "hotspot_code_health": 9.8
 }

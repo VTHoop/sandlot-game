@@ -15,6 +15,25 @@ pre-push:
       run: pnpm lint
     - name: typecheck
       run: pnpm typecheck
+    # Same analysis the CodeScene PR bot runs, seconds instead of a push-and-wait cycle.
+    # Skips rather than blocks when the CLI or token is absent: a fresh clone must still
+    # be able to push. Both are free to set up — see AGENTS.md §1.
+    - name: code-health
+      run: |
+        # Self-contained on purpose: exports from .lefthook-rc.sh do not reach job
+        # environments, so PATH and the token are resolved here. Reading the one key
+        # beats sourcing .env.local, which would execute whatever the file contains.
+        [ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"
+        if [ -z "$CS_ACCESS_TOKEN" ] && [ -f .env.local ]; then
+          export CS_ACCESS_TOKEN="$(sed -n 's/^CS_ACCESS_TOKEN=//p' .env.local | head -1)"
+        fi
+        if ! command -v cs >/dev/null 2>&1; then
+          echo "⚠ cs CLI not installed — skipping CodeScene delta (see AGENTS.md §1)"
+        elif [ -z "$CS_ACCESS_TOKEN" ]; then
+          echo "⚠ CS_ACCESS_TOKEN not set — skipping CodeScene delta (see .env.example)"
+        else
+          cs delta --error-on-warnings main
+        fi
     - name: coverage
       run: pnpm test:coverage
     # e2e:smoke is CI-only — requires VITE_CONVEX_URL + VITE_CLERK_PUBLISHABLE_KEY

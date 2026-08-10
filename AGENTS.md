@@ -2,7 +2,7 @@
 
 A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) resolved against attribute-sized outcome bands, wrapped in a salary-cap league. Async-first multiplayer. Built largely with AI coding agents — this file is the contract every agent (and human) follows.
 
-> **Status:** the toolchain is wired and enforcing — Lefthook `pre-commit` (Biome + typecheck) and `pre-push` (lint, typecheck, coverage), the TDD guard hook on every `Edit`/`Write`, CI (lint · typecheck · coverage · Playwright smoke) on every PR, and Vitest suites across the engine, the Convex functions, and the client. Linear MCP is connected — read and write issues directly. Treat every command below as live and binding, with **one exception that is still a target, not a gate**: the CodeScene code-health ratchet in §1 — `.codescene-thresholds` is zeroed pending hotspot history, and no hook or CI job invokes it. See §1 "Code health" for what CodeScene actually enforces today.
+> **Status:** the toolchain is wired and enforcing — Lefthook `pre-commit` (Biome + typecheck) and `pre-push` (lint, typecheck, CodeScene delta, coverage), the TDD guard hook on every `Edit`/`Write`, CI (lint · typecheck · coverage · Playwright smoke) on every PR, the CodeScene code-health ratchet after every merge to `main`, and Vitest suites across the engine, the Convex functions, and the client. Linear MCP is connected — read and write issues directly. Treat every command below as live and binding. **One caveat about what "enforcing" means:** `main` currently has *no required status checks*, so every gate below reports but none can block a merge — the discipline is human, not mechanical.
 
 > **Inspiration & IP:** the core mechanic is adapted from the `r/baseballbythenumbers` community game (credited as prior art). Game *mechanics* are not copyrightable; we use the system, **not** anyone's brand or verbatim content. See Product Rules.
 
@@ -47,12 +47,36 @@ pnpm e2e:smoke     # Playwright smoke lane — must stay under 5 minutes
 ```
 Coverage is a **release gate, not a vanity metric**: the 80% floor in `vitest.config.ts` is a ratchet that only moves upward (`thresholdAutoUpdate` stays off; the TDD guard hook blocks any edit that lowers a threshold). Clearing the floor is not the goal — meaningful coverage on critical paths (the engine, the secret-pitch flow) beats padded coverage on trivial branches.
 
-### Code health — CodeScene (PR bot only; free OSS tier, public repo)
-**What runs:** the CodeScene GitHub app posts a Code Health Review check on every PR. That is the only CodeScene surface set up here, and there is **no local CodeScene check** — the `cs` CLI is not installed and no access token is provisioned, so a file's score cannot be captured before/after an edit. (CodeScene's CLI requires an admin-issued access token and is not listed among the free OSS plan's features; whether the OSS tier can mint one is unconfirmed. If that changes, this section should change with it.)
-- **Read the bot's PR check** and address what it flags. It is advisory today: no hook or CI job gates on it.
-- **Boy Scout Rule (still binding, judged by eye):** every file you touch should leave more readable than you found it — smaller functions, fewer branches, clearer names. The bot verifies this after the fact; you don't need a score to know when you've made a function worse.
+### Code health — CodeScene (free OSS tier, public repo)
+Two surfaces that answer different questions. Both are live.
+
+**1. The PR bot — relative.** The CodeScene GitHub app posts a Code Health Review on every PR, evaluating the *change* against `main` under the "Clean Code Collective" quality-gate profile (Hotspot Goals · Code Health Decline · Low Code Health in New Code · Absent Change Patterns). Configured server-side at [the project's delta-analysis config](https://codescene.io/projects/81097/config/delta-analysis) — not from any file in this repo. **Read what it flags and address it.**
+
+**Reproduce it locally before pushing.** The [`cs` CLI](https://codescene.io/docs/cli/index.html) is installed (`curl https://downloads.codescene.io/enterprise/cli/install-codescene-cli.sh | sh`) and runs the same analysis the bot does, using the same `CS_ACCESS_TOKEN`:
+
+```bash
+cs delta main                       # what the PR check will say — run this before pushing
+cs check path/to/file.ts            # one file's code health score (1–10)
+cs review path/to/file.ts           # the score plus the specific findings
+cs delta --staged                   # only what's staged
+```
+A new file must score **10.00** to clear the "New code is healthy" gate, and per-rule deductions are fixed — a partial fix scores the same as no fix, so eliminate a flagged rule entirely rather than easing it. Do not push blind and read the bot; it is a ~60s round trip that `cs delta main` answers in seconds.
+
+`pre-push` runs `cs delta --error-on-warnings main` for you, so a finding blocks the push. It *skips* if the CLI or token is missing rather than blocking a fresh clone — so a passing hook with neither installed means nothing was checked. Two gaps to know: `cs delta` only sees git-tracked files (fine at pre-push, everything is committed), and it compares against `main`, so it says nothing about work already merged there.
+
+**2. The ratchet — absolute.** `.codescene-thresholds` commits a floor for the whole repo's aggregate score, enforced by `scripts/check-code-health.ts` via the `Code Health` workflow after every merge to `main` (and weekly). This exists because the PR bot stays green while the repo slides downward one acceptable PR at a time; only the aggregate catches that.
+
+```bash
+pnpm codescene:check            # grade the last analysis CodeScene ran
+pnpm codescene:check --refresh  # analyse current main first, then grade (~75s)
+```
+Needs `CS_ACCESS_TOKEN` — a free personal token from https://codescene.io/users/me/pat, kept in `.env.local` (see `.env.example`) and stored as a GitHub Actions secret. The free OSS tier issues these and serves the full `api.codescene.io/v2` API; no paid plan required.
+
+- **The floor only moves upward.** Raise it deliberately after a sustained improvement. **⛔ NEVER lower `.codescene-thresholds` to make a build pass** — that is the same offence as weakening a test.
+- The ratchet runs *after* the merge, so it is an alarm, not a blocker: CodeScene analyses `main`, not arbitrary branches. Pre-merge enforcement is the PR bot's job.
+- **Boy Scout Rule (binding, judged by eye):** every file you touch should leave more readable than you found it — smaller functions, fewer branches, clearer names. You don't need a score to know when you've made a function worse.
 - **⛔ NEVER add `biome-ignore`, `// @ts-ignore`, or `as any` to dodge a finding.** Fix the code.
-- `.codescene-thresholds` is **aspirational, not enforced** — it is zeroed pending hotspot history, and nothing reads it. Do not treat it as a gate, and don't cite it as one.
+- **⛔ NEVER use the Suppress link CodeScene offers next to a finding.** It is one click and it is always the wrong click. `scripts/check-code-health.ts` was itself flagged (Primitive Obsession, String Heavy Function Arguments) and refactored to 10.00 instead — the fix improved the code, which is the usual outcome when the gate looks like the problem.
 
 ### Security & static analysis — Codacy (mandatory)
 **What runs:** the Codacy GitHub app posts a static-analysis check on every PR, and CI uploads coverage to it. Locally, [Codacy CLI v2](https://github.com/codacy/codacy-cli-v2) is free and needs no account or token — it is installed via `brew install codacy/codacy-cli-v2/codacy-cli-v2` and configured by the committed `.codacy/codacy.yaml`.

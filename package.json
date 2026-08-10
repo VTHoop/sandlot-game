@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "e2e:smoke": "playwright test --project=smoke",
+    "codescene:check": "tsx --env-file-if-exists=.env.local scripts/check-code-health.ts",
     "emit-grid": "tsx packages/engine/bin/emit-grid.ts",
     "derive-balance": "tsx packages/engine/bin/derive-balance.ts"
   },

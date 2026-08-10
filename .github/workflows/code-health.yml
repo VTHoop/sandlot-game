@@ -1,0 +1,52 @@
+####
+# Whole-repo code-health ratchet (the absolute half of the CodeScene gate).
+#
+# The CodeScene PR bot judges each change *relative* to main and stays green while the
+# repo slides downward one acceptable PR at a time. This grades the aggregate itself
+# against the floor committed in .codescene-thresholds.
+#
+# It runs after a merge rather than on the PR because CodeScene analyses this project's
+# `main`, not arbitrary branches — so it is an alarm, not a merge blocker. Pre-merge
+# enforcement stays with the PR bot's delta gates.
+####
+name: Code Health
+
+on:
+  push:
+    branches: [main]
+  # Catches slow drift during quiet weeks, when no merge would have triggered a run.
+  schedule:
+    - cron: '0 13 * * 1'
+  workflow_dispatch:
+
+# Each run schedules a fresh CodeScene analysis; overlapping runs would queue analyses
+# behind each other and grade stale scores.
+concurrency:
+  group: code-health
+  cancel-in-progress: false
+
+jobs:
+  code-health:
+    name: Code Health Ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # --refresh analyses current main first; without it the check would grade whatever
+      # analysis CodeScene last happened to run, which has been as stale as six weeks.
+      - name: Check code health against the committed floor
+        if: env.CS_ACCESS_TOKEN != ''
+        run: pnpm codescene:check --refresh
