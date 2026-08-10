@@ -206,13 +206,20 @@ async function tryResolve(
   game: Doc<'games'>,
   sequence: number,
 ): Promise<Resolution> {
-  const pitching = await commitmentAt(ctx, game._id, sequence, Participant.Pitching)
-  const batting = await commitmentAt(ctx, game._id, sequence, Participant.Batting)
+  // Independent index reads — one round-trip, not two (cf. `duelLocks`). Both
+  // still read the range this function appends into, so the OCC argument above
+  // is unchanged: it rests on the read/write sets overlapping, not on ordering.
+  const [pitching, batting] = await Promise.all([
+    commitmentAt(ctx, game._id, sequence, Participant.Pitching),
+    commitmentAt(ctx, game._id, sequence, Participant.Batting),
+  ])
   if (!pitching || !batting) return null
   if (await atBatAt(ctx, game._id, sequence)) return null
 
-  const batter = await ctx.db.get(batting.player)
-  const pitcher = await ctx.db.get(pitching.player)
+  const [batter, pitcher] = await Promise.all([
+    ctx.db.get(batting.player),
+    ctx.db.get(pitching.player),
+  ])
   if (!batter || !pitcher) throw new Error('Matchup players not found')
 
   // The batter's swing declaration is public (announced with the swing, §3.4), so
