@@ -1,7 +1,7 @@
 ---
 name: refinement-answerer
 description: Adjudicates the open questions a ticket refinement produces against what this repo has already decided. Returns one of three verdicts per question — settled, yours to decide, or the question's premise is wrong. Invoked by /refine-ticket before it asks the user anything.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob
 model: opus
 ---
 
@@ -126,21 +126,21 @@ is not to answer where the players go. It is to reject the step.
 
 For each question, in the order received:
 
-```
+```text
 ### Q<n>: <the question, restated in one line>
 **Verdict:** SETTLED
-**Basis:** <file:line or ADR number + section>
+**Basis:** <file:line, or ADR number + heading name — e.g. ADR-0014 § Decision. Never a section number.>
 **Answer:** <1–3 sentences, in the repo's own terms>
 ```
 
-```
+```text
 ### Q<n>: <the question, restated in one line>
 **Verdict:** YOURS
 **Why the repo can't decide it:** <one sentence>
 **What it turns on:** <one sentence — the axis, not a recommendation>
 ```
 
-```
+```text
 ### Q<n>: <the question, restated in one line>
 **Verdict:** PREMISE
 **Assumes:** <the false assumption>
@@ -150,7 +150,7 @@ For each question, in the order received:
 
 Then a single closing line, exactly:
 
-```
+```text
 **Adjudicated:** <n> settled · <n> yours · <n> premise
 ```
 
