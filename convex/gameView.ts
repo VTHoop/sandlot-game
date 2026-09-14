@@ -196,25 +196,29 @@ async function battingLineup(ctx: Ctx, game: Doc<'games'>): Promise<Doc<'lineups
  * points AT the current batter (the engine advances it as it folds an at-bat), so
  * the slots due up start one past it.
  *
- * Offsets are walked rather than the array sliced, because the wrap is the normal
- * case: the ninth hitter is always followed by the leadoff man. Each slot resolves
- * through {@link requirePlayer}, so a hitter who no longer exists refuses rather
- * than silently shortening the list into something that reads as the end of the
- * order.
+ * The wrap is the normal case — the ninth hitter is always followed by the
+ * leadoff man — so the order is repeated and sliced rather than indexed modulo
+ * its length. Each slot resolves through {@link requirePlayer}, so a hitter who
+ * no longer exists refuses rather than silently shortening the list into
+ * something that reads as the end of the order.
  */
 async function dueUpView(ctx: Ctx, game: Doc<'games'>): Promise<PlayerView[]> {
   const lineup = await battingLineup(ctx, game)
   const order = lineup.battingOrder
   if (!order.length) throw new Error('A live game has an empty batting order for the club at bat')
   const index = game.half === 'top' ? game.awayBattingIndex : game.homeBattingIndex
-  const slots = Array.from({ length: DUE_UP_COUNT }, (_, offset) => {
-    const slot = order.at((index + offset + 1) % order.length)
-    if (!slot) throw new Error('A live game has a gap in the batting order for the club at bat')
-    return slot.player
-  })
+
+  // Repeat the order until it reaches {@link DUE_UP_COUNT} slots past any
+  // starting index, so the wrap falls out of a plain slice. Modular indexing
+  // would read it with a computed key, the object-injection sink this codebase
+  // keeps off (AGENTS.md § Code conventions).
+  const repeats = Math.ceil((order.length + DUE_UP_COUNT) / order.length)
+  const wrapped = Array.from({ length: repeats }, () => order).flat()
+  const slots = wrapped.slice(index + 1, index + 1 + DUE_UP_COUNT)
+
   return Promise.all(
-    slots.map(async (id) => {
-      const player = await requirePlayer(ctx, id)
+    slots.map(async (slot) => {
+      const player = await requirePlayer(ctx, slot.player)
       return { id: player._id, name: player.name }
     }),
   )
