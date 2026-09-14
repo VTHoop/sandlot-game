@@ -12,6 +12,8 @@ import schema from './schema'
 // convex-test discovers the function modules; exclude the test files themselves.
 const modules = import.meta.glob(['./**/*.ts', '!./**/*.test.ts'])
 
+type Identity = { subject: string }
+
 const PITCHER = { subject: 'pitcher-subject' }
 const BATTER = { subject: 'batter-subject' }
 const STRANGER = { subject: 'stranger-subject' }
@@ -119,6 +121,14 @@ const commitmentRows = (t: Harness, game: Id<'games'>) =>
  * is a different bug than the test is asking about, and swallowing it would let
  * this assertion pass for the wrong reason.
  */
+/** A number committed for one seat, by one identity. The two read alike on
+ * purpose: a test names the seat and the caller, and nothing else. */
+const pitchBy = (t: Harness, who: Identity, game: Id<'games'>, number: number) =>
+  t.withIdentity(who).mutation(api.atBat.commitPitch, { game, number })
+
+const swingBy = (t: Harness, who: Identity, game: Id<'games'>, number: number) =>
+  t.withIdentity(who).mutation(api.atBat.commitSwing, { game, number })
+
 async function rejectionOf(call: Promise<unknown>): Promise<DuelRejection> {
   try {
     await call
@@ -480,46 +490,29 @@ describe('secret at-bat round-trip', () => {
   })
 
   describe('typed commit rejections (SAN-57)', () => {
+    const LEGAL = 500
+
     it('categorises a game that is not live as terminal', async () => {
       const { t, gameId } = await setupGame()
       await t.run((ctx) => ctx.db.patch(gameId, { status: 'final' }))
 
-      const call = t
-        .withIdentity(PITCHER)
-        .mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
-      expect(await rejectionOf(call)).toBe(DuelRejection.Terminal)
+      expect(await rejectionOf(pitchBy(t, PITCHER, gameId, LEGAL))).toBe(DuelRejection.Terminal)
     })
 
     it('categorises committing for a club you do not own as terminal', async () => {
       const { t, gameId } = await setupGame()
 
       // The batting owner reaching for the pitching seat, and the mirror.
-      expect(
-        await rejectionOf(
-          t.withIdentity(BATTER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 }),
-        ),
-      ).toBe(DuelRejection.Terminal)
-      expect(
-        await rejectionOf(
-          t.withIdentity(PITCHER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 }),
-        ),
-      ).toBe(DuelRejection.Terminal)
+      expect(await rejectionOf(pitchBy(t, BATTER, gameId, LEGAL))).toBe(DuelRejection.Terminal)
+      expect(await rejectionOf(swingBy(t, PITCHER, gameId, LEGAL))).toBe(DuelRejection.Terminal)
     })
 
     it('categorises an empty seat as terminal', async () => {
       const { t, gameId } = await setupGame()
       await t.run((ctx) => ctx.db.patch(gameId, { currentPitcher: null, currentBatter: null }))
 
-      expect(
-        await rejectionOf(
-          t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 }),
-        ),
-      ).toBe(DuelRejection.Terminal)
-      expect(
-        await rejectionOf(
-          t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 }),
-        ),
-      ).toBe(DuelRejection.Terminal)
+      expect(await rejectionOf(pitchBy(t, PITCHER, gameId, LEGAL))).toBe(DuelRejection.Terminal)
+      expect(await rejectionOf(swingBy(t, BATTER, gameId, LEGAL))).toBe(DuelRejection.Terminal)
     })
 
     it('categorises a number outside the ring as re-enterable', async () => {
@@ -528,23 +521,15 @@ describe('secret at-bat round-trip', () => {
       // The commit screen shares `isDuelNumber` with the server, so reaching this
       // rejection means the screen was bypassed — but the seat may still commit.
       for (const bad of [0, 1000, 1.5, -3]) {
-        expect(
-          await rejectionOf(
-            t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: bad }),
-          ),
-        ).toBe(DuelRejection.ReEnterable)
+        expect(await rejectionOf(pitchBy(t, PITCHER, gameId, bad))).toBe(DuelRejection.ReEnterable)
       }
     })
 
     it('categorises a seat that has already locked at this ordinal as re-enterable', async () => {
       const { t, gameId } = await setupGame()
-      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      await pitchBy(t, PITCHER, gameId, LEGAL)
 
-      expect(
-        await rejectionOf(
-          t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 600 }),
-        ),
-      ).toBe(DuelRejection.ReEnterable)
+      expect(await rejectionOf(pitchBy(t, PITCHER, gameId, 600))).toBe(DuelRejection.ReEnterable)
     })
   })
 

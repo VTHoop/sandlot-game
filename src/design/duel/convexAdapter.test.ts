@@ -5,6 +5,7 @@ import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
+import type { MutationCtx } from '../../../convex/_generated/server'
 import { DuelRejection, DuelStatus } from '../../../convex/duelContract'
 import schema from '../../../convex/schema'
 import {
@@ -68,6 +69,57 @@ interface Seed {
   homePitcher: Id<'players'>
 }
 
+/** The six invented players the two lineups field. */
+async function insertPlayers(ctx: MutationCtx): Promise<Omit<Seed, 'game'>> {
+  return {
+    awayLeadoff: await ctx.db.insert('players', {
+      name: 'R. VANCE',
+      ...HITTER,
+      attributes: AWAY_LEADOFF_ATTRS,
+    }),
+    awaySecond: await ctx.db.insert('players', {
+      name: 'T. JULIEN',
+      ...HITTER,
+      attributes: AWAY_SECOND_ATTRS,
+    }),
+    homeLeadoff: await ctx.db.insert('players', {
+      name: 'J. WHITLOCK',
+      ...HITTER,
+      attributes: HOME_LEADOFF_ATTRS,
+    }),
+    homeSecond: await ctx.db.insert('players', {
+      name: 'Q. BAKER',
+      ...HITTER,
+      attributes: HOME_SECOND_ATTRS,
+    }),
+    awayPitcher: await ctx.db.insert('players', { name: 'G. PIKE', ...ARM, attributes: ARM_ATTRS }),
+    homePitcher: await ctx.db.insert('players', {
+      name: 'H. MARSH',
+      ...ARM,
+      attributes: ARM_ATTRS,
+    }),
+  }
+}
+
+/** A fresh `games` row for two clubs, in the state `startGame` opens from. */
+const scheduledRow = (homeTeam: Id<'teams'>, awayTeam: Id<'teams'>) =>
+  ({
+    homeTeam,
+    awayTeam,
+    inning: 1,
+    half: 'top',
+    outs: 0,
+    bases: EMPTY_BASES,
+    homeScore: 0,
+    awayScore: 0,
+    status: 'scheduled',
+    currentBatter: null,
+    currentPitcher: null,
+    homeBattingIndex: 0,
+    awayBattingIndex: 0,
+    lastResolvedSequence: -1,
+  }) as const
+
 /** A live game with both clubs under one owner, opened through `startGame`. */
 async function seedLiveGame() {
   const t = convexTest(schema, modules)
@@ -80,56 +132,9 @@ async function seedLiveGame() {
 
     const homeTeam = await ctx.db.insert('teams', { owner: manager, name: 'Ridgeview Rail' })
     const awayTeam = await ctx.db.insert('teams', { owner: manager, name: 'Harbor Kingfishers' })
+    const players = await insertPlayers(ctx)
 
-    const players = {
-      awayLeadoff: await ctx.db.insert('players', {
-        name: 'R. VANCE',
-        ...HITTER,
-        attributes: AWAY_LEADOFF_ATTRS,
-      }),
-      awaySecond: await ctx.db.insert('players', {
-        name: 'T. JULIEN',
-        ...HITTER,
-        attributes: AWAY_SECOND_ATTRS,
-      }),
-      homeLeadoff: await ctx.db.insert('players', {
-        name: 'J. WHITLOCK',
-        ...HITTER,
-        attributes: HOME_LEADOFF_ATTRS,
-      }),
-      homeSecond: await ctx.db.insert('players', {
-        name: 'Q. BAKER',
-        ...HITTER,
-        attributes: HOME_SECOND_ATTRS,
-      }),
-      awayPitcher: await ctx.db.insert('players', {
-        name: 'G. PIKE',
-        ...ARM,
-        attributes: ARM_ATTRS,
-      }),
-      homePitcher: await ctx.db.insert('players', {
-        name: 'H. MARSH',
-        ...ARM,
-        attributes: ARM_ATTRS,
-      }),
-    }
-
-    const game = await ctx.db.insert('games', {
-      homeTeam,
-      awayTeam,
-      inning: 1,
-      half: 'top',
-      outs: 0,
-      bases: EMPTY_BASES,
-      homeScore: 0,
-      awayScore: 0,
-      status: 'scheduled',
-      currentBatter: null,
-      currentPitcher: null,
-      homeBattingIndex: 0,
-      awayBattingIndex: 0,
-      lastResolvedSequence: -1,
-    })
+    const game = await ctx.db.insert('games', scheduledRow(homeTeam, awayTeam))
     await ctx.db.insert('lineups', {
       game,
       team: awayTeam,
