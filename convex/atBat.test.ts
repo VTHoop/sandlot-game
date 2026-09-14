@@ -5,7 +5,7 @@ import { ConvexError } from 'convex/values'
 import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from './_generated/api'
-import type { Id } from './_generated/dataModel'
+import type { Doc, Id } from './_generated/dataModel'
 import { DuelRejection, type DuelRejectionData } from './atBat'
 import schema from './schema'
 
@@ -17,6 +17,8 @@ const BATTER = { subject: 'batter-subject' }
 const STRANGER = { subject: 'stranger-subject' }
 
 const EMPTY_BASES = { first: null, second: null, third: null }
+
+type Role = Doc<'players'>['role']
 
 /**
  * Seed a live game in the top half: the away team (owned by BATTER) is at bat,
@@ -604,6 +606,54 @@ describe('secret at-bat round-trip', () => {
 
       const view = await t.withIdentity(BATTER).query(api.atBat.getActiveDuel, { game: gameId })
       expect(view).toMatchObject({ outcome: 'HR', groundBallResult: null })
+    })
+  })
+
+  describe('the pitcher-as-runner speed default (SAN-16)', () => {
+    /**
+     * pitch 1 / swing 327 with a runner on first splits on that runner's speed
+     * alone: the slowest is doubled off, the fastest beats the throw into a
+     * fielder's choice. That makes the default observable from outside — a
+     * pitcher carries no speed attribute to read, so the boundary forces 1.
+     */
+    const SPEED_SPLIT = { pitch: 1, swing: 327 }
+
+    /** Resolve the split duel with one runner on first, seeded into the same
+     * harness as the game — a runner id from elsewhere would dangle, and a
+     * dangling runner reads as no speed at all rather than as the floor. */
+    const groundBallWith = async (runner: Doc<'players'>['attributes'], role: Role) => {
+      const { t, gameId } = await setupGame()
+      const onFirst = await t.run(async (ctx) =>
+        ctx.db.insert('players', {
+          name: role === 'pitcher' ? 'Reliever' : 'Burner',
+          source: 'custom',
+          role,
+          position: role === 'pitcher' ? 'P' : 'CF',
+          price: null,
+          attributes: runner,
+        }),
+      )
+      await t.run((ctx) =>
+        ctx.db.patch(gameId, { bases: { first: onFirst, second: null, third: null } }),
+      )
+      await t
+        .withIdentity(PITCHER)
+        .mutation(api.atBat.commitPitch, { game: gameId, number: SPEED_SPLIT.pitch })
+      await t
+        .withIdentity(BATTER)
+        .mutation(api.atBat.commitSwing, { game: gameId, number: SPEED_SPLIT.swing })
+      const [ab] = await atBatRows(t, gameId)
+      return ab.groundBallResult
+    }
+
+    it('runs a pitcher on base at the slowest speed, not at a speed read off nothing', async () => {
+      const arm = { velocity: 3, movement: 3, awareness: 3, command: 3 } as const
+      expect(await groundBallWith(arm, 'pitcher')).toBe('DP')
+
+      // The contrast is the assertion: the same duel with a fast runner does not
+      // turn two, so the pitcher's result is the speed floor and not a constant.
+      const burner = { power: 3, contact: 3, speed: 5, eye: 3 } as const
+      expect(await groundBallWith(burner, 'hitter')).toBe('FC')
     })
   })
 })
