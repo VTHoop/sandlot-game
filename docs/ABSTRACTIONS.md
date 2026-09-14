@@ -248,7 +248,7 @@ authoritative resolver and the participant gates, into its bundle. The vault
 module owns the behaviour and re-exports these, so `./atBat` stays a valid door;
 this owns the words both sides say.
 
-`DuelRejection` splits refusals by **what the seat should do next**, the only
+See ADR-0026. `DuelRejection` splits refusals by **what the seat should do next**, the only
 distinction a caller can act on: *terminal* (not live, not your club, empty seat)
 versus *re-enterable* (already locked at this ordinal, number outside the ring).
 Neither is normal flow — the commit screen shares `isDuelNumber` with the server,
@@ -534,7 +534,7 @@ Surfaced as the **PLAY** tab of the `/design` showcase — no new route.
 
 ## Convex-backed duel adapter (`src/design/duel/convexAdapter.ts`, SAN-57)
 
-The second `DuelAdapter`: the same `playHalfInning` loop and the same components,
+ADR-0026. The second `DuelAdapter`: the same `playHalfInning` loop and the same components,
 with the in-memory state swapped for server round-trips. Nothing consumes it on a
 route until SAN-39 — its tests are the acceptance surface.
 
