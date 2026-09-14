@@ -1,9 +1,12 @@
 // @vitest-environment edge-runtime
 /// <reference types="vite/client" />
+
+import { ConvexError } from 'convex/values'
 import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from './_generated/api'
 import type { Id } from './_generated/dataModel'
+import { DuelRejection, type DuelRejectionData } from './atBat'
 import schema from './schema'
 
 // convex-test discovers the function modules; exclude the test files themselves.
@@ -107,6 +110,22 @@ const commitmentRows = (t: Harness, game: Id<'games'>) =>
       .withIndex('by_game', (q) => q.eq('game', game))
       .collect(),
   )
+
+/**
+ * The rejection category a refused commit carried. Fails loudly on a commit that
+ * was accepted, and on an error that is not a categorised rejection — either one
+ * is a different bug than the test is asking about, and swallowing it would let
+ * this assertion pass for the wrong reason.
+ */
+async function rejectionOf(call: Promise<unknown>): Promise<DuelRejection> {
+  try {
+    await call
+  } catch (error) {
+    if (error instanceof ConvexError) return (error.data as DuelRejectionData).rejection
+    throw error
+  }
+  throw new Error('expected the commit to be rejected, but it was accepted')
+}
 
 describe('secret at-bat round-trip', () => {
   it('resolves an exact-match duel into exactly one complete at_bats row', async () => {
@@ -455,6 +474,136 @@ describe('secret at-bat round-trip', () => {
       expect(ab.groundBallResult).toBe('GO_RA')
       expect(ab.outsAfter).toBe(1)
       expect(ab.basesAfter).toEqual({ first: null, second: runner, third: null })
+    })
+  })
+
+  describe('typed commit rejections (SAN-57)', () => {
+    it('categorises a game that is not live as terminal', async () => {
+      const { t, gameId } = await setupGame()
+      await t.run((ctx) => ctx.db.patch(gameId, { status: 'final' }))
+
+      const call = t
+        .withIdentity(PITCHER)
+        .mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      expect(await rejectionOf(call)).toBe(DuelRejection.Terminal)
+    })
+
+    it('categorises committing for a club you do not own as terminal', async () => {
+      const { t, gameId } = await setupGame()
+
+      // The batting owner reaching for the pitching seat, and the mirror.
+      expect(
+        await rejectionOf(
+          t.withIdentity(BATTER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 }),
+        ),
+      ).toBe(DuelRejection.Terminal)
+      expect(
+        await rejectionOf(
+          t.withIdentity(PITCHER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 }),
+        ),
+      ).toBe(DuelRejection.Terminal)
+    })
+
+    it('categorises an empty seat as terminal', async () => {
+      const { t, gameId } = await setupGame()
+      await t.run((ctx) => ctx.db.patch(gameId, { currentPitcher: null, currentBatter: null }))
+
+      expect(
+        await rejectionOf(
+          t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 }),
+        ),
+      ).toBe(DuelRejection.Terminal)
+      expect(
+        await rejectionOf(
+          t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 }),
+        ),
+      ).toBe(DuelRejection.Terminal)
+    })
+
+    it('categorises a number outside the ring as re-enterable', async () => {
+      const { t, gameId } = await setupGame()
+
+      // The commit screen shares `isDuelNumber` with the server, so reaching this
+      // rejection means the screen was bypassed — but the seat may still commit.
+      for (const bad of [0, 1000, 1.5, -3]) {
+        expect(
+          await rejectionOf(
+            t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: bad }),
+          ),
+        ).toBe(DuelRejection.ReEnterable)
+      }
+    })
+
+    it('categorises a seat that has already locked at this ordinal as re-enterable', async () => {
+      const { t, gameId } = await setupGame()
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+
+      expect(
+        await rejectionOf(
+          t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 600 }),
+        ),
+      ).toBe(DuelRejection.ReEnterable)
+    })
+  })
+
+  describe('the resolution a commit hands back (SAN-57)', () => {
+    it('names the ordinal it resolved, so a caller can tell which at-bat landed', async () => {
+      const { t, gameId } = await setupGame()
+
+      const pending = await t
+        .withIdentity(PITCHER)
+        .mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      expect(pending).toBeNull() // one side on file resolves nothing
+
+      const resolved = await t
+        .withIdentity(BATTER)
+        .mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
+      expect(resolved).toMatchObject({ sequence: 0, outcome: 'HR' })
+
+      // The second at-bat is the next ordinal, so the caller can distinguish the
+      // two without re-deriving the count itself.
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      const next = await t
+        .withIdentity(BATTER)
+        .mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
+      expect(next).toMatchObject({ sequence: 1 })
+    })
+  })
+
+  describe('the reveal a resolved duel exposes (SAN-57)', () => {
+    it('carries the ground-ball sub-result, not just the band', async () => {
+      const { t, gameId } = await setupGame()
+      // The same neutral GO_RA duel the persistence test above pins: pitch 1 /
+      // swing 273 with a runner on first. The band alone would let the reveal
+      // shout "GROUNDOUT" for a double play and retire runners in place instead
+      // of at the bag they were forced to.
+      const runner = await t.run((ctx) =>
+        ctx.db.insert('players', {
+          name: 'Runner',
+          source: 'custom',
+          role: 'hitter',
+          position: '2B',
+          price: null,
+          attributes: { power: 3, contact: 3, speed: 3, eye: 3 },
+        }),
+      )
+      await t.run((ctx) =>
+        ctx.db.patch(gameId, { bases: { first: runner, second: null, third: null } }),
+      )
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 1 })
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 273 })
+
+      const view = await t.withIdentity(BATTER).query(api.atBat.getActiveDuel, { game: gameId })
+      expect(view).toMatchObject({ status: 'resolved', outcome: 'GB', groundBallResult: 'GO_RA' })
+    })
+
+    it('carries a null sub-result for an outcome that is not a ground ball', async () => {
+      const { t, gameId } = await setupGame()
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
+
+      const view = await t.withIdentity(BATTER).query(api.atBat.getActiveDuel, { game: gameId })
+      expect(view).toMatchObject({ outcome: 'HR', groundBallResult: null })
     })
   })
 })
