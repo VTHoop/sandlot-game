@@ -5,7 +5,7 @@ import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
-import { DuelRejection } from '../../../convex/duelContract'
+import { DuelRejection, DuelStatus } from '../../../convex/duelContract'
 import schema from '../../../convex/schema'
 import {
   type ConvexDuelAdapter,
@@ -425,6 +425,110 @@ describe('the Convex-backed adapter — rejections carry their category', () => 
     // Mis-categorising a transport failure as a game rule would be worse than
     // not categorising it: the Convex client retries a dropped mutation itself.
     await expect(adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing)).rejects.toThrow('socket closed')
+  })
+})
+
+describe('the Convex-backed adapter — snapshot coherence', () => {
+  /** The real gateway with one read doctored — what a lagging subscription, or a
+   * read served from an older view, would hand the adapter. */
+  const withDuelRead = (
+    t: Harness,
+    game: Id<'games'>,
+    readDuel: DuelGateway['readDuel'],
+  ): DuelGateway => ({ ...gatewayFor(t, MANAGER, game), readDuel })
+
+  it('refuses a read that does not reflect the at-bat it just resolved', async () => {
+    const { t, game } = await seedLiveGame()
+    const adapter = await createConvexDuelAdapter(
+      withDuelRead(t, game, () =>
+        Promise.resolve({
+          status: DuelStatus.AwaitingCommitments,
+          sequence: 0,
+          pitchCommitted: false,
+          swingCommitted: false,
+        }),
+      ),
+    )
+
+    // Returning here would hand the loop a reveal for an at-bat the read cannot
+    // confirm happened — worse than failing, because the loop would carry on.
+    await expect(adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing)).rejects.toThrow(/at-bat 0/)
+  })
+
+  it('refuses a resolved read that is missing part of its outcome', async () => {
+    const { t, game } = await seedLiveGame()
+    const adapter = await createConvexDuelAdapter(
+      withDuelRead(t, game, () =>
+        Promise.resolve({
+          status: DuelStatus.Resolved,
+          sequence: 0,
+          pitchCommitted: true,
+          swingCommitted: true,
+          pitchNumber: HOME_RUN.pitch,
+          batterNumber: HOME_RUN.swing,
+          // No `outcome`: the reveal has nothing to shout, and guessing one would
+          // show the player a result the server never produced.
+          runsScored: 1,
+          outsAfter: 0,
+          basesAfter: EMPTY_BASES,
+        }),
+      ),
+    )
+
+    await expect(adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing)).rejects.toThrow(/outcome/)
+  })
+})
+
+describe('the Convex-backed adapter — a game that ends', () => {
+  /** Bottom of the 6th, tied: the home club taking the lead is a walk-off. */
+  async function seedWalkOff() {
+    const seeded = await seedLiveGame()
+    await seeded.t.run((ctx) =>
+      ctx.db.patch(seeded.game, {
+        inning: 6,
+        half: 'bottom',
+        currentBatter: seeded.homeLeadoff,
+        currentPitcher: seeded.awayPitcher,
+      }),
+    )
+    return seeded
+  }
+
+  it('carries the last live situation into the final snapshot, seating nobody', async () => {
+    const { t, game } = await seedWalkOff()
+    const adapter = await adapterFor(t, game)
+
+    const { reveal } = await adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing)
+
+    expect(reveal).toMatchObject({ outcome: 'HR', half: 'BOTTOM', inning: 6, runsScored: 1 })
+    // The final read carries no inning, outs or seats — a finished game has none
+    // — so the snapshot holds where the last out left it, with nobody seated.
+    expect(adapter.state()).toMatchObject({
+      status: GameStatus.Final,
+      inning: 6,
+      half: Half.Bottom,
+      homeScore: 1,
+      awayScore: 0,
+      currentBatter: null,
+      currentPitcher: null,
+    })
+    expect(adapter.hits()).toEqual({ you: 1, opp: 0 })
+  })
+
+  it('refuses a further at-bat without reaching the server for one', async () => {
+    const { t, game } = await seedWalkOff()
+    const adapter = await adapterFor(t, game)
+    await adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing)
+
+    // The snapshot already says the game is over, so there is nothing to ask.
+    await expect(adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing)).rejects.toThrow(/not live/)
+    const rows = await t.run((ctx) =>
+      ctx.db
+        .query('duelCommitments')
+        .withIndex('by_game', (q) => q.eq('game', game))
+        .collect(),
+    )
+    expect(rows).toHaveLength(2) // the walk-off's pair, and nothing after it
   })
 })
 

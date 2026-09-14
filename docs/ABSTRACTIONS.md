@@ -234,6 +234,28 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
   holding a player that no longer exists, throws — corrupt authoritative state,
   and an empty base would show the batter a situation that is not the real one.
 
+## Duel wire vocabulary (`convex/duelContract.ts`)
+
+What a commit hands back (`DuelCommitResult` — the at-bat id, its `sequence`, and
+the outcome), why one was refused (`DuelRejection` + `DuelRejectionData`, thrown
+through `refuse` and read back through `duelRejectionOf`), and what the reveal
+query reports (`DuelStatus` / `DuelView`).
+
+**A leaf module on purpose.** It imports no Convex server runtime — only
+`convex/values` and engine types — so a browser client can branch on these
+without pulling `convex/atBat.ts`, and behind it `_generated/server`, the
+authoritative resolver and the participant gates, into its bundle. The vault
+module owns the behaviour and re-exports these, so `./atBat` stays a valid door;
+this owns the words both sides say.
+
+`DuelRejection` splits refusals by **what the seat should do next**, the only
+distinction a caller can act on: *terminal* (not live, not your club, empty seat)
+versus *re-enterable* (already locked at this ordinal, number outside the ring).
+Neither is normal flow — the commit screen shares `isDuelNumber` with the server,
+so a range rejection means the screen was bypassed. An unauthenticated caller is
+refused by the shared auth gate first and stays uncategorised: signing in is not
+a duel concern.
+
 ## Dev fixture seed (`convex/seed.ts` + `seedRoster.ts`)
 
 `startGame` needs a `scheduled` game with two owned teams and two complete
@@ -449,8 +471,24 @@ the adapter fills exactly that gap:
   engine), so it is an explicit identity map, but a `Record` forces all ten keys
   at compile time and a mirror test asserts coverage, so an unmapped outcome fails
   loudly rather than silently mis-displaying.
+- **`DuelAdapter` — what the loop drives, and all it may assume (SAN-57).**
+  `state()` and `hits()` are synchronous; `playAtBat` is sync **or** a promise, so
+  the loop awaits it and drives either implementation without branching.
+  `state()` returns `DuelState`, a subset of the engine's `LiveGameState`: the
+  batting-order pointers and the applied-sequence marker are the authoritative
+  writer's bookkeeping, and the read model returns neither (ADR-0025), so naming
+  them would force the Convex adapter to invent two numbers no consumer reads.
+  `createDuelAdapter` keeps its own richer `InMemoryDuelAdapter` — the fixture
+  path holds the whole envelope and loses nothing.
+- **`buildReveal` / `buildMatchup` / `byBattingSide` / `baseRunningSpeed`.** The
+  perspective-bearing pieces both paths share. `buildReveal` takes `ResolvedFacts`
+  — outcome, ground-ball sub-result, runs, outs, bases — which the engine's
+  `ResolvedAtBat` and the server's resolved duel view both satisfy, so the server
+  path renders through the same builder rather than a parallel copy of it.
+  `byBattingSide` is the single home/away → `you`/`opp` split, used for scores and
+  hit totals alike so a half boundary can never flip one and not the other.
 - **`deriveSituation(state, hits, roster)` / `deriveMatchup(state, roster, context)`
-  (SAN-47).** The commit screen's inputs, read from `LiveGameState` rather than
+  (SAN-47).** The commit screen's inputs, read from live state rather than
   fixtures. `deriveSituation` returns a `DuelSituation` — the non-secret subset that
   structurally excludes both duel numbers (secret-state law); since SAN-51 it also
   carries `runnersOn`, the live base occupancy (lead order, occupancy only — never
@@ -493,6 +531,54 @@ Surfaced as the **PLAY** tab of the `/design` showcase — no new route.
   that sets each seat to human/bot independently. Changing a seat or restarting bumps an
   epoch that remounts a fresh half-inning. `RevealMotion` carries an optional advance
   affordance (`onAdvance` / `advanceLabel`) so the container can drive the sequence.
+
+## Convex-backed duel adapter (`src/design/duel/convexAdapter.ts`, SAN-57)
+
+The second `DuelAdapter`: the same `playHalfInning` loop and the same components,
+with the in-memory state swapped for server round-trips. Nothing consumes it on a
+route until SAN-39 — its tests are the acceptance surface.
+
+- **It resolves nothing.** A committed number goes to `commitPitch` /
+  `commitSwing`; the server reads both, resolves through the engine, appends the
+  log and advances the live row in one transaction; the reveal is built from the
+  outcome it hands back (ADR-0016). The sibling `adapter.ts` keeps the read-only
+  engine call ADR-0009 permits for previews — this module never calls it.
+- **`DuelGateway` — the port.** One read of `gameView.getGame`, one of
+  `atBat.getActiveDuel`, and one mutation per seat, with the game id already
+  bound. A port rather than a `ConvexReactClient` dependency on two counts: it
+  keeps the module React-free so the loop stays drivable headlessly, and it is
+  the seam SAN-22 replaces with a subscription — a pushed snapshot installs
+  through `refresh()` exactly as a re-read does.
+- **`playAtBat` does not settle until the snapshot reflects its at-bat.** The
+  loop reads `state()` twice immediately after it returns, and a pre-commit read
+  there would re-seat the same batter and commit the at-bat twice. It **confirms
+  rather than assumes**: the commit's `sequence` (SAN-57 added it to the mutation
+  result) must match the ordinal the refreshed duel view reports, or it refuses.
+- **Order independence is read, not assumed** (ADR-0014). The server resolves on
+  whichever commit completes the pair, so the *pitch* may resolve it when a swing
+  is already on file. Hotseat drives both seats, so that means an out-of-band
+  lock and the held swing has no ordinal left — committing it anyway would seal
+  the next at-bat with a number nobody chose for it, so this refuses instead.
+- **Rejections carry a category, not a message.** `DuelCommitError.rejection` is
+  a `DuelRejection` read off the server's `ConvexError` data (see
+  `convex/duelContract.ts`). Anything that is not a categorised rejection
+  propagates untouched — the Convex client retries a dropped mutation itself, so
+  dressing a transport fault up as a game rule would be worse than leaving it be.
+- **Roster resolution happens here, at the boundary.** Each `SeatView` becomes a
+  `RosterPlayer` — name, attribute block, and the base-running speed derived from
+  that block, with a pitcher-as-runner forced to 1 (SAN-16), the same default
+  `convex/atBat.ts` applies where it feeds the engine. `roster()` hands back one
+  live `ReadonlyMap` that the boundary keeps current as the seats change, because
+  `playHalfInning` takes the handle once and holds it for the whole half.
+- **Hit totals need no running count.** The server sends both clubs' absolute
+  totals; `byBattingSide` splits them off the cached half, so they flip on their
+  own when the half does — agreeing with the in-memory path's `rollHitTotals`
+  across a half boundary without a second counter to keep in step.
+- **A finished game keeps its last live situation.** The final read carries no
+  inning, outs, bases or seats, so the last live snapshot stands where it stopped
+  with the authoritative score written over it and nobody seated — the shape the
+  engine's own `finalize` produces, which is what lets the loop's `sameHalf`
+  guard end the half identically on both paths.
 
 ## Bot seat agent (SAN-48)
 
