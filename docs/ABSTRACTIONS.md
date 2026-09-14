@@ -197,7 +197,7 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
 | `status` | carries |
 |---|---|
 | `scheduled` | the matchup — both clubs, and which one the caller owns |
-| `live` | inning · half · outs · runner-aware bases · both scores · both hit totals · the seated batter and pitcher · the caller's seat · the two lock booleans |
+| `live` | inning · half · outs · runner-aware bases · both scores · both hit totals · the seated batter and pitcher · the next two hitters due up · the caller's seat · the two lock booleans |
 | `final` | both scores · both hit totals · the winning club |
 
 - **Perspective is the client's.** Every number is absolute (`home`/`away`), so
@@ -210,6 +210,12 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
 - **Seats and runners resolve to renderable data** — `{ id, name }` for anyone on
   the field, plus the attribute block on the batter and pitcher. Runner identity
   is in the model whether or not a screen names one today.
+- **`dueUp` names the next two hitters** behind the batter (SAN-57), off the
+  batting club's `lineups.battingOrder` and the game row's pointer for that club.
+  The pointer indexes the batter himself, so the list starts one past it and
+  wraps — the ninth hitter is always followed by the leadoff man. It is here
+  because `MatchupCard` renders its DUE UP header unconditionally: without it the
+  server path would read poorer than the fixture path it replaces.
 - **No committed number is reachable from here, structurally.** The module never
   queries `duelCommitments`; it calls `atBat.duelLocks` and gets two booleans.
   The locks reset on their own — they are read at the current at-bat ordinal, and
