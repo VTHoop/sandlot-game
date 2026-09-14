@@ -59,6 +59,31 @@ import {
  * let downstream UI assume `you === batter` on its own — decide it only here.
  */
 
+/**
+ * The live state a duel consumer reads — a subset of the engine's
+ * `LiveGameState`. The batting-order pointers and the applied-sequence marker
+ * are the authoritative writer's own bookkeeping, and the server read model
+ * deliberately returns neither (ADR-0025: renderable data, not raw pointers).
+ * Naming them here would force the Convex-backed adapter to invent two numbers
+ * no consumer reads, so the contract is narrowed to what the duel screens and
+ * the play loop genuinely consume instead.
+ *
+ * `LiveGameState` is assignable to this, so the in-memory adapter satisfies it
+ * by construction and still hands its own callers the full envelope.
+ */
+export type DuelState = Pick<
+  LiveGameState,
+  | 'status'
+  | 'inning'
+  | 'half'
+  | 'outs'
+  | 'bases'
+  | 'homeScore'
+  | 'awayScore'
+  | 'currentBatter'
+  | 'currentPitcher'
+>
+
 /** Running hit totals from the reveal's perspective: `you` = the side the reveal
  * is rendered for (the batter, in SAN-45 — see the module header), `opp` = the
  * other side. */
@@ -83,6 +108,17 @@ export interface DuelResolution {
 
 function isHitterBlock(attrs: HitterAttributes | PitcherAttributes): attrs is HitterAttributes {
   return 'power' in attrs
+}
+
+/**
+ * A player's base-running speed from their attribute block alone: a hitter's own
+ * speed, a pitcher-as-runner forced to the slowest (1, SAN-16). Exported because
+ * the same default has to survive the move to server-resolved rosters — the
+ * Convex boundary builds its roster entries through this, and `convex/atBat.ts`
+ * applies the identical rule where it feeds the engine.
+ */
+export function baseRunningSpeed(attributes: HitterAttributes | PitcherAttributes): number {
+  return isHitterBlock(attributes) ? attributes.speed : 1
 }
 
 /**
@@ -381,18 +417,29 @@ function halfLabel(half: Half): 'TOP' | 'BOTTOM' {
 }
 
 /**
- * Score-before from the reveal's perspective. In SAN-45's scope the reveal is
- * rendered for the batter, so "you" = the batting team: the away team bats the top
- * half and the home team the bottom (SAN-21), and the mapping follows `state.half`
- * — a bottom-half reveal credits the home score, not the away score. This is one
- * of the three perspective-bearing spots the module header calls out: when a
- * `viewer` input lands, key "you"/"opp" off the viewer's team here instead of off
- * the batting side.
+ * Split an absolute home/away pair into the reveal's perspective. In SAN-45's
+ * scope the reveal is rendered for the batter, so "you" = the batting team: the
+ * away team bats the top half and the home team the bottom (SAN-21), and the
+ * mapping follows the half — a bottom-half reveal credits the home side, not the
+ * away one. This is one of the three perspective-bearing spots the module header
+ * calls out: when a `viewer` input lands, key "you"/"opp" off the viewer's team
+ * here instead of off the batting side.
+ *
+ * Scores and hit totals take the same split, which is why it is one function: the
+ * server hands both over absolutely (ADR-0025), and the two must agree about who
+ * "you" is or a half boundary would flip one and not the other.
  */
-function scoreBefore(state: LiveGameState): { you: number; opp: number } {
-  return state.half === Half.Top
-    ? { you: state.awayScore, opp: state.homeScore }
-    : { you: state.homeScore, opp: state.awayScore }
+export function byBattingSide(
+  half: Half,
+  totals: { home: number; away: number },
+): { you: number; opp: number } {
+  return half === Half.Top
+    ? { you: totals.away, opp: totals.home }
+    : { you: totals.home, opp: totals.away }
+}
+
+function scoreBefore(state: DuelState): { you: number; opp: number } {
+  return byBattingSide(state.half, { home: state.homeScore, away: state.awayScore })
 }
 
 function buildApplied(state: LiveGameState, resolved: ResolvedAtBat): AppliedAtBat {
@@ -405,17 +452,38 @@ function buildApplied(state: LiveGameState, resolved: ResolvedAtBat): AppliedAtB
   }
 }
 
-function buildReveal(params: {
+/**
+ * The resolved facts a reveal is built from, named apart from whoever produced
+ * them. The engine's `ResolvedAtBat` satisfies it structurally, and so does the
+ * server's resolved duel view — which is what lets the Convex-backed adapter
+ * render the reveal from the SERVER's outcome (ADR-0016: clients never arbitrate)
+ * through the very same builder the fixture path uses.
+ */
+export interface ResolvedFacts {
+  outcome: OutcomeBandKey
+  groundBallResult: GroundBallResult | null
+  runsScored: number
+  outsAfter: number
+  basesAfter: BaseState
+}
+
+/**
+ * Build the reveal a resolved at-bat renders as. Perspective-bearing throughout —
+ * `you`/`them`, `opponent` and `scoreBefore` are all the batter's (see the module
+ * header) — and derived entirely from the before-state plus the resolved facts,
+ * so it holds whether those facts came from the local engine call or from the
+ * server's authoritative one.
+ */
+export function buildReveal(params: {
   pitch: number
   swing: number
-  state: LiveGameState
-  resolved: ResolvedAtBat
-  applied: AppliedAtBat
+  state: DuelState
+  resolved: ResolvedFacts
   batter: RunnerId
   opponent: string
   hitsBefore: HitTotals
 }): RevealScenario {
-  const { pitch, swing, state, resolved, applied, batter, opponent, hitsBefore } = params
+  const { pitch, swing, state, resolved, batter, opponent, hitsBefore } = params
   const outcome = toOutcomeKey(resolved.outcome)
   return {
     movements: deriveRunnerMovements({
@@ -434,7 +502,7 @@ function buildReveal(params: {
     outcome,
     inning: state.inning,
     half: halfLabel(state.half),
-    outs: applied.outsAfter,
+    outs: resolved.outsAfter,
     runsScored: resolved.runsScored,
     scoreBefore: scoreBefore(state),
     hitsBefore,
@@ -485,7 +553,6 @@ export function resolveDuelAtBat(
     swing,
     state,
     resolved,
-    applied,
     batter: batter.id,
     opponent: pitcher.player.name,
     hitsBefore,
@@ -495,11 +562,29 @@ export function resolveDuelAtBat(
 
 // ── Stateful adapter ─────────────────────────────────────────────────────────
 
-/** A pure (no I/O) adapter that threads the live state through `advance` and
- * tracks the running hit count from the batting side's perspective. */
+/**
+ * What `playHalfInning` drives, and all it may assume. Two implementations
+ * satisfy it — the in-memory one below and the Convex-backed one (SAN-57) — and
+ * the loop never branches on which it holds.
+ *
+ * `state()` and `hits()` are synchronous, answered from whatever snapshot the
+ * implementation already has. `playAtBat` may be either synchronous (the fixture
+ * path resolves in-process) or a promise (the Convex path is a round trip), so
+ * the loop awaits it; a resolved value awaits to itself.
+ */
 export interface DuelAdapter {
-  state(): LiveGameState
+  state(): DuelState
   hits(): HitTotals
+  playAtBat(pitch: number, swing: number): DuelResolution | Promise<DuelResolution>
+}
+
+/**
+ * The fixture adapter's own contract: it holds the whole engine envelope and
+ * resolves in-process, so its callers keep both — a narrowing here would hide
+ * state the in-memory path genuinely has.
+ */
+export interface InMemoryDuelAdapter extends DuelAdapter {
+  state(): LiveGameState
   playAtBat(pitch: number, swing: number): DuelResolution
 }
 
@@ -523,7 +608,7 @@ function rollHitTotals(hits: HitTotals, outcome: OutcomeKey, before: Half, after
  * correct `hitsBefore` and base state, and the totals follow the batting side if
  * a third out flips the half.
  */
-export function createDuelAdapter(roster: Roster, context: GameContext): DuelAdapter {
+export function createDuelAdapter(roster: Roster, context: GameContext): InMemoryDuelAdapter {
   let liveState = startGame(context)
   let hitTotals: HitTotals = noHits()
   return {
@@ -570,11 +655,7 @@ function occupiedBases(bases: BaseState): FieldSpot[] {
  * perspective-bearing spot the module header calls out — it already keys "you" off
  * the batting side via {@link scoreBefore}.
  */
-export function deriveSituation(
-  state: LiveGameState,
-  hits: HitTotals,
-  roster: Roster,
-): DuelSituation {
+export function deriveSituation(state: DuelState, hits: HitTotals, roster: Roster): DuelSituation {
   const pitcher = seated(roster, state.currentPitcher, SeatedRole.Pitcher)
   return {
     opponent: pitcher.player.name,
@@ -616,12 +697,30 @@ function dueUp(state: LiveGameState, context: GameContext, roster: Roster): stri
 }
 
 /**
- * Build the commit screen's two-sided matchup from live state. Hotseat casts the
- * currently-batting side as "you", so both seats depict the SAME real pitcher-vs-
- * batter matchup — `DuelCommit.orientSeat` flips which side throws vs. swings per
- * seat. Attribute blocks are mapped from the engine domain to the UI's pip labels
- * here (the components never see the engine shapes).
+ * Assemble the two-sided matchup from players that are already resolved. Hotseat
+ * casts the currently-batting side as "you", so both seats depict the SAME real
+ * pitcher-vs-batter matchup — `DuelCommit.orientSeat` flips which side throws vs.
+ * swings per seat. Attribute blocks are mapped from the engine domain to the UI's
+ * pip labels here (the components never see the engine shapes).
+ *
+ * `dueUp` is passed in rather than derived, because the two paths learn it
+ * differently: the fixture path walks its own lineups, and the Convex path is
+ * handed the names by the read model (which owns the batting-order pointer).
  */
+export function buildMatchup(
+  pitcher: RosterPlayer,
+  batter: RosterPlayer,
+  dueUp: readonly string[],
+): DuelMatchup {
+  const side = {
+    pitcher: { name: pitcher.name, attrs: displayPitcher(pitcherAttributes(pitcher)) },
+    batter: { name: batter.name, attrs: displayHitter(hitterAttributes(batter)) },
+    dueUp,
+  }
+  return { you: side, opponent: side }
+}
+
+/** Build the commit screen's matchup from fixture state and lineups. */
 export function deriveMatchup(
   state: LiveGameState,
   roster: Roster,
@@ -629,13 +728,5 @@ export function deriveMatchup(
 ): DuelMatchup {
   const pitcher = seated(roster, state.currentPitcher, SeatedRole.Pitcher)
   const batter = seated(roster, state.currentBatter, SeatedRole.Batter)
-  const side = {
-    pitcher: {
-      name: pitcher.player.name,
-      attrs: displayPitcher(pitcherAttributes(pitcher.player)),
-    },
-    batter: { name: batter.player.name, attrs: displayHitter(hitterAttributes(batter.player)) },
-    dueUp: dueUp(state, context, roster),
-  }
-  return { you: side, opponent: side }
+  return buildMatchup(pitcher.player, batter.player, dueUp(state, context, roster))
 }

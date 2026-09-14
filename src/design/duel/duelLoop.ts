@@ -1,5 +1,5 @@
-import { GameStatus, type LiveGameState } from '@sandlot/engine/game'
-import { type DuelAdapter, deriveSituation } from './adapter'
+import { GameStatus } from '@sandlot/engine/game'
+import { type DuelAdapter, type DuelState, deriveSituation } from './adapter'
 import type { Roster } from './roster'
 import { isHit, type RevealScenario } from './scenario'
 import { DuelSeat, type SeatAgent } from './seatAgent'
@@ -41,7 +41,7 @@ function accrueHalf(summary: HalfSummary, reveal: RevealScenario): HalfSummary {
 }
 
 /** Still the same live half-inning we opened on — the loop's continuation guard. */
-function sameHalf(state: LiveGameState, start: LiveGameState): boolean {
+function sameHalf(state: DuelState, start: DuelState): boolean {
   return (
     state.status === GameStatus.Live && state.half === start.half && state.inning === start.inning
   )
@@ -86,7 +86,12 @@ export async function playHalfInning(
       situation,
     })
     const swing = await agents[DuelSeat.Batter].requestNumber({ seat: DuelSeat.Batter, situation })
-    const { reveal } = adapter.playAtBat(pitch, swing)
+    // Awaited because the Convex-backed adapter resolves over the network
+    // (SAN-57); the fixture adapter's synchronous result awaits to itself. The
+    // await also guarantees the snapshot the two `adapter.state()` reads below
+    // see is the POST-at-bat one — reading it early would re-seat the same
+    // batter and commit the at-bat twice.
+    const { reveal } = await adapter.playAtBat(pitch, swing)
     summary = accrueHalf(summary, reveal)
     await gate.present(reveal, !sameHalf(adapter.state(), start))
   }

@@ -1,6 +1,5 @@
 import {
   type BaseSpeeds,
-  type BaseState,
   DUEL_MAX,
   DUEL_MIN,
   type GroundBallResult,
@@ -10,10 +9,16 @@ import {
   resolveAtBat,
   SwingType,
 } from '@sandlot/engine/atBat'
-import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
-import { ConvexError, v } from 'convex/values'
+import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { type MutationCtx, mutation, query } from './_generated/server'
+import {
+  type DuelCommitResult,
+  DuelRejection,
+  DuelStatus,
+  type DuelView,
+  refuse,
+} from './duelContract'
 import { applyResolvedAtBat } from './game'
 import { authedUser, type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
 import { swingType as swingTypeValidator } from './validators'
@@ -36,52 +41,18 @@ import { swingType as swingTypeValidator } from './validators'
  */
 
 /**
- * Why a commit was refused, as a category a client branches on rather than a
- * message it has to parse (SAN-57). The two differ in what the seat should do
- * next, which is the only distinction a caller can act on:
- *
- * **Terminal** — the commit cannot succeed as posed. The game is not live, the
- * caller does not own the club whose seat they reached for, or nobody is seated.
- *
- * **Re-enterable** — the same seat may commit again. This ordinal already holds
- * this side's number, or the number was outside the ring.
- *
- * Neither is normal flow. An out-of-range number and an empty seat are bug
- * signals: the commit screen shares `isDuelNumber` with the server, so a range
- * rejection means the screen was bypassed.
- *
- * An unauthenticated caller is refused by the shared auth gate before any of
- * these, and is deliberately uncategorised — signing in is not a duel concern
- * (SAN-38 owns that gate).
+ * The duel's wire vocabulary lives in `./duelContract`, a leaf module a browser
+ * client can import without pulling this one — and behind it `_generated/server`
+ * — into its bundle. Re-exported here so `./atBat` stays the single door for
+ * anything already reaching for the vault's types.
  */
-export enum DuelRejection {
-  Terminal = 'terminal',
-  ReEnterable = 're-enterable',
-}
-
-/** The structured payload a refused commit carries on its `ConvexError`. The
- * `reason` is display copy for a log or a toast — never the discriminant. */
-export interface DuelRejectionData {
-  rejection: DuelRejection
-  reason: string
-}
-
-/**
- * Refuse a commit with its category attached. A `ConvexError` rather than a bare
- * `Error` because only its `data` survives the wire intact — a plain throw
- * reaches the client as a message, which is exactly what the category exists to
- * stop callers parsing.
- */
-function refuse(rejection: DuelRejection, reason: string): never {
-  throw new ConvexError({ rejection, reason } satisfies DuelRejectionData)
-}
-
-/** Lifecycle of the current at-bat from the reveal query's perspective. */
-export enum DuelStatus {
-  AwaitingCommitments = 'awaiting_commitments',
-  AwaitingOpponent = 'awaiting_opponent',
-  Resolved = 'resolved',
-}
+export {
+  type DuelCommitResult,
+  DuelRejection,
+  type DuelRejectionData,
+  DuelStatus,
+  type DuelView,
+} from './duelContract'
 
 /** Which side of the matchup an authenticated user owns, if any. The two
  * committing roles double as the persisted `duelCommitments.role` values. */
@@ -92,29 +63,6 @@ enum Participant {
 }
 
 type CommittingRole = Participant.Batting | Participant.Pitching
-
-/**
- * Participant-facing view of the current duel. Numbers are present only once
- * both sides have locked (`status: 'resolved'`) — never while a single number
- * sits in the vault awaiting its opponent, and never for a non-participant (who
- * receives `null`). `pitchCommitted` / `swingCommitted` are the only pre-reveal
- * cross-player signal (ADR-0014): they say *that* a side has locked, never what.
- */
-export interface DuelView {
-  status: DuelStatus
-  sequence: number
-  pitchCommitted: boolean
-  swingCommitted: boolean
-  pitchNumber?: number
-  batterNumber?: number
-  outcome?: OutcomeBandKey
-  /** The ground-ball sub-result (SAN-16), or null for every other band. */
-  groundBallResult?: GroundBallResult | null
-  runsScored?: number
-  rbi?: number
-  outsAfter?: number
-  basesAfter?: BaseState
-}
 
 // ─── Participants (duel-specific) ───────────────────────────────────────────
 
@@ -235,15 +183,6 @@ async function runnerSpeedsFor(
 // ─── Commit & resolve ───────────────────────────────────────────────────────
 
 /**
- * What a commit hands back: the at-bat it resolved, or null while only one side
- * is on file. `sequence` is the ordinal the row was logged at, so a caller can
- * confirm a later read reflects *this* at-bat rather than assuming it does
- * (SAN-57) — and it is the same ordinal either side's commit resolves, which is
- * what keeps order-independence (ADR-0014) readable from the client.
- */
-type Resolution = { atBatId: Id<'atBats'>; sequence: number; outcome: OutcomeBandKey } | null
-
-/**
  * Resolve the duel at `sequence` iff BOTH sides have committed. Appends exactly
  * one complete `atBats` row and returns it; a no-op (returns `null`) while only
  * one half is on file. Idempotency / one-row-per-duel without a unique
@@ -256,7 +195,7 @@ async function tryResolve(
   ctx: MutationCtx,
   game: Doc<'games'>,
   sequence: number,
-): Promise<Resolution> {
+): Promise<DuelCommitResult> {
   // Independent index reads — one round-trip, not two (cf. `duelLocks`). Both
   // still read the range this function appends into, so the OCC argument above
   // is unchanged: it rests on the read/write sets overlapping, not on ordering.
@@ -363,7 +302,7 @@ interface CommitArgs {
  * opponent is already on file. Shared by both mutations; `role` fixes which team
  * must own the caller and which seat is being committed.
  */
-async function commit(ctx: MutationCtx, args: CommitArgs): Promise<Resolution> {
+async function commit(ctx: MutationCtx, args: CommitArgs): Promise<DuelCommitResult> {
   const { gameId, number, role, swingType } = args
   const game = await requireLiveGame(ctx, gameId)
   // Signing in is not a duel concern, so the shared auth gate's own error stands
