@@ -26,6 +26,7 @@ const ARM = { source: 'custom', role: 'pitcher', position: 'P', price: null } as
 const AWAY_LEADOFF_ATTRS = { power: 5, contact: 4, speed: 3, eye: 2 } as const
 const AWAY_SECOND_ATTRS = { power: 1, contact: 2, speed: 3, eye: 4 } as const
 const HOME_LEADOFF_ATTRS = { power: 2, contact: 5, speed: 1, eye: 3 } as const
+const HOME_SECOND_ATTRS = { power: 3, contact: 1, speed: 5, eye: 1 } as const
 const HOME_ARM_ATTRS = { velocity: 5, movement: 4, awareness: 3, command: 2 } as const
 const AWAY_ARM_ATTRS = { velocity: 2, movement: 3, awareness: 4, command: 5 } as const
 
@@ -35,12 +36,13 @@ const AWAY_ARM_ATTRS = { velocity: 2, movement: 3, awareness: 4, command: 5 } as
 const PITCH = 737
 const SWING = 313
 
-/** The five invented players the two lineups field. */
+/** The six invented players the two lineups field. */
 interface Roster {
   awayLeadoff: Id<'players'>
   awaySecond: Id<'players'>
   awayPitcher: Id<'players'>
   homeLeadoff: Id<'players'>
+  homeSecond: Id<'players'>
   homePitcher: Id<'players'>
 }
 
@@ -91,6 +93,11 @@ async function insertRoster(ctx: MutationCtx): Promise<Roster> {
       ...HITTER,
       attributes: HOME_LEADOFF_ATTRS,
     }),
+    homeSecond: await ctx.db.insert('players', {
+      name: 'Q. BAKER',
+      ...HITTER,
+      attributes: HOME_SECOND_ATTRS,
+    }),
     homePitcher: await ctx.db.insert('players', {
       name: 'H. MARSH',
       ...ARM,
@@ -127,7 +134,10 @@ async function seedScheduledGame() {
     await ctx.db.insert('lineups', {
       game,
       team: homeTeam,
-      battingOrder: [{ player: roster.homeLeadoff, position: 'CF' }],
+      battingOrder: [
+        { player: roster.homeLeadoff, position: 'CF' },
+        { player: roster.homeSecond, position: 'SS' },
+      ],
       pitcher: roster.homePitcher,
     })
     return { game, homeTeam, awayTeam, ...roster }
@@ -342,6 +352,53 @@ describe('getGame — live', () => {
     await t.withIdentity(HOME).mutation(api.atBat.commitSwing, { game, number: 500 })
 
     expect(live(await read(t, AWAY, game)).hits).toEqual({ home: 1, away: 1 })
+  })
+
+  it('names the next two hitters due up, wrapping the batting order', async () => {
+    const { t, game, awayLeadoff, awaySecond } = await seedScheduledGame()
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+
+    // The away order is two deep and the leadoff man is at the plate, so the two
+    // names behind him are the second hitter and then the leadoff man again — the
+    // wrap is the assertion, not an artefact of a short fixture lineup.
+    expect(live(await read(t, AWAY, game)).dueUp).toEqual([
+      { id: awaySecond, name: 'T. JULIEN' },
+      { id: awayLeadoff, name: 'R. VANCE' },
+    ])
+  })
+
+  it('follows the batting order pointer as at-bats resolve', async () => {
+    const { t, game, awayLeadoff, awaySecond } = await seedScheduledGame()
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    await t.withIdentity(HOME).mutation(api.atBat.commitPitch, { game, number: 500 })
+    await t.withIdentity(AWAY).mutation(api.atBat.commitSwing, { game, number: 500 })
+
+    // The second hitter is now at the plate, so due up reads from him onward.
+    expect(live(await read(t, AWAY, game)).dueUp).toEqual([
+      { id: awayLeadoff, name: 'R. VANCE' },
+      { id: awaySecond, name: 'T. JULIEN' },
+    ])
+  })
+
+  it('reads due up off the club that is batting, not a fixed side', async () => {
+    const { t, game, homeLeadoff, homeSecond } = await seedScheduledGame()
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    await strikeOutTheSide(t, game)
+
+    // Bottom of the 1st: the home club bats, so its order supplies the names.
+    expect(live(await read(t, AWAY, game)).dueUp).toEqual([
+      { id: homeSecond, name: 'Q. BAKER' },
+      { id: homeLeadoff, name: 'J. WHITLOCK' },
+    ])
+  })
+
+  it('refuses a due-up hitter who no longer exists rather than dropping the slot', async () => {
+    const { t, game, awaySecond } = await seedScheduledGame()
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    await t.run((ctx) => ctx.db.delete(awaySecond))
+
+    // A short DUE UP list reads as the end of the order rather than as corruption.
+    await expect(read(t, AWAY, game)).rejects.toThrow()
   })
 
   it('refuses to render a live row with nobody seated rather than inventing a seat', async () => {

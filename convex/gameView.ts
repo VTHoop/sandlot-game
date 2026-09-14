@@ -120,6 +120,8 @@ export type GameView =
       hits: ClubTotals
       batter: SeatView
       pitcher: SeatView
+      /** The next two hitters due up behind the batter, in order. */
+      dueUp: PlayerView[]
       /** Whether the viewer's own club is batting or pitching this half. */
       viewerSeat: SeatRole
       locks: LockView
@@ -256,6 +258,7 @@ async function liveView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): P
     hits,
     batter,
     pitcher,
+    dueUp: [],
     viewerSeat:
       viewerTeam === teamsForHalf(game).battingTeam ? SeatRole.Batting : SeatRole.Pitching,
     // Destructured rather than spread: `duelLocks` also carries the at-bat's
