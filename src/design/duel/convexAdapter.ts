@@ -42,7 +42,8 @@ import type { Roster, RosterPlayer } from './roster'
  * loop re-reads `state()` twice immediately afterwards (`duelLoop.ts`) and a
  * pre-commit read there would re-seat the same batter and commit the at-bat a
  * second time. It confirms rather than assumes: the refreshed duel view has to
- * report the very ordinal the commit resolved, or this refuses.
+ * report the very ordinal the commit resolved, or this throws — loudly and
+ * uncategorised, because by then the commit has already succeeded.
  *
  * PERSPECTIVE — the server answers absolutely (home/away, ADR-0025) and the
  * split to `you`/`opp` happens here, off the batting side, through the same
@@ -206,6 +207,14 @@ interface RevealedDuel extends ResolvedFacts {
  * a DIFFERENT ordinal means the read did not reflect the at-bat just committed,
  * which is the one thing `playAtBat` must not return under — it would hand the
  * loop a pre-commit snapshot and have it commit the at-bat twice.
+ *
+ * Deliberately NOT a {@link DuelCommitError}. That taxonomy describes a commit
+ * the server refused, and this commit succeeded — the at-bat is written. Calling
+ * it *terminal* would claim the commit cannot succeed as posed, which is false;
+ * calling it *re-enterable* would invite committing an at-bat that already
+ * landed. A plain throw is the honest report, and the loop is right to stop on
+ * it: `useDuelPlay` surfaces it as an error view, and re-opening the adapter
+ * re-reads the ordinal the server actually holds.
  */
 function resolvedAt(view: DuelView | null, sequence: number): DuelView {
   if (view?.status === DuelStatus.Resolved && view.sequence === sequence) return view
