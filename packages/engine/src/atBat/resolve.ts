@@ -49,6 +49,26 @@ export interface BaseSpeeds {
   third: number | null
 }
 
+/**
+ * How fast a player runs the bases, from their attribute block alone: a hitter
+ * runs at their own speed, a pitcher-as-runner at the slowest (1, SAN-16) —
+ * a pitcher's block carries no speed to read.
+ *
+ * The rule lives here, with the blocks it reads, because it is a rule of the
+ * game and not a detail of any one boundary. Both boundaries that assemble
+ * {@link BaseSpeeds} call it — `convex/atBat.ts` where it feeds the authoritative
+ * resolver, and the client adapter where it fills a roster entry — so the two can
+ * never drift apart on what a pitcher runs at. This does not give the engine a
+ * roster: it is handed one attribute block and knows nothing about ids
+ * (ADR-0009). The caller still does the lookup.
+ */
+export function baseRunningSpeed(attributes: HitterAttributes | PitcherAttributes): number {
+  return 'speed' in attributes ? attributes.speed : PITCHER_RUNNING_SPEED
+}
+
+/** A pitcher on the bases is always the slowest rating (SAN-16). */
+const PITCHER_RUNNING_SPEED = 1
+
 export interface ResolveInput {
   pitch: number
   swing: number

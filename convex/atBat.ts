@@ -1,20 +1,27 @@
 import {
   type BaseSpeeds,
-  type BaseState,
+  baseRunningSpeed,
   DUEL_MAX,
   DUEL_MIN,
+  type GroundBallResult,
   type HitterAttributes,
   isDuelNumber,
   type PitcherAttributes,
   resolveAtBat,
   SwingType,
 } from '@sandlot/engine/atBat'
-import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { type MutationCtx, mutation, query } from './_generated/server'
+import {
+  type DuelCommitResult,
+  DuelRejection,
+  DuelStatus,
+  type DuelView,
+  refuse,
+} from './duelContract'
 import { applyResolvedAtBat } from './game'
-import { assertOwns, authedUser, type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
+import { authedUser, type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
 import { swingType as swingTypeValidator } from './validators'
 
 /**
@@ -34,12 +41,10 @@ import { swingType as swingTypeValidator } from './validators'
  * downstream tickets.
  */
 
-/** Lifecycle of the current at-bat from the reveal query's perspective. */
-export enum DuelStatus {
-  AwaitingCommitments = 'awaiting_commitments',
-  AwaitingOpponent = 'awaiting_opponent',
-  Resolved = 'resolved',
-}
+// The duel's wire vocabulary lives in `./duelContract`, a leaf module a browser
+// client can import without pulling this one — and behind it `_generated/server`
+// — into its bundle. Callers import it from there; this module is the behaviour,
+// not a second door onto the same words.
 
 /** Which side of the matchup an authenticated user owns, if any. The two
  * committing roles double as the persisted `duelCommitments.role` values. */
@@ -50,27 +55,6 @@ enum Participant {
 }
 
 type CommittingRole = Participant.Batting | Participant.Pitching
-
-/**
- * Participant-facing view of the current duel. Numbers are present only once
- * both sides have locked (`status: 'resolved'`) — never while a single number
- * sits in the vault awaiting its opponent, and never for a non-participant (who
- * receives `null`). `pitchCommitted` / `swingCommitted` are the only pre-reveal
- * cross-player signal (ADR-0014): they say *that* a side has locked, never what.
- */
-export interface DuelView {
-  status: DuelStatus
-  sequence: number
-  pitchCommitted: boolean
-  swingCommitted: boolean
-  pitchNumber?: number
-  batterNumber?: number
-  outcome?: OutcomeBandKey
-  runsScored?: number
-  rbi?: number
-  outsAfter?: number
-  basesAfter?: BaseState
-}
 
 // ─── Participants (duel-specific) ───────────────────────────────────────────
 
@@ -83,10 +67,34 @@ async function roleOf(ctx: Ctx, game: Doc<'games'>, user: Doc<'users'>): Promise
 
 // ─── At-bat identity & lookups ──────────────────────────────────────────────
 
-async function requireLiveGame(ctx: Ctx, id: Id<'games'>): Promise<Doc<'games'>> {
-  const game = await ctx.db.get(id)
-  if (!game) throw new Error('Game not found')
-  if (game.status !== 'live') throw new Error('Game is not live')
+/** The club whose seat this role commits for — top half, the away club bats
+ * (SAN-21), which is the same rule ownership is gated on. */
+function seatTeamOf(game: Doc<'games'>, role: CommittingRole): Id<'teams'> {
+  const { battingTeam, pitchingTeam } = teamsForHalf(game)
+  return role === Participant.Pitching ? pitchingTeam : battingTeam
+}
+
+/**
+ * The game this caller may commit for, or refuse. **Club before status**, on
+ * purpose: a caller who is not in this game hears the same thing whether the id
+ * is unknown, the clubs are someone else's, or the game has not started — the
+ * same refusal to be an oracle for which games exist that `getGame` makes
+ * (ADR-0025), now on the write path too. Only a confirmed participant learns a
+ * game's status.
+ *
+ * Checked here rather than through the shared `assertOwns` so the duel's own
+ * rejection taxonomy stays the duel's — `game.ts` and `clubs.ts` keep theirs.
+ */
+async function requireCommittableGame(
+  ctx: MutationCtx,
+  user: Doc<'users'>,
+  args: Pick<CommitArgs, 'gameId' | 'role'>,
+): Promise<Doc<'games'>> {
+  const game = await ctx.db.get(args.gameId)
+  if (!game || !(await ownsTeam(ctx, seatTeamOf(game, args.role), user))) {
+    refuse(DuelRejection.Terminal, 'Not authorized for this team')
+  }
+  if (game.status !== 'live') refuse(DuelRejection.Terminal, 'Game is not live')
   return game
 }
 
@@ -128,7 +136,7 @@ function atBatAt(ctx: Ctx, game: Id<'games'>, sequence: number): Promise<Doc<'at
 
 function assertDuelNumber(n: number): void {
   if (!isDuelNumber(n)) {
-    throw new Error(`Number must be an integer in ${DUEL_MIN}–${DUEL_MAX}`)
+    refuse(DuelRejection.ReEnterable, `Number must be an integer in ${DUEL_MIN}–${DUEL_MAX}`)
   }
 }
 
@@ -159,11 +167,6 @@ function asPitcher(attributes: Doc<'players'>['attributes']): PitcherAttributes 
   throw new Error('Current pitcher does not carry a pitcher attribute block')
 }
 
-/** A runner's 1–5 speed for the GB speed axis; a pitcher-as-runner is the slowest (1, SAN-16). */
-function runnerSpeed(attributes: Doc<'players'>['attributes']): number {
-  return 'power' in attributes ? attributes.speed : 1
-}
-
 /**
  * Look up each on-base runner's speed for the GB sub-resolution, positionally
  * aligned to `bases` (null where empty). The engine consumes this block rather
@@ -176,7 +179,7 @@ async function runnerSpeedsFor(
   const speedAt = async (id: Id<'players'> | null): Promise<number | null> => {
     if (!id) return null
     const player = await ctx.db.get(id)
-    return player ? runnerSpeed(player.attributes) : null
+    return player ? baseRunningSpeed(player.attributes) : null
   }
   // Independent lookups — resolve them concurrently rather than serializing
   // three round-trips on a loaded base.
@@ -189,8 +192,6 @@ async function runnerSpeedsFor(
 }
 
 // ─── Commit & resolve ───────────────────────────────────────────────────────
-
-type Resolution = { atBatId: Id<'atBats'>; outcome: OutcomeBandKey } | null
 
 /**
  * Resolve the duel at `sequence` iff BOTH sides have committed. Appends exactly
@@ -205,7 +206,7 @@ async function tryResolve(
   ctx: MutationCtx,
   game: Doc<'games'>,
   sequence: number,
-): Promise<Resolution> {
+): Promise<DuelCommitResult> {
   // Independent index reads — one round-trip, not two (cf. `duelLocks`). Both
   // still read the range this function appends into, so the OCC argument above
   // is unchanged: it rests on the read/write sets overlapping, not on ordering.
@@ -284,7 +285,7 @@ async function tryResolve(
     runsScored: resolved.runsScored,
   })
 
-  return { atBatId, outcome: resolved.outcome }
+  return { atBatId, sequence, outcome: resolved.outcome }
 }
 
 /** The public swing declaration belongs only on a batting commitment, and only for
@@ -312,21 +313,27 @@ interface CommitArgs {
  * opponent is already on file. Shared by both mutations; `role` fixes which team
  * must own the caller and which seat is being committed.
  */
-async function commit(ctx: MutationCtx, args: CommitArgs): Promise<Resolution> {
+async function commit(ctx: MutationCtx, args: CommitArgs): Promise<DuelCommitResult> {
   const { gameId, number, role, swingType } = args
-  const game = await requireLiveGame(ctx, gameId)
+  // Identity FIRST. Signing in is not a duel concern, so the shared auth gate's
+  // own error stands uncategorised (see {@link DuelRejection}) — but it has to
+  // fire before anything reads the game, or an unauthenticated caller learns
+  // whether a game exists and whether it is live on the way to being refused.
   const user = await authedUser(ctx)
-  const { battingTeam, pitchingTeam } = teamsForHalf(game)
-  await assertOwns(ctx, role === Participant.Pitching ? pitchingTeam : battingTeam, user)
+  const game = await requireCommittableGame(ctx, user, { gameId, role })
   assertDuelNumber(number)
 
   const player = role === Participant.Pitching ? game.currentPitcher : game.currentBatter
-  if (!player)
-    throw new Error(`Game has no active ${role === Participant.Pitching ? 'pitcher' : 'batter'}`)
+  if (!player) {
+    refuse(
+      DuelRejection.Terminal,
+      `Game has no active ${role === Participant.Pitching ? 'pitcher' : 'batter'}`,
+    )
+  }
 
   const sequence = await currentSequence(ctx, game._id)
   if (await commitmentAt(ctx, game._id, sequence, role)) {
-    throw new Error('Your number is already committed for this at-bat')
+    refuse(DuelRejection.ReEnterable, 'Your number is already committed for this at-bat')
   }
   await ctx.db.insert('duelCommitments', {
     game: game._id,
@@ -397,6 +404,8 @@ function revealed(row: Doc<'atBats'>): DuelView {
     pitchNumber: row.pitchNumber,
     batterNumber: row.batterNumber,
     outcome: row.outcome,
+    // The persisted literal equals the enum's value; the cast relabels only.
+    groundBallResult: row.groundBallResult as GroundBallResult | null,
     runsScored: row.runsScored,
     rbi: row.rbi,
     outsAfter: row.outsAfter,

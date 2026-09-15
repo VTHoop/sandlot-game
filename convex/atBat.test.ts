@@ -1,19 +1,25 @@
 // @vitest-environment edge-runtime
 /// <reference types="vite/client" />
+
 import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from './_generated/api'
-import type { Id } from './_generated/dataModel'
+import type { Doc, Id } from './_generated/dataModel'
+import { DuelRejection, type DuelRejectionData, duelRejectionOf } from './duelContract'
 import schema from './schema'
 
 // convex-test discovers the function modules; exclude the test files themselves.
 const modules = import.meta.glob(['./**/*.ts', '!./**/*.test.ts'])
+
+type Identity = { subject: string }
 
 const PITCHER = { subject: 'pitcher-subject' }
 const BATTER = { subject: 'batter-subject' }
 const STRANGER = { subject: 'stranger-subject' }
 
 const EMPTY_BASES = { first: null, second: null, third: null }
+
+type Role = Doc<'players'>['role']
 
 /**
  * Seed a live game in the top half: the away team (owned by BATTER) is at bat,
@@ -107,6 +113,36 @@ const commitmentRows = (t: Harness, game: Id<'games'>) =>
       .withIndex('by_game', (q) => q.eq('game', game))
       .collect(),
   )
+
+/**
+ * The rejection category a refused commit carried. Fails loudly on a commit that
+ * was accepted, and on an error that is not a categorised rejection — either one
+ * is a different bug than the test is asking about, and swallowing it would let
+ * this assertion pass for the wrong reason.
+ */
+/** A number committed for one seat, by one identity. The two read alike on
+ * purpose: a test names the seat and the caller, and nothing else. */
+const pitchBy = (t: Harness, who: Identity, game: Id<'games'>, number: number) =>
+  t.withIdentity(who).mutation(api.atBat.commitPitch, { game, number })
+
+const swingBy = (t: Harness, who: Identity, game: Id<'games'>, number: number) =>
+  t.withIdentity(who).mutation(api.atBat.commitSwing, { game, number })
+
+async function refusalOf(call: Promise<unknown>): Promise<DuelRejectionData> {
+  try {
+    await call
+  } catch (error) {
+    // Read through the same validated door the client uses, so a payload that
+    // does not match the contract fails here instead of being cast past it.
+    const refusal = duelRejectionOf(error)
+    if (refusal) return refusal
+    throw error
+  }
+  throw new Error('expected the commit to be rejected, but it was accepted')
+}
+
+const rejectionOf = async (call: Promise<unknown>): Promise<DuelRejection> =>
+  (await refusalOf(call)).rejection
 
 describe('secret at-bat round-trip', () => {
   it('resolves an exact-match duel into exactly one complete at_bats row', async () => {
@@ -455,6 +491,203 @@ describe('secret at-bat round-trip', () => {
       expect(ab.groundBallResult).toBe('GO_RA')
       expect(ab.outsAfter).toBe(1)
       expect(ab.basesAfter).toEqual({ first: null, second: runner, third: null })
+    })
+  })
+
+  describe('typed commit rejections (SAN-57)', () => {
+    const LEGAL = 500
+
+    it('categorises a game that is not live as terminal', async () => {
+      const { t, gameId } = await setupGame()
+      await t.run((ctx) => ctx.db.patch(gameId, { status: 'final' }))
+
+      expect(await rejectionOf(pitchBy(t, PITCHER, gameId, LEGAL))).toBe(DuelRejection.Terminal)
+    })
+
+    it('categorises committing for a club you do not own as terminal', async () => {
+      const { t, gameId } = await setupGame()
+
+      // The batting owner reaching for the pitching seat, and the mirror.
+      expect(await rejectionOf(pitchBy(t, BATTER, gameId, LEGAL))).toBe(DuelRejection.Terminal)
+      expect(await rejectionOf(swingBy(t, PITCHER, gameId, LEGAL))).toBe(DuelRejection.Terminal)
+    })
+
+    it('categorises an empty seat as terminal', async () => {
+      const { t, gameId } = await setupGame()
+      await t.run((ctx) => ctx.db.patch(gameId, { currentPitcher: null, currentBatter: null }))
+
+      expect(await rejectionOf(pitchBy(t, PITCHER, gameId, LEGAL))).toBe(DuelRejection.Terminal)
+      expect(await rejectionOf(swingBy(t, BATTER, gameId, LEGAL))).toBe(DuelRejection.Terminal)
+    })
+
+    it('categorises a number outside the ring as re-enterable', async () => {
+      const { t, gameId } = await setupGame()
+
+      // The commit screen shares `isDuelNumber` with the server, so reaching this
+      // rejection means the screen was bypassed — but the seat may still commit.
+      for (const bad of [0, 1000, 1.5, -3]) {
+        expect(await rejectionOf(pitchBy(t, PITCHER, gameId, bad))).toBe(DuelRejection.ReEnterable)
+      }
+    })
+
+    it('categorises a seat that has already locked at this ordinal as re-enterable', async () => {
+      const { t, gameId } = await setupGame()
+      await pitchBy(t, PITCHER, gameId, LEGAL)
+
+      expect(await rejectionOf(pitchBy(t, PITCHER, gameId, 600))).toBe(DuelRejection.ReEnterable)
+    })
+  })
+
+  describe('the commit gate is not an existence oracle (SAN-57)', () => {
+    it('refuses a stranger identically whether or not the game is there', async () => {
+      const { t, gameId } = await setupGame()
+      const vanished = await t.run(async (ctx) => {
+        const row = await ctx.db.get(gameId)
+        if (!row) throw new Error('fixture game missing')
+        const { _id, _creationTime, ...fields } = row
+        const id = await ctx.db.insert('games', fields)
+        await ctx.db.delete(id)
+        return id
+      })
+
+      // A well-formed id for a game that is not there, and a real game the
+      // caller is not in, must be indistinguishable — otherwise the mutation
+      // becomes the oracle `getGame` deliberately refuses to be (ADR-0025).
+      expect(await refusalOf(pitchBy(t, STRANGER, gameId, 500))).toEqual(
+        await refusalOf(pitchBy(t, STRANGER, vanished, 500)),
+      )
+    })
+
+    it('tells an unauthenticated caller nothing about the game', async () => {
+      const { t, gameId } = await setupGame()
+      await t.run((ctx) => ctx.db.patch(gameId, { status: 'final' }))
+
+      // Identity is checked before the game is read at all, so a finished game
+      // and a live one refuse the same way — and neither is a categorised duel
+      // rejection, because signing in is not a duel concern.
+      await expect(
+        t.mutation(api.atBat.commitPitch, { game: gameId, number: 500 }),
+      ).rejects.toThrow(/Not authenticated/)
+    })
+
+    it('tells a participant, and only a participant, that the game is not live', async () => {
+      const { t, gameId } = await setupGame()
+      await t.run((ctx) => ctx.db.patch(gameId, { status: 'final' }))
+
+      expect(await refusalOf(pitchBy(t, PITCHER, gameId, 500))).toMatchObject({
+        rejection: DuelRejection.Terminal,
+        reason: 'Game is not live',
+      })
+      expect((await refusalOf(pitchBy(t, STRANGER, gameId, 500))).reason).not.toMatch(/live/)
+    })
+  })
+
+  describe('the resolution a commit hands back (SAN-57)', () => {
+    it('names the ordinal it resolved, so a caller can tell which at-bat landed', async () => {
+      const { t, gameId } = await setupGame()
+
+      const pending = await t
+        .withIdentity(PITCHER)
+        .mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      expect(pending).toBeNull() // one side on file resolves nothing
+
+      const resolved = await t
+        .withIdentity(BATTER)
+        .mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
+      expect(resolved).toMatchObject({ sequence: 0, outcome: 'HR' })
+
+      // The second at-bat is the next ordinal, so the caller can distinguish the
+      // two without re-deriving the count itself.
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      const next = await t
+        .withIdentity(BATTER)
+        .mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
+      expect(next).toMatchObject({ sequence: 1 })
+    })
+  })
+
+  describe('the reveal a resolved duel exposes (SAN-57)', () => {
+    it('carries the ground-ball sub-result, not just the band', async () => {
+      const { t, gameId } = await setupGame()
+      // The same neutral GO_RA duel the persistence test above pins: pitch 1 /
+      // swing 273 with a runner on first. The band alone would let the reveal
+      // shout "GROUNDOUT" for a double play and retire runners in place instead
+      // of at the bag they were forced to.
+      const runner = await t.run((ctx) =>
+        ctx.db.insert('players', {
+          name: 'Runner',
+          source: 'custom',
+          role: 'hitter',
+          position: '2B',
+          price: null,
+          attributes: { power: 3, contact: 3, speed: 3, eye: 3 },
+        }),
+      )
+      await t.run((ctx) =>
+        ctx.db.patch(gameId, { bases: { first: runner, second: null, third: null } }),
+      )
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 1 })
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 273 })
+
+      const view = await t.withIdentity(BATTER).query(api.atBat.getActiveDuel, { game: gameId })
+      expect(view).toMatchObject({ status: 'resolved', outcome: 'GB', groundBallResult: 'GO_RA' })
+    })
+
+    it('carries a null sub-result for an outcome that is not a ground ball', async () => {
+      const { t, gameId } = await setupGame()
+      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
+      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
+
+      const view = await t.withIdentity(BATTER).query(api.atBat.getActiveDuel, { game: gameId })
+      expect(view).toMatchObject({ outcome: 'HR', groundBallResult: null })
+    })
+  })
+
+  describe('the pitcher-as-runner speed default (SAN-16)', () => {
+    /**
+     * pitch 1 / swing 327 with a runner on first splits on that runner's speed
+     * alone: the slowest is doubled off, the fastest beats the throw into a
+     * fielder's choice. That makes the default observable from outside — a
+     * pitcher carries no speed attribute to read, so the boundary forces 1.
+     */
+    const SPEED_SPLIT = { pitch: 1, swing: 327 }
+
+    /** Resolve the split duel with one runner on first, seeded into the same
+     * harness as the game — a runner id from elsewhere would dangle, and a
+     * dangling runner reads as no speed at all rather than as the floor. */
+    const groundBallWith = async (runner: Doc<'players'>['attributes'], role: Role) => {
+      const { t, gameId } = await setupGame()
+      const onFirst = await t.run(async (ctx) =>
+        ctx.db.insert('players', {
+          name: role === 'pitcher' ? 'Reliever' : 'Burner',
+          source: 'custom',
+          role,
+          position: role === 'pitcher' ? 'P' : 'CF',
+          price: null,
+          attributes: runner,
+        }),
+      )
+      await t.run((ctx) =>
+        ctx.db.patch(gameId, { bases: { first: onFirst, second: null, third: null } }),
+      )
+      await t
+        .withIdentity(PITCHER)
+        .mutation(api.atBat.commitPitch, { game: gameId, number: SPEED_SPLIT.pitch })
+      await t
+        .withIdentity(BATTER)
+        .mutation(api.atBat.commitSwing, { game: gameId, number: SPEED_SPLIT.swing })
+      const [ab] = await atBatRows(t, gameId)
+      return ab.groundBallResult
+    }
+
+    it('runs a pitcher on base at the slowest speed, not at a speed read off nothing', async () => {
+      const arm = { velocity: 3, movement: 3, awareness: 3, command: 3 } as const
+      expect(await groundBallWith(arm, 'pitcher')).toBe('DP')
+
+      // The contrast is the assertion: the same duel with a fast runner does not
+      // turn two, so the pitcher's result is the speed floor and not a constant.
+      const burner = { power: 3, contact: 3, speed: 5, eye: 3 } as const
+      expect(await groundBallWith(burner, 'hitter')).toBe('FC')
     })
   })
 })

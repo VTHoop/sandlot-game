@@ -11,5 +11,5 @@ export type {
   ResolvedAtBat,
   ResolveInput,
 } from './resolve'
-export { deriveDiffs, resolveAtBat } from './resolve'
+export { baseRunningSpeed, deriveDiffs, resolveAtBat } from './resolve'
 export { SwingType } from './swingType'

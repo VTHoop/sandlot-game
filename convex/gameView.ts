@@ -120,6 +120,8 @@ export type GameView =
       hits: ClubTotals
       batter: SeatView
       pitcher: SeatView
+      /** The next two hitters due up behind the batter, in order. */
+      dueUp: PlayerView[]
       /** Whether the viewer's own club is batting or pitching this half. */
       viewerSeat: SeatRole
       locks: LockView
@@ -167,6 +169,59 @@ async function basesView(ctx: Ctx, bases: Doc<'games'>['bases']): Promise<BasesV
     runnerView(ctx, bases.third),
   ])
   return { first, second, third }
+}
+
+/** How many hitters the matchup card names behind the batter. */
+const DUE_UP_COUNT = 2
+
+/**
+ * The batting club's lineup for this half. Top = away bats (SAN-21), which is the
+ * same rule `teamsForHalf` applies to ownership — asked of the lineup row here
+ * because the batting-order pointer lives on the game row beside it.
+ */
+async function battingLineup(ctx: Ctx, game: Doc<'games'>): Promise<Doc<'lineups'>> {
+  const { battingTeam } = teamsForHalf(game)
+  const lineup = await ctx.db
+    .query('lineups')
+    .withIndex('by_game', (q) => q.eq('game', game._id))
+    .collect()
+    .then((rows) => rows.find((row) => row.team === battingTeam))
+  if (!lineup) throw new Error('A live game has no lineup for the club at bat')
+  return lineup
+}
+
+/**
+ * The next {@link DUE_UP_COUNT} hitters behind the batter, wrapping the order —
+ * the card's DUE UP list, which it renders unconditionally. The batting index
+ * points AT the current batter (the engine advances it as it folds an at-bat), so
+ * the slots due up start one past it.
+ *
+ * The wrap is the normal case — the ninth hitter is always followed by the
+ * leadoff man — so the order is repeated and sliced rather than indexed modulo
+ * its length. Each slot resolves through {@link requirePlayer}, so a hitter who
+ * no longer exists refuses rather than silently shortening the list into
+ * something that reads as the end of the order.
+ */
+async function dueUpView(ctx: Ctx, game: Doc<'games'>): Promise<PlayerView[]> {
+  const lineup = await battingLineup(ctx, game)
+  const order = lineup.battingOrder
+  if (!order.length) throw new Error('A live game has an empty batting order for the club at bat')
+  const index = game.half === 'top' ? game.awayBattingIndex : game.homeBattingIndex
+
+  // Repeat the order until it reaches {@link DUE_UP_COUNT} slots past any
+  // starting index, so the wrap falls out of a plain slice. Modular indexing
+  // would read it with a computed key, the object-injection sink this codebase
+  // keeps off (AGENTS.md § Code conventions).
+  const repeats = Math.ceil((order.length + DUE_UP_COUNT) / order.length)
+  const wrapped = Array.from({ length: repeats }, () => order).flat()
+  const slots = wrapped.slice(index + 1, index + 1 + DUE_UP_COUNT)
+
+  return Promise.all(
+    slots.map(async (slot) => {
+      const player = await requirePlayer(ctx, slot.player)
+      return { id: player._id, name: player.name }
+    }),
+  )
 }
 
 async function clubView(ctx: Ctx, id: Id<'teams'>): Promise<ClubView> {
@@ -237,10 +292,11 @@ async function viewerSideOf(
 
 async function liveView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): Promise<GameView> {
   const viewerTeam = common.viewer === ClubSide.Home ? game.homeTeam : game.awayTeam
-  const [bases, batter, pitcher, hits, locks] = await Promise.all([
+  const [bases, batter, pitcher, dueUp, hits, locks] = await Promise.all([
     basesView(ctx, game.bases),
     seatView(ctx, game.currentBatter, SeatRole.Batting),
     seatView(ctx, game.currentPitcher, SeatRole.Pitching),
+    dueUpView(ctx, game),
     hitTotals(ctx, game._id),
     duelLocks(ctx, game._id),
   ])
@@ -256,6 +312,7 @@ async function liveView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): P
     hits,
     batter,
     pitcher,
+    dueUp,
     viewerSeat:
       viewerTeam === teamsForHalf(game).battingTeam ? SeatRole.Batting : SeatRole.Pitching,
     // Destructured rather than spread: `duelLocks` also carries the at-bat's
