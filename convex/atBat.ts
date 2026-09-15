@@ -75,9 +75,33 @@ async function roleOf(ctx: Ctx, game: Doc<'games'>, user: Doc<'users'>): Promise
 
 // ─── At-bat identity & lookups ──────────────────────────────────────────────
 
-async function requireLiveGame(ctx: Ctx, id: Id<'games'>): Promise<Doc<'games'>> {
-  const game = await ctx.db.get(id)
-  if (!game) refuse(DuelRejection.Terminal, 'Game not found')
+/** The club whose seat this role commits for — top half, the away club bats
+ * (SAN-21), which is the same rule ownership is gated on. */
+function seatTeamOf(game: Doc<'games'>, role: CommittingRole): Id<'teams'> {
+  const { battingTeam, pitchingTeam } = teamsForHalf(game)
+  return role === Participant.Pitching ? pitchingTeam : battingTeam
+}
+
+/**
+ * The game this caller may commit for, or refuse. **Club before status**, on
+ * purpose: a caller who is not in this game hears the same thing whether the id
+ * is unknown, the clubs are someone else's, or the game has not started — the
+ * same refusal to be an oracle for which games exist that `getGame` makes
+ * (ADR-0025), now on the write path too. Only a confirmed participant learns a
+ * game's status.
+ *
+ * Checked here rather than through the shared `assertOwns` so the duel's own
+ * rejection taxonomy stays the duel's — `game.ts` and `clubs.ts` keep theirs.
+ */
+async function requireCommittableGame(
+  ctx: MutationCtx,
+  user: Doc<'users'>,
+  args: Pick<CommitArgs, 'gameId' | 'role'>,
+): Promise<Doc<'games'>> {
+  const game = await ctx.db.get(args.gameId)
+  if (!game || !(await ownsTeam(ctx, seatTeamOf(game, args.role), user))) {
+    refuse(DuelRejection.Terminal, 'Not authorized for this team')
+  }
   if (game.status !== 'live') refuse(DuelRejection.Terminal, 'Game is not live')
   return game
 }
@@ -304,18 +328,12 @@ interface CommitArgs {
  */
 async function commit(ctx: MutationCtx, args: CommitArgs): Promise<DuelCommitResult> {
   const { gameId, number, role, swingType } = args
-  const game = await requireLiveGame(ctx, gameId)
-  // Signing in is not a duel concern, so the shared auth gate's own error stands
-  // uncategorised (see {@link DuelRejection}); the duel's categorised refusals
-  // start at the club the caller reached for.
+  // Identity FIRST. Signing in is not a duel concern, so the shared auth gate's
+  // own error stands uncategorised (see {@link DuelRejection}) — but it has to
+  // fire before anything reads the game, or an unauthenticated caller learns
+  // whether a game exists and whether it is live on the way to being refused.
   const user = await authedUser(ctx)
-  const { battingTeam, pitchingTeam } = teamsForHalf(game)
-  const seatTeam = role === Participant.Pitching ? pitchingTeam : battingTeam
-  // Checked here rather than through the shared `assertOwns` so the duel's own
-  // rejection taxonomy stays the duel's — `game.ts` and `clubs.ts` keep theirs.
-  if (!(await ownsTeam(ctx, seatTeam, user))) {
-    refuse(DuelRejection.Terminal, 'Not authorized for this team')
-  }
+  const game = await requireCommittableGame(ctx, user, { gameId, role })
   assertDuelNumber(number)
 
   const player = role === Participant.Pitching ? game.currentPitcher : game.currentBatter

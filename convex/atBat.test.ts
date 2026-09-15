@@ -129,15 +129,18 @@ const pitchBy = (t: Harness, who: Identity, game: Id<'games'>, number: number) =
 const swingBy = (t: Harness, who: Identity, game: Id<'games'>, number: number) =>
   t.withIdentity(who).mutation(api.atBat.commitSwing, { game, number })
 
-async function rejectionOf(call: Promise<unknown>): Promise<DuelRejection> {
+async function refusalOf(call: Promise<unknown>): Promise<DuelRejectionData> {
   try {
     await call
   } catch (error) {
-    if (error instanceof ConvexError) return (error.data as DuelRejectionData).rejection
+    if (error instanceof ConvexError) return error.data as DuelRejectionData
     throw error
   }
   throw new Error('expected the commit to be rejected, but it was accepted')
 }
+
+const rejectionOf = async (call: Promise<unknown>): Promise<DuelRejection> =>
+  (await refusalOf(call)).rejection
 
 describe('secret at-bat round-trip', () => {
   it('resolves an exact-match duel into exactly one complete at_bats row', async () => {
@@ -530,6 +533,50 @@ describe('secret at-bat round-trip', () => {
       await pitchBy(t, PITCHER, gameId, LEGAL)
 
       expect(await rejectionOf(pitchBy(t, PITCHER, gameId, 600))).toBe(DuelRejection.ReEnterable)
+    })
+  })
+
+  describe('the commit gate is not an existence oracle (SAN-57)', () => {
+    it('refuses a stranger identically whether or not the game is there', async () => {
+      const { t, gameId } = await setupGame()
+      const vanished = await t.run(async (ctx) => {
+        const row = await ctx.db.get(gameId)
+        if (!row) throw new Error('fixture game missing')
+        const { _id, _creationTime, ...fields } = row
+        const id = await ctx.db.insert('games', fields)
+        await ctx.db.delete(id)
+        return id
+      })
+
+      // A well-formed id for a game that is not there, and a real game the
+      // caller is not in, must be indistinguishable — otherwise the mutation
+      // becomes the oracle `getGame` deliberately refuses to be (ADR-0025).
+      expect(await refusalOf(pitchBy(t, STRANGER, gameId, 500))).toEqual(
+        await refusalOf(pitchBy(t, STRANGER, vanished, 500)),
+      )
+    })
+
+    it('tells an unauthenticated caller nothing about the game', async () => {
+      const { t, gameId } = await setupGame()
+      await t.run((ctx) => ctx.db.patch(gameId, { status: 'final' }))
+
+      // Identity is checked before the game is read at all, so a finished game
+      // and a live one refuse the same way — and neither is a categorised duel
+      // rejection, because signing in is not a duel concern.
+      await expect(
+        t.mutation(api.atBat.commitPitch, { game: gameId, number: 500 }),
+      ).rejects.toThrow(/Not authenticated/)
+    })
+
+    it('tells a participant, and only a participant, that the game is not live', async () => {
+      const { t, gameId } = await setupGame()
+      await t.run((ctx) => ctx.db.patch(gameId, { status: 'final' }))
+
+      expect(await refusalOf(pitchBy(t, PITCHER, gameId, 500))).toMatchObject({
+        rejection: DuelRejection.Terminal,
+        reason: 'Game is not live',
+      })
+      expect((await refusalOf(pitchBy(t, STRANGER, gameId, 500))).reason).not.toMatch(/live/)
     })
   })
 

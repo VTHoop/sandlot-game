@@ -50,6 +50,18 @@ duel concern (SAN-38 owns that). Ownership *is* checked here rather than through
 the shared `assertOwns`, so the duel's taxonomy stays the duel's and `game.ts` /
 `clubs.ts` keep the shared helper and its message unchanged.
 
+**The gates fire identity → club → status, in that order.** A categorised
+rejection is *designed* to reach the client — `ConvexError.data` crosses intact
+where a plain throw is redacted in production — so the order the gates fire in
+decides what an outsider can read. Checking the game first, as the code did,
+would let an unauthenticated caller learn whether a game exists and whether it is
+live before being refused, and a signed-in non-participant learn the same.
+Identity now runs before the game is read at all, and a caller who does not hold
+the seat's club is refused identically whether the id is unknown, the clubs are
+someone else's, or the game has not started. Only a confirmed participant learns
+a game's status. This is `getGame`'s deliberate refusal to be an existence oracle
+(ADR-0025), carried onto the write path.
+
 **The vocabulary lives in a leaf module, `convex/duelContract.ts`** — what a
 commit hands back, why one was refused, and what the reveal query reports. It
 imports no Convex server runtime, only `convex/values` and engine types, so a
@@ -117,6 +129,10 @@ re-derive a list the server can resolve to names in the same query.
   client retries a dropped mutation itself, so only application errors thrown
   inside one are final; labelling a transport fault as a game rule would be worse
   than not labelling it.
+- Making a refusal readable and ordering the gates are the same decision, and
+  have to be taken together. Any future function that adopts this taxonomy
+  inherits the obligation: check who the caller is, then whether they are in the
+  thing, before anything that reads its state.
 - `duelContract.ts` is the pattern for any future client-facing Convex
   vocabulary: the module that owns the behaviour keeps it, and the words the
   browser needs move to a leaf.
