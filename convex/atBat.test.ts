@@ -1,12 +1,11 @@
 // @vitest-environment edge-runtime
 /// <reference types="vite/client" />
 
-import { ConvexError } from 'convex/values'
 import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
-import { DuelRejection, type DuelRejectionData } from './atBat'
+import { DuelRejection, type DuelRejectionData, duelRejectionOf } from './duelContract'
 import schema from './schema'
 
 // convex-test discovers the function modules; exclude the test files themselves.
@@ -133,7 +132,10 @@ async function refusalOf(call: Promise<unknown>): Promise<DuelRejectionData> {
   try {
     await call
   } catch (error) {
-    if (error instanceof ConvexError) return error.data as DuelRejectionData
+    // Read through the same validated door the client uses, so a payload that
+    // does not match the contract fails here instead of being cast past it.
+    const refusal = duelRejectionOf(error)
+    if (refusal) return refusal
     throw error
   }
   throw new Error('expected the commit to be rejected, but it was accepted')

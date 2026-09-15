@@ -443,9 +443,12 @@ the adapter fills exactly that gap:
   leadoff and home pitcher carry the blocks the tests probe for deterministic
   hit/walk/out outcomes.
 - **`assembleRunnerSpeeds(bases, roster)`** — derives the engine's `BaseSpeeds`
-  from a `LiveGameState.bases` plus the roster, defaulting a pitcher-as-runner to
-  speed 1 (SAN-16) by detecting the block — the pure twin of `atBat.ts`'s
-  `runnerSpeedsFor`.
+  from a `LiveGameState.bases` plus the roster — the pure twin of `atBat.ts`'s
+  `runnerSpeedsFor`. The pitcher-as-runner rule itself (speed 1, SAN-16) belongs
+  to **`baseRunningSpeed` in `@sandlot/engine/atBat`**, which both boundaries and
+  the roster fixture call, so no layer restates it. The engine gains no roster by
+  owning it: it is handed one attribute block and still knows nothing about ids
+  (ADR-0009).
 - **`resolveDuelAtBat(pitch, swing, state, roster, hitsBefore?)`** — reads the
   seated batter/pitcher from the live state, resolves through the authoritative
   engine, and returns both an `AppliedAtBat` (for `advance`) and a
@@ -575,9 +578,9 @@ route until SAN-39 — its tests are the acceptance surface.
   propagates untouched — the Convex client retries a dropped mutation itself, so
   dressing a transport fault up as a game rule would be worse than leaving it be.
 - **Roster resolution happens here, at the boundary.** Each `SeatView` becomes a
-  `RosterPlayer` — name, attribute block, and the base-running speed derived from
-  that block, with a pitcher-as-runner forced to 1 (SAN-16), the same default
-  `convex/atBat.ts` applies where it feeds the engine. `roster()` hands back one
+  `RosterPlayer` — name, attribute block, and the base-running speed the engine's
+  `baseRunningSpeed` reads off that block (a pitcher-as-runner is the slowest,
+  SAN-16), the same call `convex/atBat.ts` makes where it feeds the engine. `roster()` hands back one
   live `ReadonlyMap` that the boundary keeps current as the seats change, because
   `playHalfInning` takes the handle once and holds it for the whole half.
 - **Hit totals need no running count.** The server sends both clubs' absolute

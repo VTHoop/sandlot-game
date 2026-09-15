@@ -90,10 +90,9 @@ export interface DuelRejectionData {
   reason: string
 }
 
-const REJECTIONS: ReadonlySet<string> = new Set<string>([
-  DuelRejection.Terminal,
-  DuelRejection.ReEnterable,
-])
+/** Every category, read off the enum so a new one cannot be added without this
+ * recognising it — a hand-listed set is a second place to remember. */
+const REJECTIONS: ReadonlySet<string> = new Set<string>(Object.values(DuelRejection))
 
 /**
  * Refuse a commit with its category attached. A `ConvexError` rather than a bare

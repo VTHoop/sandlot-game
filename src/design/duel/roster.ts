@@ -1,4 +1,8 @@
-import type { HitterAttributes, PitcherAttributes } from '@sandlot/engine/atBat'
+import {
+  baseRunningSpeed,
+  type HitterAttributes,
+  type PitcherAttributes,
+} from '@sandlot/engine/atBat'
 import type { GameContext, TeamLineup } from '@sandlot/engine/game'
 
 /**
@@ -39,10 +43,10 @@ function hitter(
   return { name, attributes, speed: run }
 }
 
-/** Build a pitcher entry. A pitcher-as-runner is always the slowest (1, SAN-16),
- * so its stored base-running speed is 1 — though the adapter forces 1 regardless. */
+/** Build a pitcher entry. Its stored base-running speed comes from the engine's
+ * own rule (SAN-16) rather than a literal restated here. */
 function pitcher(name: string, attributes: PitcherAttributes): RosterPlayer {
-  return { name, attributes, speed: 1 }
+  return { name, attributes, speed: baseRunningSpeed(attributes) }
 }
 
 /**

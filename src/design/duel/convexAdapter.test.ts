@@ -1,10 +1,11 @@
 // @vitest-environment edge-runtime
 /// <reference types="vite/client" />
 import { GameStatus, Half } from '@sandlot/engine/game'
+import type { WithoutSystemFields } from 'convex/server'
 import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from '../../../convex/_generated/api'
-import type { Id } from '../../../convex/_generated/dataModel'
+import type { Doc, Id } from '../../../convex/_generated/dataModel'
 import type { MutationCtx } from '../../../convex/_generated/server'
 import { DuelRejection, DuelStatus } from '../../../convex/duelContract'
 import schema from '../../../convex/schema'
@@ -118,7 +119,7 @@ const scheduledRow = (homeTeam: Id<'teams'>, awayTeam: Id<'teams'>) =>
     homeBattingIndex: 0,
     awayBattingIndex: 0,
     lastResolvedSequence: -1,
-  }) as const
+  }) as const satisfies WithoutSystemFields<Doc<'games'>>
 
 /** A live game with both clubs under one owner, opened through `startGame`. */
 async function seedLiveGame() {

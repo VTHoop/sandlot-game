@@ -1,4 +1,5 @@
 import {
+  baseRunningSpeed,
   DUEL_MAX,
   DUEL_MIN,
   type HitterAttributes,
@@ -16,7 +17,6 @@ import {
 } from '../../../convex/duelContract'
 import type { ClubTotals, GameView, PlayerView, SeatView } from '../../../convex/gameView'
 import {
-  baseRunningSpeed,
   buildMatchup,
   buildReveal,
   byBattingSide,
@@ -24,9 +24,12 @@ import {
   type DuelResolution,
   type DuelState,
   type ResolvedFacts,
+  SeatedRole,
+  seated,
 } from './adapter'
 import type { DuelMatchup } from './MatchupCard'
 import type { Roster, RosterPlayer } from './roster'
+import { DuelSeat } from './seatAgent'
 
 /**
  * The Convex-backed duel adapter (SAN-57): the second implementation of
@@ -285,11 +288,10 @@ function requireAtBat(
   if (status !== GameStatus.Live) {
     throw new Error('The game is not live, so there is no at-bat to play')
   }
-  const pitcher = currentPitcher ? players.get(currentPitcher) : undefined
-  if (!currentBatter || !pitcher) {
-    throw new Error('The current game state has an empty seat, so there is no at-bat to play')
+  return {
+    batter: seated(players, currentBatter, SeatedRole.Batter).id,
+    opponent: seated(players, currentPitcher, SeatedRole.Pitcher).player.name,
   }
-  return { batter: currentBatter, opponent: pitcher.name }
 }
 
 /**
@@ -302,11 +304,13 @@ interface DuelNumbers {
   swing: number
 }
 
-/** The seat whose number the ring cannot hold, or null. Explicit reads, one per
- * line — a seat→number table would only relocate the problem. */
-function outOfRing(numbers: DuelNumbers): string | null {
-  if (!isDuelNumber(numbers.pitch)) return 'pitch'
-  if (!isDuelNumber(numbers.swing)) return 'swing'
+/** The seat whose number the ring cannot hold, or null. Reuses the loop's own
+ * `DuelSeat` rather than minting a second two-value vocabulary for the same
+ * pair. Explicit reads, one per line — a seat→number table would only relocate
+ * the problem. */
+function outOfRing(numbers: DuelNumbers): DuelSeat | null {
+  if (!isDuelNumber(numbers.pitch)) return DuelSeat.Pitcher
+  if (!isDuelNumber(numbers.swing)) return DuelSeat.Batter
   return null
 }
 
@@ -329,7 +333,7 @@ function assertCommittable(numbers: DuelNumbers): void {
   if (seat) {
     throw new DuelCommitError({
       rejection: DuelRejection.ReEnterable,
-      reason: `The ${seat} must be a whole number in ${DUEL_MIN}–${DUEL_MAX}`,
+      reason: `The ${seat}'s number must be a whole number in ${DUEL_MIN}–${DUEL_MAX}`,
     })
   }
 }
@@ -412,20 +416,14 @@ export async function createConvexDuelAdapter(gateway: DuelGateway): Promise<Con
     snapshot = liveSnapshot(view)
   }
 
-  function seated(id: string | null, role: string): RosterPlayer {
-    const player = id ? players.get(id) : undefined
-    if (!player) throw new Error(`No ${role} is seated in the current game state`)
-    return player
-  }
-
   return {
     state: () => ({ ...snapshot.state, bases: { ...snapshot.state.bases } }),
     hits: () => byBattingSide(snapshot.state.half, snapshot.hits),
     roster: () => players,
     matchup: () =>
       buildMatchup(
-        seated(snapshot.state.currentPitcher, 'pitcher'),
-        seated(snapshot.state.currentBatter, 'batter'),
+        seated(players, snapshot.state.currentPitcher, SeatedRole.Pitcher).player,
+        seated(players, snapshot.state.currentBatter, SeatedRole.Batter).player,
         snapshot.dueUp,
       ),
     refresh: install,
@@ -480,7 +478,3 @@ async function requireReadableView(
   }
   return view
 }
-
-/** Re-exported so a consumer branches on the category without reaching past this
- * module into the Convex layer for the enum it is already handed. */
-export { DuelRejection }

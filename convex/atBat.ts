@@ -1,5 +1,6 @@
 import {
   type BaseSpeeds,
+  baseRunningSpeed,
   DUEL_MAX,
   DUEL_MIN,
   type GroundBallResult,
@@ -40,19 +41,10 @@ import { swingType as swingTypeValidator } from './validators'
  * downstream tickets.
  */
 
-/**
- * The duel's wire vocabulary lives in `./duelContract`, a leaf module a browser
- * client can import without pulling this one — and behind it `_generated/server`
- * — into its bundle. Re-exported here so `./atBat` stays the single door for
- * anything already reaching for the vault's types.
- */
-export {
-  type DuelCommitResult,
-  DuelRejection,
-  type DuelRejectionData,
-  DuelStatus,
-  type DuelView,
-} from './duelContract'
+// The duel's wire vocabulary lives in `./duelContract`, a leaf module a browser
+// client can import without pulling this one — and behind it `_generated/server`
+// — into its bundle. Callers import it from there; this module is the behaviour,
+// not a second door onto the same words.
 
 /** Which side of the matchup an authenticated user owns, if any. The two
  * committing roles double as the persisted `duelCommitments.role` values. */
@@ -175,11 +167,6 @@ function asPitcher(attributes: Doc<'players'>['attributes']): PitcherAttributes 
   throw new Error('Current pitcher does not carry a pitcher attribute block')
 }
 
-/** A runner's 1–5 speed for the GB speed axis; a pitcher-as-runner is the slowest (1, SAN-16). */
-function runnerSpeed(attributes: Doc<'players'>['attributes']): number {
-  return 'power' in attributes ? attributes.speed : 1
-}
-
 /**
  * Look up each on-base runner's speed for the GB sub-resolution, positionally
  * aligned to `bases` (null where empty). The engine consumes this block rather
@@ -192,7 +179,7 @@ async function runnerSpeedsFor(
   const speedAt = async (id: Id<'players'> | null): Promise<number | null> => {
     if (!id) return null
     const player = await ctx.db.get(id)
-    return player ? runnerSpeed(player.attributes) : null
+    return player ? baseRunningSpeed(player.attributes) : null
   }
   // Independent lookups — resolve them concurrently rather than serializing
   // three round-trips on a loaded base.

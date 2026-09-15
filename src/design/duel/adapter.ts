@@ -1,6 +1,7 @@
 import {
   type BaseSpeeds,
   type BaseState,
+  baseRunningSpeed,
   GroundBallResult,
   type HitterAttributes,
   type PitcherAttributes,
@@ -111,25 +112,22 @@ function isHitterBlock(attrs: HitterAttributes | PitcherAttributes): attrs is Hi
 }
 
 /**
- * A player's base-running speed from their attribute block alone: a hitter's own
- * speed, a pitcher-as-runner forced to the slowest (1, SAN-16). Exported because
- * the same default has to survive the move to server-resolved rosters — the
- * Convex boundary builds its roster entries through this, and `convex/atBat.ts`
- * applies the identical rule where it feeds the engine.
+ * An id the roster does not know: corrupt input to a fixture path, run at the
+ * slowest rating rather than crashing a preview. Its own rule, deliberately
+ * separate from the pitcher-as-runner one the engine owns — they agree on a
+ * value today and are not the same decision.
  */
-export function baseRunningSpeed(attributes: HitterAttributes | PitcherAttributes): number {
-  return isHitterBlock(attributes) ? attributes.speed : 1
-}
+const UNKNOWN_RUNNER_SPEED = 1
 
 /**
- * One on-base runner's speed: a hitter contributes their stored base-running
- * speed; a pitcher-as-runner is forced to the slowest (1, SAN-16); an empty base
- * is null. An unknown id (occupied but absent from the roster) also defaults to 1.
+ * One on-base runner's speed: read from their attribute block through the
+ * engine's rule (a pitcher-as-runner is the slowest, SAN-16); an empty base is
+ * null; an unknown id falls back to {@link UNKNOWN_RUNNER_SPEED}.
  */
 function runnerSpeed(id: RunnerId | null, roster: Roster): number | null {
   if (!id) return null
   const player = roster.get(id)
-  return player && isHitterBlock(player.attributes) ? player.speed : 1
+  return player ? baseRunningSpeed(player.attributes) : UNKNOWN_RUNNER_SPEED
 }
 
 /**
@@ -146,13 +144,15 @@ export function assembleRunnerSpeeds(bases: BaseState, roster: Roster): BaseSpee
 }
 
 /** Which seat `seated` is resolving — labels the "nobody seated" error. A TS enum
- * per the project's finite-value-set convention (cf. `Half`, `SwingType`). */
-enum SeatedRole {
+ * per the project's finite-value-set convention (cf. `Half`, `SwingType`).
+ * Exported so the Convex-backed adapter resolves its seats through the same
+ * lookup rather than a copy that types the role as a bare string. */
+export enum SeatedRole {
   Batter = 'batter',
   Pitcher = 'pitcher',
 }
 
-function seated(
+export function seated(
   roster: Roster,
   id: string | null,
   role: SeatedRole,
