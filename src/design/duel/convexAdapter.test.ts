@@ -409,6 +409,63 @@ describe('the Convex-backed adapter — rejections carry their category', () => 
     )
   })
 
+  it('leaves nothing on file when a number is refused, so the corrected retry lands', async () => {
+    const { t, game } = await seedLiveGame()
+    const adapter = await adapterFor(t, game)
+    const onFile = () =>
+      t.run((ctx) =>
+        ctx.db
+          .query('duelCommitments')
+          .withIndex('by_game', (q) => q.eq('game', game))
+          .collect(),
+      )
+
+    // A bad SWING is the dangerous one: committing the pitch first and failing
+    // second would leave the ordinal holding a pitching commitment, and every
+    // later attempt at that at-bat — corrected swing included — is then refused
+    // as already-locked. Both numbers are checked before either is sent.
+    expect(await rejectionOf(adapter.playAtBat(HOME_RUN.pitch, 1000))).toBe(
+      DuelRejection.ReEnterable,
+    )
+    expect(await onFile()).toHaveLength(0)
+
+    const { reveal } = await adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing)
+    expect(reveal.outcome).toBe('HR')
+  })
+
+  it('names the half-committed at-bat a mid-flight refusal can still leave', async () => {
+    const { t, game } = await seedLiveGame()
+    // The batter's seat empties between the two commits — genuinely concurrent,
+    // and the one cause the up-front check cannot rule out.
+    const adapter = await createConvexDuelAdapter({
+      ...gatewayFor(t, MANAGER, game),
+      commitPitch: async (number) => {
+        const result = await gatewayFor(t, MANAGER, game).commitPitch(number)
+        await t.run((ctx) => ctx.db.patch(game, { currentBatter: null }))
+        return result
+      },
+    })
+
+    expect(await rejectionOf(adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing))).toBe(
+      DuelRejection.Terminal,
+    )
+
+    // The pitch is on file with no way to finish the at-bat from here. Recovering
+    // needs the lock state and a screen to show it (SAN-22); what this adapter
+    // must NOT do is skip the locked seat and resolve against a stored pitch the
+    // caller did not just hand it.
+    const commitments = await t.run((ctx) =>
+      ctx.db
+        .query('duelCommitments')
+        .withIndex('by_game', (q) => q.eq('game', game))
+        .collect(),
+    )
+    expect(commitments.map((row) => row.role)).toEqual(['pitching'])
+    expect(await rejectionOf(adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing))).toBe(
+      DuelRejection.ReEnterable,
+    )
+  })
+
   it('reports a seat that has already locked at this ordinal as re-enterable', async () => {
     const { t, game } = await seedLiveGame()
     const adapter = await adapterFor(t, game)

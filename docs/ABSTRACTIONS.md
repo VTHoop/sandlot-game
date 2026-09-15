@@ -559,6 +559,16 @@ route until SAN-39 — its tests are the acceptance surface.
   is already on file. Hotseat drives both seats, so that means an out-of-band
   lock and the held swing has no ordinal left — committing it anyway would seal
   the next at-bat with a number nobody chose for it, so this refuses instead.
+- **Both numbers are checked before either is sent.** `isDuelNumber` — the
+  server's own rule, not a second one — runs over the pair up front, because a
+  swing refused *after* the pitch is on file leaves a half-committed at-bat this
+  adapter cannot finish: the ordinal holds a pitching commitment, so every later
+  attempt at it is refused as already-locked, corrected swing and all. A seat
+  emptied *between* the two commits can still leave that state; recovering needs
+  the lock state and a screen to show it (SAN-22). What this module must never do
+  is quietly skip a locked seat — the caller hands both numbers on every call, so
+  resolving against a stored pitch would show a player a result for a number they
+  did not commit.
 - **Rejections carry a category, not a message.** `DuelCommitError.rejection` is
   a `DuelRejection` read off the server's `ConvexError` data (see
   `convex/duelContract.ts`). Anything that is not a categorised rejection

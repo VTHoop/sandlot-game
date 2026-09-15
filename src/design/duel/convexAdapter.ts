@@ -1,4 +1,10 @@
-import type { HitterAttributes, PitcherAttributes } from '@sandlot/engine/atBat'
+import {
+  DUEL_MAX,
+  DUEL_MIN,
+  type HitterAttributes,
+  isDuelNumber,
+  type PitcherAttributes,
+} from '@sandlot/engine/atBat'
 import { GameStatus } from '@sandlot/engine/game'
 import {
   type DuelCommitResult,
@@ -287,6 +293,48 @@ function requireAtBat(
 }
 
 /**
+ * The pair one at-bat is committed with. They travel together because they are
+ * only ever validated and sent together — see {@link assertCommittable} for why
+ * splitting them is the failure this type exists to prevent.
+ */
+interface DuelNumbers {
+  pitch: number
+  swing: number
+}
+
+/** The seat whose number the ring cannot hold, or null. Explicit reads, one per
+ * line — a seat→number table would only relocate the problem. */
+function outOfRing(numbers: DuelNumbers): string | null {
+  if (!isDuelNumber(numbers.pitch)) return 'pitch'
+  if (!isDuelNumber(numbers.swing)) return 'swing'
+  return null
+}
+
+/**
+ * Refuse a number the ring cannot hold, before either seat is committed.
+ *
+ * Not a second validator: this is `isDuelNumber`, the same rule the server
+ * applies (AGENTS.md — one layer owns a domain), and the server still applies it
+ * independently. Checking BOTH numbers up front is what keeps the pair atomic. A
+ * swing rejected *after* the pitch is on file leaves a half-committed at-bat
+ * this adapter cannot finish: the ordinal now holds a pitching commitment, so
+ * every later attempt at it is refused as already-locked, corrected swing and
+ * all.
+ *
+ * Reaching this means the commit screen was bypassed — a bug signal, not normal
+ * flow — so it carries the same re-enterable category the server would have.
+ */
+function assertCommittable(numbers: DuelNumbers): void {
+  const seat = outOfRing(numbers)
+  if (seat) {
+    throw new DuelCommitError({
+      rejection: DuelRejection.ReEnterable,
+      reason: `The ${seat} must be a whole number in ${DUEL_MIN}–${DUEL_MAX}`,
+    })
+  }
+}
+
+/**
  * Seal both seats and return the at-bat the server resolved.
  *
  * Order-independent (ADR-0014): the server resolves on whichever commit
@@ -295,19 +343,29 @@ function requireAtBat(
  * swing being held would have no ordinal left to land on. Committing it anyway
  * would seal the NEXT at-bat with a number nobody chose for it, which is why
  * this refuses instead of carrying on.
+ *
+ * A half-committed at-bat is still reachable, just no longer by the one cause
+ * that is routine: a seat emptied or a club re-pointed *between* the two commits
+ * leaves the pitch on file with no way to finish the at-bat here. That window is
+ * genuinely concurrent and recovering from it needs the lock state and a screen
+ * to show it — SAN-22's, not this module's. What this module must not do is
+ * quietly skip a locked seat: the caller hands both numbers on every call, so
+ * resolving against a stored pitch instead of the one just passed would show a
+ * player a result for a number they did not commit.
  */
 async function commitBothSeats(
   gateway: DuelGateway,
-  pitch: number,
-  swing: number,
+  numbers: DuelNumbers,
 ): Promise<NonNullable<DuelCommitResult>> {
-  const early = await commit(() => gateway.commitPitch(pitch))
+  assertCommittable(numbers)
+
+  const early = await commit(() => gateway.commitPitch(numbers.pitch))
   if (early) {
     throw new Error(
       `At-bat ${early.sequence} resolved on the pitch commit; the swing has no at-bat to join`,
     )
   }
-  const resolution = await commit(() => gateway.commitSwing(swing))
+  const resolution = await commit(() => gateway.commitSwing(numbers.swing))
   if (!resolution) throw new Error('Both numbers are on file but the server resolved no at-bat')
   return resolution
 }
@@ -375,7 +433,7 @@ export async function createConvexDuelAdapter(gateway: DuelGateway): Promise<Con
     async playAtBat(pitch: number, swing: number): Promise<DuelResolution> {
       const before = snapshot
       const { batter, opponent } = requireAtBat(before, players)
-      const resolution = await commitBothSeats(gateway, pitch, swing)
+      const resolution = await commitBothSeats(gateway, { pitch, swing })
 
       // Both reads go out together, and this does not settle until they land:
       // the loop reads `state()` twice on the next line and must not see the
