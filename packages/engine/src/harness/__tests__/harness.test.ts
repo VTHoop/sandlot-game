@@ -20,9 +20,25 @@ import {
   validateGridInvariants,
 } from '../grid'
 import { DEFAULT_LINEAR_WEIGHTS } from '../linearWeights'
-import type { BaselineConfig, CellDiffs, ToleranceConfig } from '../types'
+import type { BaselineConfig, CellDiffs, CellResult, OutcomeRates, ToleranceConfig } from '../types'
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
+//
+// SCANNING THE GRID (SAN-64). Several properties below hold "for every reachable
+// cell" over 14 641 of them. Calling `expect` inside that loop is what costs —
+// not the loop. The width/500 identity made two calls per rate, ~293 000
+// assertions, and took 3.7s under coverage while a sibling making one call per
+// cell took 178ms; under 52 parallel test files it intermittently blew the 15s
+// timeout and failed a push.
+//
+// So each of those tests scans in plain code, collects the violations it finds,
+// and asserts ONCE that the list is empty. Two orders of magnitude cheaper, and
+// it reports better: a failure names the cell and the field, where `expect(rate)`
+// inside the loop printed a bare number with no way to locate it among 14 641.
+//
+// Keep one assertion per property. Collapsing several properties into a single
+// list would say only "something broke" — the whole point of a named list per
+// property is that the failure still says WHICH.
 
 const ALL_ZERO: CellDiffs = { powerVel: 0, speedAwa: 0, eyeCmd: 0, contactMov: 0 }
 
@@ -30,6 +46,26 @@ const ALL_ZERO: CellDiffs = { powerVel: 0, speedAwa: 0, eyeCmd: 0, contactMov: 0
 // cell assemblies per test and keeps individual tests fast.
 const { cells: GRID, degenerate: DEGENERATE_CELLS } = enumerateGrid()
 const AGGREGATE = aggregateGrid(GRID)
+
+/** A cell named by its four diffs — the only thing that identifies one. */
+const cellName = ({ diffs }: CellResult): string =>
+  `cell[pv ${diffs.powerVel}, sa ${diffs.speedAwa}, ec ${diffs.eyeCmd}, cm ${diffs.contactMov}]`
+
+/** `toBeCloseTo(actual, expected, digits)` passes when the gap is under
+ * `10^-digits / 2`. Spelled out here so a scan applies the identical threshold
+ * without paying for the matcher 14 641 times. */
+const isCloseTo = (actual: number, expected: number, digits: number): boolean =>
+  Math.abs(expected - actual) < 10 ** -digits / 2
+
+/** Cells missing a required field, named. `in` rather than a computed read: the
+ * question is whether the key is present, and asking it that way keeps the check
+ * off the object-injection sink. */
+const cellsMissing = (cells: readonly CellResult[], field: keyof CellResult): string[] =>
+  cells.flatMap((cell) => (field in cell ? [] : [cellName(cell)]))
+
+/** Hits and at-bat rate, as the AC's formulas define them. */
+const hitRate = (r: OutcomeRates): number => r.hr + r.triple + r.double + r.single + r.if1b
+const atBatRate = (r: OutcomeRates): number => 1 - r.bb
 
 // ─── Width/500 rate identity ───────────────────────────────────────────────────
 //
@@ -46,24 +82,32 @@ const AGGREGATE = aggregateGrid(GRID)
 
 describe('width/500 rate identity — holds for every reachable cell', () => {
   it('every rate is a non-negative integer band width over 500', () => {
-    for (const cell of GRID) {
-      // Iterate values directly (not via computed key access) — every OutcomeRates
-      // field is one of the ten band rates.
-      for (const rate of Object.values(cell.rates)) {
-        expect(rate).toBeGreaterThanOrEqual(0)
-        const width = rate * 500
-        // rate must be an exact k/500 — i.e. width is a non-negative integer.
-        expect(width).toBeCloseTo(Math.round(width), 6)
-      }
-    }
+    // `Object.entries` rather than a computed key lookup — every OutcomeRates
+    // field is one of the ten band rates, and the key is what names the offender.
+    const negative = GRID.flatMap((cell) =>
+      Object.entries(cell.rates)
+        .filter(([, rate]) => rate < 0)
+        .map(([band, rate]) => `${cellName(cell)} ${band} = ${rate}`),
+    )
+    // rate must be an exact k/500 — i.e. width is a non-negative integer.
+    const fractionalWidth = GRID.flatMap((cell) =>
+      Object.entries(cell.rates)
+        .filter(([, rate]) => !isCloseTo(rate * 500, Math.round(rate * 500), 6))
+        .map(([band, rate]) => `${cellName(cell)} ${band} = ${rate} → width ${rate * 500}`),
+    )
+
+    expect(negative).toEqual([])
+    expect(fractionalWidth).toEqual([])
   })
 
   it('all ten rates sum to exactly 1.0 in every cell (complete partition)', () => {
-    for (const cell of GRID) {
+    const incomplete = GRID.flatMap((cell) => {
       const r = cell.rates
       const sum = r.hr + r.triple + r.double + r.single + r.if1b + r.bb + r.fo + r.po + r.gb + r.k
-      expect(sum).toBeCloseTo(1.0, 9)
-    }
+      return isCloseTo(sum, 1.0, 9) ? [] : [`${cellName(cell)} sums to ${sum}`]
+    })
+
+    expect(incomplete).toEqual([])
   })
 })
 
@@ -81,29 +125,82 @@ describe('width/500 rate identity — holds for every reachable cell', () => {
 
 describe('slash line formulas — hold for every reachable cell', () => {
   it('AVG = H/AB, OBP = H+BB, SLG = TB/AB, and HR%/K%/BB% equal their rates', () => {
-    for (const cell of GRID) {
-      const r = cell.rates
-      const hits = r.hr + r.triple + r.double + r.single + r.if1b
-      const abRate = 1 - r.bb
-      const totalBases = 4 * r.hr + 3 * r.triple + 2 * r.double + (r.single + r.if1b)
+    const totalBases = (r: OutcomeRates) =>
+      4 * r.hr + 3 * r.triple + 2 * r.double + (r.single + r.if1b)
 
-      expect(cell.slashLine.avg).toBeCloseTo(hits / abRate, 10)
-      expect(cell.slashLine.obp).toBeCloseTo(hits + r.bb, 10)
-      expect(cell.slashLine.slg).toBeCloseTo(totalBases / abRate, 10)
-      expect(cell.slashLine.hrPct).toBeCloseTo(r.hr, 10)
-      expect(cell.slashLine.kPct).toBeCloseTo(r.k, 10)
-      expect(cell.slashLine.bbPct).toBeCloseTo(r.bb, 10)
-    }
+    /** Cells where a slash field disagrees with the formula re-derived from that
+     * same cell's rates. Accessors, not a field-name table: `['avg', (s) => s.obp]`
+     * would typecheck and lie. */
+    const mismatched = (
+      field: string,
+      actual: (cell: CellResult) => number,
+      expected: (rates: OutcomeRates) => number,
+    ) =>
+      GRID.flatMap((cell) =>
+        isCloseTo(actual(cell), expected(cell.rates), 10)
+          ? []
+          : [`${cellName(cell)} ${field} = ${actual(cell)}, expected ${expected(cell.rates)}`],
+      )
+
+    expect(
+      mismatched(
+        'avg',
+        (c) => c.slashLine.avg,
+        (r) => hitRate(r) / atBatRate(r),
+      ),
+    ).toEqual([])
+    expect(
+      mismatched(
+        'obp',
+        (c) => c.slashLine.obp,
+        (r) => hitRate(r) + r.bb,
+      ),
+    ).toEqual([])
+    expect(
+      mismatched(
+        'slg',
+        (c) => c.slashLine.slg,
+        (r) => totalBases(r) / atBatRate(r),
+      ),
+    ).toEqual([])
+    expect(
+      mismatched(
+        'hrPct',
+        (c) => c.slashLine.hrPct,
+        (r) => r.hr,
+      ),
+    ).toEqual([])
+    expect(
+      mismatched(
+        'kPct',
+        (c) => c.slashLine.kPct,
+        (r) => r.k,
+      ),
+    ).toEqual([])
+    expect(
+      mismatched(
+        'bbPct',
+        (c) => c.slashLine.bbPct,
+        (r) => r.bb,
+      ),
+    ).toEqual([])
   })
 
   it('OBP ≥ AVG and SLG ≥ AVG in every cell (sanity ordering)', () => {
-    for (const cell of GRID) {
-      expect(cell.slashLine.slg).toBeGreaterThanOrEqual(cell.slashLine.avg)
-      // OBP counts BB in the numerator over PA; AVG divides hits by the smaller AB.
-      // Both exceed the bare hit rate, so assert the weaker, always-true SLG ≥ AVG
-      // and OBP > 0 here; the AVG/OBP ordering is matchup-dependent, not invariant.
-      expect(cell.slashLine.obp).toBeGreaterThan(0)
-    }
+    const slgBelowAvg = GRID.flatMap((cell) =>
+      cell.slashLine.slg >= cell.slashLine.avg
+        ? []
+        : [`${cellName(cell)} slg ${cell.slashLine.slg} < avg ${cell.slashLine.avg}`],
+    )
+    // OBP counts BB in the numerator over PA; AVG divides hits by the smaller AB.
+    // Both exceed the bare hit rate, so assert the weaker, always-true SLG ≥ AVG
+    // and OBP > 0 here; the AVG/OBP ordering is matchup-dependent, not invariant.
+    const nonPositiveObp = GRID.flatMap((cell) =>
+      cell.slashLine.obp > 0 ? [] : [`${cellName(cell)} obp ${cell.slashLine.obp}`],
+    )
+
+    expect(slgBelowAvg).toEqual([])
+    expect(nonPositiveObp).toEqual([])
   })
 })
 
@@ -157,7 +254,7 @@ describe('runsPerGame', () => {
     // injected weights, for every cell. Pins the formula (per-PA run sum, division by
     // the out rate, × 27 outs/game) without hard-coding any tuned width or weight.
     const w = DEFAULT_LINEAR_WEIGHTS
-    for (const cell of GRID) {
+    const mismatched = GRID.flatMap((cell) => {
       const r = cell.rates
       const runsPerPA =
         r.hr * w.hr +
@@ -171,8 +268,13 @@ describe('runsPerGame', () => {
         r.gb * w.gb +
         r.k * w.k
       const outRate = r.fo + r.po + r.gb + r.k
-      expect(cell.runsPerGame).toBeCloseTo((runsPerPA / outRate) * 27, 10)
-    }
+      const expected = (runsPerPA / outRate) * 27
+      return isCloseTo(cell.runsPerGame, expected, 10)
+        ? []
+        : [`${cellName(cell)} runsPerGame ${cell.runsPerGame}, expected ${expected}`]
+    })
+
+    expect(mismatched).toEqual([])
   })
 })
 
@@ -192,21 +294,26 @@ describe('enumerateGrid', () => {
   })
 
   it('every cell has diffs, rates, slashLine, runsPerGame', () => {
-    for (const cell of GRID) {
-      expect(cell).toHaveProperty('diffs')
-      expect(cell).toHaveProperty('rates')
-      expect(cell).toHaveProperty('slashLine')
-      expect(cell).toHaveProperty('runsPerGame')
-    }
+    expect(cellsMissing(GRID, 'diffs')).toEqual([])
+    expect(cellsMissing(GRID, 'rates')).toEqual([])
+    expect(cellsMissing(GRID, 'slashLine')).toEqual([])
+    expect(cellsMissing(GRID, 'runsPerGame')).toEqual([])
   })
 
   it('all four diffs in every cell are in [−5, +5]', () => {
-    for (const { diffs } of GRID) {
-      for (const d of Object.values(diffs)) {
-        expect(d).toBeGreaterThanOrEqual(-5)
-        expect(d).toBeLessThanOrEqual(5)
-      }
-    }
+    const belowRange = GRID.flatMap((cell) =>
+      Object.entries(cell.diffs)
+        .filter(([, d]) => d < -5)
+        .map(([axis, d]) => `${cellName(cell)} ${axis} = ${d}`),
+    )
+    const aboveRange = GRID.flatMap((cell) =>
+      Object.entries(cell.diffs)
+        .filter(([, d]) => d > 5)
+        .map(([axis, d]) => `${cellName(cell)} ${axis} = ${d}`),
+    )
+
+    expect(belowRange).toEqual([])
+    expect(aboveRange).toEqual([])
   })
 })
 
@@ -447,13 +554,12 @@ describe('buildArtifact', () => {
   })
 
   it('each artifact cell has the required SAN-18 fields', () => {
-    const artifact = buildArtifact(GRID)
-    for (const cell of artifact.cells) {
-      expect(cell).toHaveProperty('diffs')
-      expect(cell).toHaveProperty('rates')
-      expect(cell).toHaveProperty('slashLine')
-      expect(cell).toHaveProperty('runsPerGame')
-    }
+    const { cells } = buildArtifact(GRID)
+
+    expect(cellsMissing(cells, 'diffs')).toEqual([])
+    expect(cellsMissing(cells, 'rates')).toEqual([])
+    expect(cellsMissing(cells, 'slashLine')).toEqual([])
+    expect(cellsMissing(cells, 'runsPerGame')).toEqual([])
   })
 
   it('accepts a custom run-value table', () => {
