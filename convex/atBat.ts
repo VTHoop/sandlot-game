@@ -12,7 +12,7 @@ import {
 } from '@sandlot/engine/atBat'
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
-import { type MutationCtx, mutation, query } from './_generated/server'
+import { internalMutation, type MutationCtx, mutation, query } from './_generated/server'
 import {
   type DuelCommitResult,
   DuelRejection,
@@ -22,7 +22,7 @@ import {
 } from './duelContract'
 import { applyResolvedAtBat } from './game'
 import { authedUser, type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
-import { swingType as swingTypeValidator } from './validators'
+import { duelRole, swingType as swingTypeValidator } from './validators'
 
 /**
  * The authoritative secret at-bat round-trip (SAN-20). The server is the vault
@@ -366,6 +366,14 @@ export const commitSwing = mutation({
       role: Participant.Batting,
       swingType: args.swingType as SwingType | undefined,
     }),
+})
+
+/** The server-side bot's commit for one seat (SAN-58). Stub for the red checkpoint. */
+export const commitBotSeat = internalMutation({
+  args: { game: v.id('games'), sequence: v.float64(), role: duelRole },
+  handler: async (): Promise<void> => {
+    throw new Error('commitBotSeat: not implemented')
+  },
 })
 
 // ─── Reveal query ───────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@
     "./tables": "./src/tables/accessor.ts",
     "./rangeFinder": "./src/rangeFinder/frontHalf.ts",
     "./harness": "./src/harness/index.ts",
-    "./outcomes": "./src/outcomes.ts"
+    "./outcomes": "./src/outcomes.ts",
+    "./bot": "./src/bot/index.ts"
   }
 }
