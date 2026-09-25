@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 import { isDuelNumber } from '@sandlot/engine/atBat'
 import { pickBotNumber } from '@sandlot/engine/bot'
+import { REGULATION_INNINGS } from '@sandlot/engine/game'
 import { convexTest } from 'convex-test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, internal } from './_generated/api'
@@ -187,7 +188,7 @@ describe('server-side bot — the rules a human commit obeys', () => {
 
     await expect(
       t.mutation(internal.atBat.commitBotSeat, { game, sequence: 0, role: 'batting' }),
-    ).rejects.toThrow()
+    ).rejects.toThrow('which it does not hold')
     expect(await commitments(t, game)).toHaveLength(0)
   })
 })
@@ -241,8 +242,8 @@ describe('server-side bot — the secret-state law', () => {
 })
 
 describe('server-side bot — a whole game', () => {
-  // A full nine innings is well over fifty at-bats; the bound turns a stalled
-  // game into a failure instead of a hang.
+  // A regulation game is well under this many at-bats; the bound turns a
+  // stalled game into a failure instead of a hang.
   const MAX_TURNS = 2000
 
   it('lets one signed-in human play from first pitch to final out against the bot', async () => {
@@ -254,10 +255,12 @@ describe('server-side bot — a whole game', () => {
       await humanCommits(t, game, ((turn * 37) % 999) + 1)
     }
 
-    expect((await gameRow(t, game)).status).toBe('final')
+    const final = await gameRow(t, game)
+    expect(final.status).toBe('final')
+    // A game goes at least the engine's regulation length. (Not an at-bat
+    // count: a double play records two outs in one at-bat.)
+    expect(final.inning).toBeGreaterThanOrEqual(REGULATION_INNINGS)
     const log = await atBats(t, game)
-    // Nine full innings a side is 27 outs each; the home side can skip the last.
-    expect(log.length).toBeGreaterThanOrEqual(51)
     for (const row of log) {
       // Top half: the bot bats. Bottom half: the bot pitches.
       const botNumber = row.half === 'top' ? row.batterNumber : row.pitchNumber
