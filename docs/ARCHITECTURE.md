@@ -36,8 +36,8 @@ Located at `packages/engine/`. A pure, framework-free TypeScript package — no 
 | path (relative to `packages/engine/`) | purpose |
 |---|---|
 | `src/tables/seedTables.ts` | Committed seed width tables (HR, 3B, 2B, IF1B, BB, hit-total, K, HandSwitcher SAME/OPPOSITE) with provenance header |
-| `src/bot/index.ts` | `pickBotNumber(rng)`: the one uniform-random number-selection policy both bots draw from (SAN-58, ADR-0027) — takes a draw and nothing else |
 | `src/tables/accessor.ts` | Typed per-outcome accessors; single source of truth for differential clamping to `[−5,+5]` |
+| `src/bot/index.ts` | `pickBotNumber(rng)`: the one uniform-random number-selection policy both bots draw from (SAN-58, ADR-0027) — takes a draw and nothing else |
 | `reference/` | **Gitignored.** Local parity fixtures captured from the private workbook via `scripts/captureParity.py`. Never committed (ADR-0006). |
 | `scripts/` | **Gitignored.** The openpyxl capture script. Never committed (ADR-0006). |
 
