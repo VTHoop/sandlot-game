@@ -24,7 +24,7 @@
     "@fontsource/archivo": "^5.2.8",
     "@fontsource/graduate": "^5.2.7",
     "@sandlot/engine": "workspace:*",
-    "convex": "^1.0.0",
+    "convex": "^1.46.0",
     "motion": "^12.40.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
