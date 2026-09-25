@@ -1,10 +1,9 @@
-import type { Infer } from 'convex/values'
 import { internal } from './_generated/api'
 import type { Id } from './_generated/dataModel'
 import type { MutationCtx } from './_generated/server'
+import { DuelRole } from './duelContract'
 import { type Ctx, teamsForHalf, userBySubject } from './participants'
 import { isSeedEnabled, SEED_CLERK_SUBJECT } from './seed'
-import type { duelRole } from './validators'
 
 /**
  * The server-side bot opponent (SAN-58, ADR-0027) — who the bot is, and when it
@@ -51,8 +50,8 @@ export async function scheduleBotSeats(ctx: MutationCtx, gameId: Id<'games'>): P
   const sequence = game.lastResolvedSequence + 1
   const { battingTeam, pitchingTeam } = teamsForHalf(game)
   await Promise.all([
-    scheduleIfBot(ctx, { game: gameId, sequence, role: 'batting', team: battingTeam }),
-    scheduleIfBot(ctx, { game: gameId, sequence, role: 'pitching', team: pitchingTeam }),
+    scheduleIfBot(ctx, { game: gameId, sequence, role: DuelRole.Batting, team: battingTeam }),
+    scheduleIfBot(ctx, { game: gameId, sequence, role: DuelRole.Pitching, team: pitchingTeam }),
   ])
 }
 
@@ -60,7 +59,7 @@ export async function scheduleBotSeats(ctx: MutationCtx, gameId: Id<'games'>): P
 interface OpenSeat {
   game: Id<'games'>
   sequence: number
-  role: Infer<typeof duelRole>
+  role: DuelRole
   team: Id<'teams'>
 }
 
