@@ -102,8 +102,9 @@ async function startedBotGame() {
 async function humanCommits(t: Harness, game: Id<'games'>, number: number): Promise<void> {
   const { half } = await gameRow(t, game)
   const human = t.withIdentity(HUMAN)
-  if (half === 'top') await human.mutation(api.atBat.commitPitch, { game, number })
-  else await human.mutation(api.atBat.commitSwing, { game, number })
+  await (half === 'top'
+    ? human.mutation(api.atBat.commitPitch, { game, number })
+    : human.mutation(api.atBat.commitSwing, { game, number }))
 }
 
 describe('server-side bot — when it commits', () => {
