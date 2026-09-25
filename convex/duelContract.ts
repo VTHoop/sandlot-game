@@ -78,6 +78,17 @@ export type DuelCommitResult = {
  * these, and is deliberately uncategorised — signing in is not a duel concern
  * (SAN-38 owns that gate).
  */
+/**
+ * Which seat of a duel committed a number: the persisted `duelCommitments.role`
+ * values, locked to `validators.duelRole` by a compile-time guard. Here rather
+ * than in `./atBat` so the bot's scheduler (`./bot`) can name a seat without
+ * importing the vault module it is imported by.
+ */
+export enum DuelRole {
+  Pitching = 'pitching',
+  Batting = 'batting',
+}
+
 export enum DuelRejection {
   Terminal = 'terminal',
   ReEnterable = 're-enterable',

@@ -11,6 +11,7 @@ import {
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { type MutationCtx, mutation } from './_generated/server'
+import { scheduleBotSeats } from './bot'
 import { authedUser, ownsTeam } from './participants'
 
 /**
@@ -107,6 +108,8 @@ export const startGame = mutation({
 
     const context = await loadContext(ctx, game)
     await ctx.db.patch(game._id, toGamePatch(initGameState(context)))
+    // The first at-bat is open: the bot commits for its seat now (SAN-58).
+    await scheduleBotSeats(ctx, game._id)
   },
 })
 

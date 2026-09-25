@@ -10,19 +10,22 @@ import {
   resolveAtBat,
   SwingType,
 } from '@sandlot/engine/atBat'
+import { pickBotNumber } from '@sandlot/engine/bot'
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
-import { type MutationCtx, mutation, query } from './_generated/server'
+import { internalMutation, type MutationCtx, mutation, query } from './_generated/server'
+import { isBotSeat, scheduleBotSeats } from './bot'
 import {
   type DuelCommitResult,
   DuelRejection,
+  DuelRole,
   DuelStatus,
   type DuelView,
   refuse,
 } from './duelContract'
 import { applyResolvedAtBat } from './game'
 import { authedUser, type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
-import { swingType as swingTypeValidator } from './validators'
+import { duelRole, swingType as swingTypeValidator } from './validators'
 
 /**
  * The authoritative secret at-bat round-trip (SAN-20). The server is the vault
@@ -46,32 +49,24 @@ import { swingType as swingTypeValidator } from './validators'
 // — into its bundle. Callers import it from there; this module is the behaviour,
 // not a second door onto the same words.
 
-/** Which side of the matchup an authenticated user owns, if any. The two
- * committing roles double as the persisted `duelCommitments.role` values. */
-enum Participant {
-  Batting = 'batting',
-  Pitching = 'pitching',
-  None = 'none',
-}
-
-type CommittingRole = Participant.Batting | Participant.Pitching
-
 // ─── Participants (duel-specific) ───────────────────────────────────────────
 
-async function roleOf(ctx: Ctx, game: Doc<'games'>, user: Doc<'users'>): Promise<Participant> {
+/** Which seat of the current matchup an authenticated user holds, or null when
+ * they hold neither. */
+async function roleOf(ctx: Ctx, game: Doc<'games'>, user: Doc<'users'>): Promise<DuelRole | null> {
   const { battingTeam, pitchingTeam } = teamsForHalf(game)
-  if (await ownsTeam(ctx, battingTeam, user)) return Participant.Batting
-  if (await ownsTeam(ctx, pitchingTeam, user)) return Participant.Pitching
-  return Participant.None
+  if (await ownsTeam(ctx, battingTeam, user)) return DuelRole.Batting
+  if (await ownsTeam(ctx, pitchingTeam, user)) return DuelRole.Pitching
+  return null
 }
 
 // ─── At-bat identity & lookups ──────────────────────────────────────────────
 
 /** The club whose seat this role commits for — top half, the away club bats
  * (SAN-21), which is the same rule ownership is gated on. */
-function seatTeamOf(game: Doc<'games'>, role: CommittingRole): Id<'teams'> {
+function seatTeamOf(game: Doc<'games'>, role: DuelRole): Id<'teams'> {
   const { battingTeam, pitchingTeam } = teamsForHalf(game)
-  return role === Participant.Pitching ? pitchingTeam : battingTeam
+  return role === DuelRole.Pitching ? pitchingTeam : battingTeam
 }
 
 /**
@@ -117,7 +112,7 @@ function commitmentAt(
   ctx: Ctx,
   game: Id<'games'>,
   sequence: number,
-  role: CommittingRole,
+  role: DuelRole,
 ): Promise<Doc<'duelCommitments'> | null> {
   return ctx.db
     .query('duelCommitments')
@@ -211,8 +206,8 @@ async function tryResolve(
   // still read the range this function appends into, so the OCC argument above
   // is unchanged: it rests on the read/write sets overlapping, not on ordering.
   const [pitching, batting] = await Promise.all([
-    commitmentAt(ctx, game._id, sequence, Participant.Pitching),
-    commitmentAt(ctx, game._id, sequence, Participant.Batting),
+    commitmentAt(ctx, game._id, sequence, DuelRole.Pitching),
+    commitmentAt(ctx, game._id, sequence, DuelRole.Batting),
   ])
   if (!pitching || !batting) return null
   if (await atBatAt(ctx, game._id, sequence)) return null
@@ -284,6 +279,9 @@ async function tryResolve(
     basesAfter: resolved.basesAfter,
     runsScored: resolved.runsScored,
   })
+  // The fold just opened the next at-bat (or ended the game): the bot commits
+  // for its seat in it now, not when the human gets round to theirs (SAN-58).
+  await scheduleBotSeats(ctx, game._id)
 
   return { atBatId, sequence, outcome: resolved.outcome }
 }
@@ -292,18 +290,15 @@ async function tryResolve(
  * an actual bunt — a pitching commit or a normal swing carries none, so the field's
  * presence unambiguously marks a declared bunt. A helper so `commit` stays under the
  * complexity gate. */
-function declaredSwingFields(
-  role: CommittingRole,
-  swingType?: SwingType,
-): { swingType?: SwingType } {
-  return role === Participant.Batting && swingType === SwingType.Bunt ? { swingType } : {}
+function declaredSwingFields(role: DuelRole, swingType?: SwingType): { swingType?: SwingType } {
+  return role === DuelRole.Batting && swingType === SwingType.Bunt ? { swingType } : {}
 }
 
 /** One side's commit details (bundled so `commit` stays within the argument gate). */
 interface CommitArgs {
   gameId: Id<'games'>
   number: number
-  role: CommittingRole
+  role: DuelRole
   /** Present only for a batting bunt declaration (SAN-17). */
   swingType?: SwingType
 }
@@ -314,20 +309,34 @@ interface CommitArgs {
  * must own the caller and which seat is being committed.
  */
 async function commit(ctx: MutationCtx, args: CommitArgs): Promise<DuelCommitResult> {
-  const { gameId, number, role, swingType } = args
   // Identity FIRST. Signing in is not a duel concern, so the shared auth gate's
   // own error stands uncategorised (see {@link DuelRejection}) — but it has to
   // fire before anything reads the game, or an unauthenticated caller learns
   // whether a game exists and whether it is live on the way to being refused.
   const user = await authedUser(ctx)
-  const game = await requireCommittableGame(ctx, user, { gameId, role })
+  const game = await requireCommittableGame(ctx, user, args)
+  return seal(ctx, game, args)
+}
+
+/**
+ * The rules every commit obeys once its caller is known to hold the seat — a
+ * signed-in owner ({@link commit}) or the server-side bot ({@link commitBotSeat}):
+ * a number in range, a seated player, one commitment per role per at-bat. Then
+ * resolve if the opponent is already on file.
+ */
+async function seal(
+  ctx: MutationCtx,
+  game: Doc<'games'>,
+  args: Omit<CommitArgs, 'gameId'>,
+): Promise<DuelCommitResult> {
+  const { number, role, swingType } = args
   assertDuelNumber(number)
 
-  const player = role === Participant.Pitching ? game.currentPitcher : game.currentBatter
+  const player = role === DuelRole.Pitching ? game.currentPitcher : game.currentBatter
   if (!player) {
     refuse(
       DuelRejection.Terminal,
-      `Game has no active ${role === Participant.Pitching ? 'pitcher' : 'batter'}`,
+      `Game has no active ${role === DuelRole.Pitching ? 'pitcher' : 'batter'}`,
     )
   }
 
@@ -351,7 +360,7 @@ async function commit(ctx: MutationCtx, args: CommitArgs): Promise<DuelCommitRes
 export const commitPitch = mutation({
   args: { game: v.id('games'), number: v.float64() },
   handler: (ctx, args) =>
-    commit(ctx, { gameId: args.game, number: args.number, role: Participant.Pitching }),
+    commit(ctx, { gameId: args.game, number: args.number, role: DuelRole.Pitching }),
 })
 
 export const commitSwing = mutation({
@@ -363,9 +372,63 @@ export const commitSwing = mutation({
     commit(ctx, {
       gameId: args.game,
       number: args.number,
-      role: Participant.Batting,
+      role: DuelRole.Batting,
       swingType: args.swingType as SwingType | undefined,
     }),
+})
+
+// ─── Server-side bot (SAN-58) ───────────────────────────────────────────────
+
+/**
+ * Whether a bot trigger arrived for an at-bat that has already moved on: the
+ * game ended, the at-bat resolved, or this seat is already on file. Each is an
+ * expected late or duplicate trigger, not a fault. A trigger for an at-bat that
+ * has not opened yet is a fault, and throws.
+ */
+async function botTriggerIsStale(
+  ctx: MutationCtx,
+  game: Doc<'games'>,
+  seat: { sequence: number; role: DuelRole },
+): Promise<boolean> {
+  if (game.status !== 'live') return true
+  const current = await currentSequence(ctx, game._id)
+  if (seat.sequence > current) {
+    throw new Error(`Bot triggered for at-bat ${seat.sequence} before at-bat ${current} resolved`)
+  }
+  return (
+    seat.sequence < current ||
+    (await commitmentAt(ctx, game._id, seat.sequence, seat.role)) !== null
+  )
+}
+
+/**
+ * The server-side bot's commit for one seat of one at-bat (SAN-58, ADR-0027).
+ * Scheduled by `bot.scheduleBotSeats` the moment the at-bat opens; never
+ * client-callable. The number comes from the shared policy, which takes a draw
+ * and nothing else — so the opponent's commitment, read by nothing here, cannot
+ * reach it. The bot never declares a bunt.
+ *
+ * A stale trigger is a quiet no-op. Anything else that goes wrong — the club has
+ * left the bot, the game is gone — throws, and is never retried or defaulted past.
+ */
+export const commitBotSeat = internalMutation({
+  args: { game: v.id('games'), sequence: v.float64(), role: duelRole },
+  handler: async (ctx, args): Promise<null> => {
+    const game = await ctx.db.get(args.game)
+    if (!game) throw new Error(`Bot triggered for game ${args.game}, which does not exist`)
+    // The validator literals equal the enum's values (guarded in ./validators),
+    // so the relabel is sound.
+    const role = args.role as DuelRole
+    if (await botTriggerIsStale(ctx, game, { sequence: args.sequence, role })) return null
+
+    if (!(await isBotSeat(ctx, seatTeamOf(game, role)))) {
+      throw new Error(
+        `Bot triggered for the ${role} seat of game ${game._id}, which it does not hold`,
+      )
+    }
+    await seal(ctx, game, { number: pickBotNumber(), role })
+    return null
+  },
 })
 
 // ─── Reveal query ───────────────────────────────────────────────────────────
@@ -389,8 +452,8 @@ export async function duelLocks(ctx: Ctx, game: Id<'games'>): Promise<DuelLocks>
   const sequence = await currentSequence(ctx, game)
   // Independent index reads — one round-trip, not two.
   const [pitching, batting] = await Promise.all([
-    commitmentAt(ctx, game, sequence, Participant.Pitching),
-    commitmentAt(ctx, game, sequence, Participant.Batting),
+    commitmentAt(ctx, game, sequence, DuelRole.Pitching),
+    commitmentAt(ctx, game, sequence, DuelRole.Batting),
   ])
   return { sequence, pitchCommitted: pitching !== null, swingCommitted: batting !== null }
 }
@@ -420,7 +483,7 @@ export const getActiveDuel = query({
     if (!game) return null
     const user = await maybeUser(ctx)
     // Non-participants (incl. the unauthenticated) can read neither number.
-    if (!user || (await roleOf(ctx, game, user)) === Participant.None) return null
+    if (!user || (await roleOf(ctx, game, user)) === null) return null
 
     const { sequence, pitchCommitted, swingCommitted } = await duelLocks(ctx, game._id)
     // Both present would have resolved (and advanced the sequence), so at the

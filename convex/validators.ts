@@ -1,6 +1,7 @@
 import type { BuntResult, GroundBallResult, SwingType } from '@sandlot/engine/atBat'
 import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { type Infer, v } from 'convex/values'
+import type { DuelRole } from './duelContract'
 
 /**
  * Shared field validators reused across the schema so every enumerated domain
@@ -127,6 +128,9 @@ export const half = v.union(v.literal('top'), v.literal('bottom'))
  * the role that produced it.
  */
 export const duelRole = v.union(v.literal('pitching'), v.literal('batting'))
+
+const _duelRoleMatchesContract: AssertEqual<Infer<typeof duelRole>, `${DuelRole}`> = true
+void _duelRoleMatchesContract
 
 /**
  * A 1–5 attribute rating. Modeled as a literal union so the 1–5 bound is a

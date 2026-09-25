@@ -600,12 +600,39 @@ enabling human-vs-bot and bot-vs-bot on the mock half-inning.
 
 - **`botAgent.ts` — `createBotAgent(rng = Math.random)`.** Implements `SeatAgent` by
   drawing its seat's number **uniformly at random** over the valid duel range
-  `[DUEL_MIN, DUEL_MAX]`. Uniform is the strategically-sound blind-duel baseline (the
+  `[DUEL_MIN, DUEL_MAX]`, through `pickBotNumber` (`@sandlot/engine/bot`) — the
+  policy the server bot shares (SAN-58). Uniform is the strategically-sound blind-duel baseline (the
   opponent's number is unknown, so expected outcome is pick-invariant — attributes size
   the bands, the number only sets the difference), not a placeholder; situational
   tendencies are a future enhancement. It ignores the request, so a bot seat carries no
   secret exactly as the seam guarantees. `rng` is injectable for deterministic tests.
   This is the seed of a future bot-vs-bot balance simulator (ADR-0010/0015).
+
+## Server-side bot opponent (`convex/bot.ts`, SAN-58)
+
+The bot as a real opponent: it commits on the server, so one signed-in human can
+play a game to the final out with their opponent's client never open. See
+ADR-0027.
+
+- **Who it is.** `isBotSeat(ctx, team)`: the club is held by the dev seed owner,
+  on a deployment where `SANDLOT_DEV_SEED` is on. No column — seed clubs are test
+  fixtures, and ownership already says who holds them. Hand the bot's club to a
+  human with `seed:assignClubToUser`; hand it back with the seed owner's subject.
+- **When it plays.** `scheduleBotSeats(ctx, gameId)` runs in the same transaction
+  as every write that opens an at-bat (`startGame`, and a resolution leaving the
+  game live) and schedules `atBat.commitBotSeat` for each seat the bot holds. The
+  bot never waits for the human (ADR-0014).
+- **How it commits.** `atBat.commitBotSeat` (internal) shares `seal` with the human
+  commit — range, seated player, one per role per at-bat, resolve — draws from
+  `pickBotNumber`, and never bunts. A stale trigger (game over, at-bat resolved,
+  seat on file) is a quiet no-op; a seat the bot no longer holds throws.
+
+```bash
+# human vs. bot: give the human one club, leave the other with the seed owner
+npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
+# back to the bot
+npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"seed|sandlot-dev-owner"}'
+```
 
 ## Live field state on the commit/waiting screens (SAN-51)
 
