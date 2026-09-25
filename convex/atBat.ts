@@ -10,9 +10,11 @@ import {
   resolveAtBat,
   SwingType,
 } from '@sandlot/engine/atBat'
+import { pickBotNumber } from '@sandlot/engine/bot'
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { internalMutation, type MutationCtx, mutation, query } from './_generated/server'
+import { isBotSeat, scheduleBotSeats } from './bot'
 import {
   type DuelCommitResult,
   DuelRejection,
@@ -284,6 +286,9 @@ async function tryResolve(
     basesAfter: resolved.basesAfter,
     runsScored: resolved.runsScored,
   })
+  // The fold just opened the next at-bat (or ended the game): the bot commits
+  // for its seat in it now, not when the human gets round to theirs (SAN-58).
+  await scheduleBotSeats(ctx, game._id)
 
   return { atBatId, sequence, outcome: resolved.outcome }
 }
@@ -314,13 +319,27 @@ interface CommitArgs {
  * must own the caller and which seat is being committed.
  */
 async function commit(ctx: MutationCtx, args: CommitArgs): Promise<DuelCommitResult> {
-  const { gameId, number, role, swingType } = args
   // Identity FIRST. Signing in is not a duel concern, so the shared auth gate's
   // own error stands uncategorised (see {@link DuelRejection}) — but it has to
   // fire before anything reads the game, or an unauthenticated caller learns
   // whether a game exists and whether it is live on the way to being refused.
   const user = await authedUser(ctx)
-  const game = await requireCommittableGame(ctx, user, { gameId, role })
+  const game = await requireCommittableGame(ctx, user, args)
+  return seal(ctx, game, args)
+}
+
+/**
+ * The rules every commit obeys once its caller is known to hold the seat — a
+ * signed-in owner ({@link commit}) or the server-side bot ({@link commitBotSeat}):
+ * a number in range, a seated player, one commitment per role per at-bat. Then
+ * resolve if the opponent is already on file.
+ */
+async function seal(
+  ctx: MutationCtx,
+  game: Doc<'games'>,
+  args: Omit<CommitArgs, 'gameId'>,
+): Promise<DuelCommitResult> {
+  const { number, role, swingType } = args
   assertDuelNumber(number)
 
   const player = role === Participant.Pitching ? game.currentPitcher : game.currentBatter
@@ -368,11 +387,55 @@ export const commitSwing = mutation({
     }),
 })
 
-/** The server-side bot's commit for one seat (SAN-58). Stub for the red checkpoint. */
+// ─── Server-side bot (SAN-58) ───────────────────────────────────────────────
+
+/**
+ * Whether a bot trigger arrived for an at-bat that has already moved on: the
+ * game ended, the at-bat resolved, or this seat is already on file. Each is an
+ * expected late or duplicate trigger, not a fault. A trigger for an at-bat that
+ * has not opened yet is a fault, and throws.
+ */
+async function botTriggerIsStale(
+  ctx: MutationCtx,
+  game: Doc<'games'>,
+  seat: { sequence: number; role: CommittingRole },
+): Promise<boolean> {
+  if (game.status !== 'live') return true
+  const current = await currentSequence(ctx, game._id)
+  if (seat.sequence > current) {
+    throw new Error(`Bot triggered for at-bat ${seat.sequence} before at-bat ${current} resolved`)
+  }
+  return (
+    seat.sequence < current ||
+    (await commitmentAt(ctx, game._id, seat.sequence, seat.role)) !== null
+  )
+}
+
+/**
+ * The server-side bot's commit for one seat of one at-bat (SAN-58, ADR-0027).
+ * Scheduled by `bot.scheduleBotSeats` the moment the at-bat opens; never
+ * client-callable. The number comes from the shared policy, which takes a draw
+ * and nothing else — so the opponent's commitment, read by nothing here, cannot
+ * reach it. The bot never declares a bunt.
+ *
+ * A stale trigger is a quiet no-op. Anything else that goes wrong — the club has
+ * left the bot, the game is gone — throws, and is never retried or defaulted past.
+ */
 export const commitBotSeat = internalMutation({
   args: { game: v.id('games'), sequence: v.float64(), role: duelRole },
-  handler: async (): Promise<void> => {
-    throw new Error('commitBotSeat: not implemented')
+  handler: async (ctx, args): Promise<null> => {
+    const game = await ctx.db.get(args.game)
+    if (!game) throw new Error(`Bot triggered for game ${args.game}, which does not exist`)
+    const role = args.role === 'pitching' ? Participant.Pitching : Participant.Batting
+    if (await botTriggerIsStale(ctx, game, { sequence: args.sequence, role })) return null
+
+    if (!(await isBotSeat(ctx, seatTeamOf(game, role)))) {
+      throw new Error(
+        `Bot triggered for the ${role} seat of game ${game._id}, which it does not hold`,
+      )
+    }
+    await seal(ctx, game, { number: pickBotNumber(), role })
+    return null
   },
 })
 

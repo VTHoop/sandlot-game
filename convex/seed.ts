@@ -96,9 +96,16 @@ const SCHEDULED_GAME = {
   lastResolvedSequence: -1,
 } as const
 
+/** Whether this deployment opted in. Fail closed: anything other than an explicit
+ * `true` is off. Shared with the server-side bot (SAN-58), which plays only where
+ * the fixture it plays for can exist. */
+export function isSeedEnabled(): boolean {
+  return process.env.SANDLOT_DEV_SEED === 'true'
+}
+
 /** Fail closed: anything other than an explicit opt-in refuses to run. */
 function assertSeedEnabled(): void {
-  if (process.env.SANDLOT_DEV_SEED !== 'true') {
+  if (!isSeedEnabled()) {
     throw new Error(`Dev seed refused: set ${SEED_ENV_FLAG}=true on this deployment to enable it`)
   }
 }
