@@ -78,7 +78,7 @@ function seatTeamOf(game: Doc<'games'>, role: DuelRole): Id<'teams'> {
  * game's status.
  *
  * Checked here rather than through the shared `assertOwns` so the duel's own
- * rejection taxonomy stays the duel's — `game.ts` and `clubs.ts` keep theirs.
+ * rejection taxonomy stays the duel's — `game.ts` keeps its own.
  */
 async function requireCommittableGame(
   ctx: MutationCtx,

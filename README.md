@@ -98,7 +98,7 @@ npx convex run seed:bootstrapDevLeague     # prints the new game's id
 
 It refuses to run without that flag, and it is an internal mutation, so no browser client can reach it in any deployment. Re-running appends another game between the same two clubs.
 
-Once a club has been claimed by a real signed-in user, `bootstrapDevLeague` refuses — it finds its clubs by owner and will not mint duplicates. Mint further games from the two club ids instead, which asks nothing about ownership:
+Once a club has been assigned to a real signed-in user (`seed:assignClubToUser`), `bootstrapDevLeague` refuses — it finds its clubs by owner and will not mint duplicates. Mint further games from the two club ids instead, which asks nothing about ownership:
 
 ```bash
 npx convex run seed:mintDevGame '{"homeTeam":"<id>","awayTeam":"<id>"}'
