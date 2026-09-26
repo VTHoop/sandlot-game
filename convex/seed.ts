@@ -46,9 +46,9 @@ import { upsertUserBySubject } from './users'
  * both — so {@link assertClubsIntact} re-checks that assumption on every run and
  * refuses when a club has moved. Minting deliberately asks no such question: it
  * is handed two ids, and never looks up, infers, or asserts anything about who
- * owns them. That is what keeps the fixture working after a real user claims a
- * seeded club ({@link assignClubToUser}) — the claim breaks bootstrap by design,
- * and minting is the path that survives it.
+ * owns them. That is what keeps the fixture working after a seeded club is
+ * assigned to a real user ({@link assignClubToUser}) — the assignment breaks
+ * bootstrap by design, and minting is the path that survives it.
  *
  * Every reuse lookup here is read-then-insert *into the range it just read*,
  * which is what makes them safe without a unique constraint (none of these
@@ -128,9 +128,9 @@ function ownedClubs(ctx: MutationCtx, owner: Id<'users'>): Promise<Doc<'teams'>[
  * Anything other than "no clubs yet" or "exactly my two" means a club left. The
  * seed refuses rather than minting a replacement: a replacement would carry no
  * prior lineup, so it would silently fork ten more players off the roster and
- * split the club's history in half. Handing a club to a real user, and what the
- * fixture should do afterwards, is the claiming ticket's job (SAN-62) — not this
- * fixture's. Provisioning (SAN-55) only mints the user; it claims nothing.
+ * split the club's history in half. Handing a club to a real user is
+ * {@link assignClubToUser}'s job (SAN-62) — not bootstrap's. Provisioning
+ * (SAN-55) only mints the user; it assigns no club.
  */
 function assertClubsIntact(clubs: Doc<'teams'>[]): void {
   const names = clubs.map((club) => club.name)
@@ -287,9 +287,9 @@ export const bootstrapDevLeague = internalMutation({
  * returning its id.
  *
  * Two ids in, a game out: this asks nothing about who owns the clubs, so it
- * behaves identically before and after a real user claims one (SAN-62). That is
- * the whole reason it is separate from {@link bootstrapDevLeague}, whose
- * owner + name lookup a claim breaks by design.
+ * behaves identically before and after one is assigned to a real user (SAN-62).
+ * That is the whole reason it is separate from {@link bootstrapDevLeague}, whose
+ * owner + name lookup an assignment breaks by design.
  *
  * It does check that the two ids are *usable* — distinct, and each carrying a
  * roster — which is a question about the arguments, not about ownership. Both
@@ -298,7 +298,10 @@ export const bootstrapDevLeague = internalMutation({
  */
 /**
  * Re-point one club at the user behind a Clerk subject (SAN-62). Run from the
- * CLI to turn a real account into a game participant:
+ * CLI to turn a real account into a game participant. This is the only way a
+ * real user gets a club until the draft/salary-cap work lands — there is no
+ * self-serve claiming in the app (SAN-65, ADR-0028), because seed clubs are test
+ * fixtures and no public surface should hand them out:
  *
  * ```bash
  * npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
@@ -314,15 +317,15 @@ export const bootstrapDevLeague = internalMutation({
  * to mint one: `provision` reads `ctx.auth`, and `npx convex run` carries no
  * identity, so it cannot be driven from the CLI either.
  *
- * Two things it deliberately does NOT check, both of which self-serve claiming
- * (SAN-63) must:
+ * Two things it deliberately does NOT check:
  *
  * - **Who holds the club.** Taking one back from a real user is a normal dev
- *   move — resetting the fixture, or handing it to a second test account.
- * - **How many clubs the user ends up with.** One club per user is the durable
- *   product rule, and it is enforced on the path a real user can drive. This
- *   tool exists precisely so that rule never has to bend for local development:
- *   a solo developer holding both clubs can play both sides of a duel.
+ *   move — resetting the fixture, handing it to a second test account, or
+ *   returning it to the bot by passing `SEED_CLERK_SUBJECT` (a seat is the bot's
+ *   exactly when the seed owner holds its club — SAN-58, ADR-0027).
+ * - **How many clubs the user ends up with.** A solo developer holding both
+ *   clubs can play both sides of a duel. Whether real users are limited to one
+ *   club is the draft's question to answer, not this tool's.
  *
  * Re-running with the club's current holder is a no-op that succeeds, so the
  * command is safe to repeat.

@@ -618,9 +618,8 @@ describe('dev club assignment — what it moves', () => {
 })
 
 /**
- * Taking a club from a real user is allowed here by design, and it is the one
- * place this tool differs sharply from self-serve claiming (SAN-63), where the
- * same operation must be refused. Resetting a club is a normal dev move.
+ * Taking a club from a real user is allowed here by design: resetting a club, or
+ * handing it back to the bot, is a normal dev move.
  */
 describe('dev club assignment — moving a club a real user already holds', () => {
   it('re-points it to another test account', async () => {
