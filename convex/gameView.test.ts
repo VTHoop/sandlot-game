@@ -213,6 +213,16 @@ describe('getGame — the participant gate', () => {
     expect(await read(t, HOME, vanished)).toBeNull()
   })
 
+  it('reads an id that names no game — malformed, or another table’s — as null rather than throwing', async () => {
+    const { t, homeTeam } = await seedScheduledGame()
+
+    // The client passes whatever followed `/game/` in the address bar (SAN-38), so
+    // the id is untrusted input: a typo or a pasted team id is one more unknown
+    // game, not a crash the not-found screen never gets to render.
+    expect(await read(t, HOME, 'not-a-game-id' as Id<'games'>)).toBeNull()
+    expect(await read(t, HOME, homeTeam as unknown as Id<'games'>)).toBeNull()
+  })
+
   it('reads for a signed-in caller who has no users row as it does for no caller at all', async () => {
     const { t, game } = await seedScheduledGame()
     expect(await read(t, { subject: 'never-provisioned' }, game)).toBeNull()
