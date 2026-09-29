@@ -39,7 +39,14 @@ function SignInScreen() {
 /** Each retry remounts the attempt, so it starts from a clean pending state. */
 function ProvisionGate() {
   const [attempt, setAttempt] = useState(0)
-  return <ProvisionAttempt key={attempt} onRetry={() => setAttempt((n) => n + 1)} />
+  return (
+    <ProvisionAttempt
+      key={attempt}
+      onRetry={() => {
+        setAttempt((n) => n + 1)
+      }}
+    />
+  )
 }
 
 function ProvisionAttempt({ onRetry }: { onRetry: () => void }) {

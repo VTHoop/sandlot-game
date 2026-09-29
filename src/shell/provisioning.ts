@@ -26,8 +26,12 @@ export function useProvisioning(): Provisioning {
       if (current) setState(next)
     }
     provision().then(
-      () => settle(Provisioning.Ready),
-      () => settle(Provisioning.Failed),
+      () => {
+        settle(Provisioning.Ready)
+      },
+      () => {
+        settle(Provisioning.Failed)
+      },
     )
     return () => {
       current = false
