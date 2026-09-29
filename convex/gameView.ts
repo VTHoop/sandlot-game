@@ -352,11 +352,13 @@ export const getGame = query({
   args: { game: v.string() },
   handler: async (ctx, args): Promise<GameView | null> => {
     const id = ctx.db.normalizeId('games', args.game)
-    const game = id && (await ctx.db.get(id))
+    if (!id) return null
+    const game = await ctx.db.get(id)
     if (!game) return null
 
     const user = await maybeUser(ctx)
-    const viewer = user && (await viewerSideOf(ctx, game, user))
+    if (!user) return null
+    const viewer = await viewerSideOf(ctx, game, user)
     if (!viewer) return null
 
     const [home, away] = await Promise.all([

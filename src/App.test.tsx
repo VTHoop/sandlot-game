@@ -1,5 +1,8 @@
+import { GameStatus } from '@sandlot/engine/game'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Id } from '../convex/_generated/dataModel'
+import { ClubSide, type GameView } from '../convex/gameView'
 import App from './App'
 
 /**
@@ -13,7 +16,7 @@ const sdk = vi.hoisted(() => ({
   clerk: { isLoaded: true, isSignedIn: false },
   convex: { isLoading: false, isAuthenticated: false },
   provision: vi.fn<() => Promise<string>>(),
-  getGame: vi.fn<(args: unknown) => unknown>(),
+  getGame: vi.fn<(args: unknown) => GameView | null | undefined>(),
 }))
 
 vi.mock('@clerk/react', () => ({
@@ -206,11 +209,11 @@ describe('App — signed in', () => {
 
   it('renders a placeholder naming the matchup for a game the viewer can read', async () => {
     sdk.getGame.mockReturnValue({
-      status: 'scheduled',
-      id: 'abc123',
-      home: { id: 'home-club', name: 'Harbor Gulls' },
-      away: { id: 'away-club', name: 'Mesa Coyotes' },
-      viewer: 'home',
+      status: GameStatus.Scheduled,
+      id: 'abc123' as Id<'games'>,
+      home: { id: 'home-club' as Id<'teams'>, name: 'Harbor Gulls' },
+      away: { id: 'away-club' as Id<'teams'>, name: 'Mesa Coyotes' },
+      viewer: ClubSide.Home,
     })
     openAt('/game/abc123')
 
