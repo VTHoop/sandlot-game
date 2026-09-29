@@ -115,12 +115,15 @@ describe('App — signed out', () => {
     expect(signInSurface()).toBeNull()
   })
 
-  it('alerts rather than looping back to sign-in when the server rejects a Clerk session', () => {
+  it('waits, rather than looping back to sign-in, until the server accepts a Clerk session', () => {
+    // Convex reports exactly this between Clerk signing in and the backend
+    // confirming the token — the same reading a rejected token gives — so it is
+    // a wait, not an error.
     sdk.clerk = { isLoaded: true, isSignedIn: true }
     sdk.convex = { isLoading: false, isAuthenticated: false }
     openAt('/')
 
-    screen.getByRole('alert')
+    screen.getByRole('status')
     expect(signInSurface()).toBeNull()
     expect(sdk.provision).not.toHaveBeenCalled()
   })
