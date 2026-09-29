@@ -409,6 +409,7 @@ tickets and must tolerate a game existing before any rollup row does.
 
 ```bash
 npx convex env set SANDLOT_DEV_SEED true        # dev deployment only
+pnpm dev:game [--hotseat] [--as user_…]         # everything below in one step → the game's URL
 npx convex run seed:bootstrapDevLeague         # once → the new game's id
 npx convex run seed:mintDevGame '{"homeTeam":"…","awayTeam":"…"}'   # another game
 # once per club a human should hold; needs users.provision to have run for that
