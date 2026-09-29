@@ -10,8 +10,8 @@ import { authedIdentity, userBySubject } from './participants'
  * `by_clerk_subject`, so until a row exists `authedUser` throws for a perfectly
  * valid signed-in user. This mints it.
  *
- * Provisioning is an explicit mutation for the client to call at sign-in — that
- * wiring is SAN-38's and is not in place yet — rather than a lazy write inside
+ * Provisioning is an explicit mutation the client calls at sign-in — the app
+ * shell's auth gate (`src/shell/AuthGate.tsx`, SAN-38) — rather than a lazy write inside
  * `maybeUser`: that helper takes a `QueryCtx | MutationCtx` and Convex queries
  * cannot write, so a first-time user would still fail every read — and every
  * gated mutation would quietly become an account-creation path.
@@ -84,9 +84,9 @@ export async function upsertUserBySubject(
 
 /**
  * Provision the calling Clerk user, returning their `users` row id. Idempotent:
- * a returning caller gets the same id back and nothing is written. Meant to be
- * called by the client at sign-in (SAN-38 owns that wiring); until it has run,
- * the caller reads as unauthenticated.
+ * a returning caller gets the same id back and nothing is written. Called by the
+ * client's auth gate at sign-in (SAN-38), before any gated route mounts; until it
+ * has run, the caller reads as unauthenticated.
  */
 export const provision = mutation({
   args: {},

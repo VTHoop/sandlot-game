@@ -147,7 +147,7 @@ async function seedScheduledGame() {
 
 type Harness = Awaited<ReturnType<typeof seedScheduledGame>>['t']
 
-const read = (t: Harness, identity: { subject: string }, game: Id<'games'>) =>
+const read = (t: Harness, identity: { subject: string }, game: string) =>
   t.withIdentity(identity).query(api.gameView.getGame, { game })
 
 type LiveView = Extract<GameView, { status: GameStatus.Live }>
@@ -211,6 +211,16 @@ describe('getGame — the participant gate', () => {
       return id
     })
     expect(await read(t, HOME, vanished)).toBeNull()
+  })
+
+  it('reads an id that names no game — malformed, or another table’s — as null rather than throwing', async () => {
+    const { t, homeTeam } = await seedScheduledGame()
+
+    // The client passes whatever followed `/game/` in the address bar (SAN-38), so
+    // the id is untrusted input: a typo or a pasted team id is one more unknown
+    // game, not a crash the not-found screen never gets to render.
+    expect(await read(t, HOME, 'not-a-game-id')).toBeNull()
+    expect(await read(t, HOME, homeTeam)).toBeNull()
   })
 
   it('reads for a signed-in caller who has no users row as it does for no caller at all', async () => {
