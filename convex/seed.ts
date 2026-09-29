@@ -455,9 +455,7 @@ async function resolveDeveloper(
     )
   }
   const subjects = real.map((user) => user.clerkSubject).join(', ')
-  throw new Error(
-    `Dev seed found several accounts (${subjects}); name one with --as <clerkSubject>.`,
-  )
+  throw new Error(`Dev seed found several accounts (${subjects}); name one with --as user_….`)
 }
 
 /** Hand the developer's seed clubs back to the seed owner, so bootstrap finds its two. */
@@ -468,7 +466,9 @@ async function returnSeedClubs(
 ): Promise<void> {
   const seedNames = new Set([HOME_TEAM.name, AWAY_TEAM.name])
   const held = await ownedClubs(ctx, developer)
-  for (const club of held.filter((c) => seedNames.has(c.name))) {
-    await ctx.db.patch(club._id, { owner })
-  }
+  await Promise.all(
+    held
+      .filter((club) => seedNames.has(club.name))
+      .map((club) => ctx.db.patch(club._id, { owner })),
+  )
 }

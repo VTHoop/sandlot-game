@@ -12,7 +12,7 @@
 import { spawnSync } from 'node:child_process'
 
 const APP_ORIGIN = 'http://localhost:5173'
-const USAGE = 'usage: pnpm dev:game [--hotseat] [--as <clerkSubject>]'
+const USAGE = 'usage: pnpm dev:game [--hotseat] [--as user_…]'
 
 interface DevGameArgs {
   hotseat: boolean
