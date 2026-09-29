@@ -93,12 +93,28 @@ export interface LockView {
   swingCommitted: boolean
 }
 
+/**
+ * Which of the two clubs the caller owns — both, for the one-account hotseat
+ * (ADR-0028). Two named flags rather than a list, so a reader asks for the club
+ * it means instead of searching.
+ */
+export interface ClubOwnership {
+  home: boolean
+  away: boolean
+}
+
 /** The fields every variant carries, whatever the game's status. */
 interface GameViewCommon {
   id: Id<'games'>
   home: ClubView
   away: ClubView
   viewer: ClubSide
+  /**
+   * Every club the caller owns. `viewer` names ONE side — home, for an owner of
+   * both — so it cannot tell a hotseat from a home-side player. This can, and it
+   * is what a client reads to decide which seats it drives.
+   */
+  viewerOwns: ClubOwnership
 }
 
 /**
@@ -365,7 +381,13 @@ export const getGame = query({
       clubView(ctx, game.homeTeam),
       clubView(ctx, game.awayTeam),
     ])
-    const common: GameViewCommon = { id: game._id, home, away, viewer }
+    const common: GameViewCommon = {
+      id: game._id,
+      home,
+      away,
+      viewer,
+      viewerOwns: { home: false, away: false },
+    }
 
     // Switched on the persisted literal — the schema layer's domain (AGENTS.md
     // "Enums over magic strings"); the variant it builds carries the enum.

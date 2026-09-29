@@ -214,6 +214,7 @@ describe('App — signed in', () => {
       home: { id: 'home-club' as Id<'teams'>, name: 'Harbor Gulls' },
       away: { id: 'away-club' as Id<'teams'>, name: 'Mesa Coyotes' },
       viewer: ClubSide.Home,
+      viewerOwns: { home: true, away: false },
     })
     openAt('/game/abc123')
 
