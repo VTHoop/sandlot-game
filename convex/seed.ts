@@ -312,10 +312,10 @@ export const bootstrapDevLeague = internalMutation({
  * of `users`. `by_clerk_subject` carries no unique constraint, so the `.unique()`
  * read every gate depends on is safe only while one function does the inserting.
  *
- * That row is minted by `users.provision`, which the client calls at sign-in —
- * wiring SAN-38 owns and which is not in place yet. Until it is, there is no way
- * to mint one: `provision` reads `ctx.auth`, and `npx convex run` carries no
- * identity, so it cannot be driven from the CLI either.
+ * That row is minted by `users.provision`, which the client calls at sign-in
+ * (SAN-38): the account has to sign in to the app once before it can be handed a
+ * club. There is no CLI path to mint one — `provision` reads `ctx.auth`, and
+ * `npx convex run` carries no identity.
  *
  * Two things it deliberately does NOT check:
  *

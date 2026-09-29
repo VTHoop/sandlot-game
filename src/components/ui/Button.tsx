@@ -14,6 +14,14 @@ const VARIANTS = new Map<ButtonVariant, string>([
   ['ghost', 'bg-transparent text-muted'],
 ])
 
+/**
+ * The classes a `Button` of `variant` wears — exported for a navigation link that
+ * must look like a button while staying a link (an `<a>`, not a `<button>`).
+ */
+export function buttonClassName(variant: ButtonVariant): string {
+  return `${base} ${VARIANTS.get(variant) ?? ''}`
+}
+
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
 }
@@ -24,11 +32,5 @@ export function Button({
   type = 'button',
   ...rest
 }: ButtonProps) {
-  return (
-    <button
-      type={type}
-      className={`${base} ${VARIANTS.get(variant) ?? ''} ${className}`}
-      {...rest}
-    />
-  )
+  return <button type={type} className={`${buttonClassName(variant)} ${className}`} {...rest} />
 }

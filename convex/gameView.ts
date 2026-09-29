@@ -339,14 +339,20 @@ async function finalView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): 
  * and a game id that resolves to nothing. Indistinguishable on purpose: an error
  * that separated them would turn this query into an oracle for which games exist.
  *
+ * The id arrives as a plain string because the client reads it off the address
+ * bar (`/game/:id`, SAN-38): a typo or another table's id is untrusted input, and
+ * `normalizeId` folds it into "resolves to nothing" rather than letting argument
+ * validation throw past the not-found screen.
+ *
  * The participant-only gate is the safe default rather than a law. Roadmap result
  * sharing means a stranger reading a `final` game; relaxing it for that status
  * belongs to that work, and to a deliberate decision there.
  */
 export const getGame = query({
-  args: { game: v.id('games') },
+  args: { game: v.string() },
   handler: async (ctx, args): Promise<GameView | null> => {
-    const game = await ctx.db.get(args.game)
+    const id = ctx.db.normalizeId('games', args.game)
+    const game = id && (await ctx.db.get(id))
     if (!game) return null
 
     const user = await maybeUser(ctx)

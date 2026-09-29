@@ -31,8 +31,8 @@ user can do anything. `api.users.provision` mints it (SAN-55, ADR-0023) — it i
 the one function that creates rather than resolves, and the dev seed reaches the
 same upsert by an internal path.
 
-**Explicit, not lazy.** The client is meant to call it at sign-in; that wiring
-belongs to SAN-38 and is not in place yet. It cannot be folded into
+**Explicit, not lazy.** The client calls it at sign-in, from the app shell's
+auth gate (SAN-38, below). It cannot be folded into
 `maybeUser`/`authedUser`, which accept a `QueryCtx | MutationCtx` — Convex queries
 cannot write, so a first-time user would still fail every read, and every gated
 mutation would quietly become an account-creation path.
@@ -60,6 +60,42 @@ raw identity from `authedIdentity` and the row lookup from `userBySubject` rathe
 than reading `ctx.auth` or the index itself. That is not tidiness — the OCC
 argument above only holds while the range the upsert reads is the same range every
 gate reads, and `.unique()`'s throw-on-duplicate has to stay loud in both.
+
+## App shell (`src/App.tsx` + `src/shell/`, SAN-38, ADR-0029)
+
+The route table and the gate in front of it. React Router 7 in declarative mode
+(`BrowserRouter` + `<Routes>`), inside `App` so tests can mount the whole shell
+at a URL.
+
+| path | who | renders |
+|---|---|---|
+| `/design` | anyone, signed out too | the code-split showcase — **outside** the gate, never linked |
+| `/` | signed in + provisioned | `Landing`: wordmark, "open your game's link" hint, Clerk `<UserButton>` (sign-out lives there) |
+| `/game/:id` | signed in + provisioned | `GameScreen`: loading while `getGame` is pending, one combined "not found / not yours" on `null` (ADR-0025), a matchup placeholder otherwise — SAN-39 fills it in |
+| `*` | signed in + provisioned | `NotFound`, with a link home |
+
+**`AuthGate` is a layout route** — everything but `/design` is its child, so no
+gated route mounts, and no gated query runs, until the viewer is signed in *and*
+has a `users` row:
+
+1. **`useSession()`** (`session.ts`) reads Clerk (`useAuth`) for signed-in vs.
+   signed-out and Convex (`useConvexAuth`) for when a signed-in session is usable.
+   Clerk signed in but Convex not yet authenticated is `Pending`, never
+   `SignedOut` — Convex reports that between sign-in and the backend confirming
+   the token, and a rejected token reads the same, so neither can be an error.
+2. **Signed out → Clerk's `<SignIn>` in place**, at whatever URL was opened, with
+   `routing="hash"` (Clerk's steps stay off the app's paths) and
+   `forceRedirectUrl` / `signUpForceRedirectUrl` set to the current path + query,
+   which is what returns a deep link to itself.
+3. **Signed in → `useProvisioning()`** (`provisioning.ts`) calls `users.provision`
+   once per mount; `Pending` renders only a status, `Failed` an alert and a Retry
+   `Button`. A retry re-keys the attempt component, so each attempt starts clean.
+
+Waits render `role="status"`, failures `role="alert"`. Every screen sits in
+`Screen` — one centred column capped at `max-w-md` with a 16px gutter, which is
+what keeps a 375px phone free of horizontal scroll. `HomeLink` is a router
+`<Link>` wearing `buttonClassName('surface')`, so it looks like a button and
+stays a link.
 
 ## UI foundation (`src/components/ui/`)
 
@@ -223,7 +259,10 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
   reveal.
 - **Not an existence oracle** — a non-participant, a caller with no identity (or
   no `users` row), and an id that resolves to nothing all return `null`
-  identically. The participant-only gate is the safe default, not a law: roadmap
+  identically. The id arg is a plain string, not `v.id('games')`: the client
+  reads it off the address bar (`/game/:id`), so a malformed id or another
+  table's id is normalised (`ctx.db.normalizeId`) into that same `null` rather
+  than failing argument validation past the not-found screen. The participant-only gate is the safe default, not a law: roadmap
   result sharing will want a stranger to read a `final` game, and relaxing it
   there is that work's deliberate call.
 - **Hit totals are derived, not stored.** Nothing on the `games` row tracks them,
@@ -338,12 +377,10 @@ keeps `upsertUserBySubject` the single writer of that table — `by_clerk_subjec
 has no unique constraint, so the `.unique()` read every gate depends on is safe
 only while one function does the inserting.
 
-**Sequencing caveat:** that row is minted by `users.provision`, which the client
-calls at sign-in — wiring SAN-38 owns and which is not in place yet. Until it
-lands there is no way to mint one, since `provision` reads `ctx.auth` and
-`npx convex run` carries no identity. So the assignment below is usable against a
-real account only once SAN-38 has shipped; the seed owner's two clubs are what
-make the fixture playable before then.
+**Sequencing:** that row is minted by `users.provision`, which the client calls
+at sign-in (SAN-38). So a real account must sign in to the app once before it can
+be handed a club — there is no CLI path to mint the row, since `provision` reads
+`ctx.auth` and `npx convex run` carries no identity.
 
 Two things it deliberately does not check:
 
@@ -375,7 +412,7 @@ npx convex env set SANDLOT_DEV_SEED true        # dev deployment only
 npx convex run seed:bootstrapDevLeague         # once → the new game's id
 npx convex run seed:mintDevGame '{"homeTeam":"…","awayTeam":"…"}'   # another game
 # once per club a human should hold; needs users.provision to have run for that
-# subject first (SAN-38 wires it into sign-in):
+# subject first — sign in to the app once:
 npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
 ```
 
