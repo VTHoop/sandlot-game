@@ -672,3 +672,139 @@ describe('dev club assignment — the assigned user can play', () => {
     expect(atBats[0].batter).toBe(away.batters[0]._id)
   })
 })
+
+/** The one-step dev game (SAN-66), with the opt-in flag on. */
+function runDevGame(
+  t: Harness,
+  args: { clerkSubject?: string; hotseat?: boolean } = {},
+): Promise<Id<'games'>> {
+  vi.stubEnv(SEED_ENV_FLAG, 'true')
+  return t.mutation(internal.seed.devGame, args)
+}
+
+/** Who holds each side of a game, by users row. */
+function seating(t: Harness, game: Id<'games'>) {
+  return t.run(async (ctx) => {
+    const row = await ctx.db.get(game)
+    if (!row) throw new Error('dev game returned an id with no game behind it')
+    const home = await ctx.db.get(row.homeTeam)
+    const away = await ctx.db.get(row.awayTeam)
+    return { status: row.status, home: home?.owner, away: away?.owner }
+  })
+}
+
+function seedOwnerId(t: Harness) {
+  return t.run(async (ctx) => {
+    const users = await ctx.db.query('users').collect()
+    return users.find((user) => user.clerkSubject === SEED_CLERK_SUBJECT)?._id
+  })
+}
+
+describe('dev game in one step — the environment gate', () => {
+  it('refuses when the opt-in flag is absent, writing nothing', async () => {
+    const t = harness()
+    await provision(t, REAL_SUBJECT)
+
+    await expect(t.mutation(internal.seed.devGame, {})).rejects.toThrow(/SANDLOT_DEV_SEED/)
+    expect(await census(t)).toEqual({ teams: 0, players: 0, games: 0, lineups: 0 })
+  })
+})
+
+describe('dev game in one step — who it seats', () => {
+  it('seats the only real account when none is named', async () => {
+    const t = harness()
+    const me = await provision(t, REAL_SUBJECT)
+
+    const game = await runDevGame(t)
+
+    expect((await seating(t, game)).home).toBe(me)
+  })
+
+  it('asks for a sign-in when there is no real account yet', async () => {
+    await expect(runDevGame(harness())).rejects.toThrow(/sign in to the app once/i)
+  })
+
+  it('refuses to guess between several accounts, naming them', async () => {
+    const t = harness()
+    await provision(t, REAL_SUBJECT)
+    await provision(t, OTHER_SUBJECT)
+
+    const refusal = String(await runDevGame(t).catch((error: unknown) => error))
+    expect(refusal).toContain(REAL_SUBJECT)
+    expect(refusal).toContain(OTHER_SUBJECT)
+  })
+
+  it('seats the named account among several', async () => {
+    const t = harness()
+    await provision(t, REAL_SUBJECT)
+    const other = await provision(t, OTHER_SUBJECT)
+
+    const game = await runDevGame(t, { clerkSubject: OTHER_SUBJECT })
+
+    expect((await seating(t, game)).home).toBe(other)
+  })
+
+  it('refuses a named subject with no users row', async () => {
+    await expect(runDevGame(harness(), { clerkSubject: 'user_nobody' })).rejects.toThrow(
+      /no users row/,
+    )
+  })
+})
+
+describe('dev game in one step — what it sets up', () => {
+  it('on a fresh deployment: a scheduled game, developer at home, the bot away', async () => {
+    const t = harness()
+    const me = await provision(t, REAL_SUBJECT)
+
+    const game = await runDevGame(t)
+
+    expect(await seating(t, game)).toEqual({
+      status: 'scheduled',
+      home: me,
+      away: await seedOwnerId(t),
+    })
+  })
+
+  it('hotseat: the developer holds both clubs', async () => {
+    const t = harness()
+    const me = await provision(t, REAL_SUBJECT)
+
+    const game = await runDevGame(t, { hotseat: true })
+
+    expect(await seating(t, game)).toMatchObject({ home: me, away: me })
+  })
+
+  it('re-runs back to back, switching modes, on the same league', async () => {
+    const t = harness()
+    const me = await provision(t, REAL_SUBJECT)
+
+    await runDevGame(t, { hotseat: true })
+    const second = await runDevGame(t)
+
+    expect(await seating(t, second)).toMatchObject({ home: me, away: await seedOwnerId(t) })
+    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 2, lineups: 4 })
+  })
+
+  it('picks up a league whose clubs were assigned by hand', async () => {
+    const { t, row } = await seeded()
+    await claimClub(t, row.awayTeam)
+
+    const game = await runDevGame(t)
+
+    expect(await seating(t, game)).toMatchObject({ away: await seedOwnerId(t) })
+    expect(await census(t)).toMatchObject({ teams: 2, players: 20 })
+  })
+
+  it('refuses rather than take a club another tester holds, writing nothing', async () => {
+    const { t, row } = await seeded()
+    await provision(t, REAL_SUBJECT)
+    await claimClub(t, row.awayTeam, OTHER_SUBJECT)
+    const before = await ownership(t)
+
+    await expect(runDevGame(t, { clerkSubject: REAL_SUBJECT })).rejects.toThrow(
+      /expected either none or exactly/,
+    )
+    expect(await ownership(t)).toEqual(before)
+    expect(await census(t)).toMatchObject({ games: 1 })
+  })
+})
