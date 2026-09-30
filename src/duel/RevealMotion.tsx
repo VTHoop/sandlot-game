@@ -1,9 +1,9 @@
 import { MotionConfig, motion, useReducedMotion } from 'motion/react'
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Button } from '../../components/ui/Button'
-import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
-import { Scoreboard, type TeamLine } from '../../components/ui/Scoreboard'
-import { ScoreTile } from '../../components/ui/ScoreTile'
+import { Button } from '../components/ui/Button'
+import type { OutcomeKey } from '../components/ui/OutcomeLadder'
+import { Scoreboard, type TeamLine } from '../components/ui/Scoreboard'
+import { ScoreTile } from '../components/ui/ScoreTile'
 import { Ballpark, type BallparkCamera, HIT_SPRAY, landingZone } from './Ballpark'
 import {
   BALL_RADIUS,

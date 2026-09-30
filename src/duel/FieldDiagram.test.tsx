@@ -54,3 +54,33 @@ describe('FieldDiagram live state (SAN-51)', () => {
     screen.getByRole('img', { name: 'Bases loaded' })
   })
 })
+
+describe('FieldDiagram runner identity (SAN-39)', () => {
+  it('names each runner in the description when it is told who they are', () => {
+    render(
+      <FieldDiagram
+        runnersOn={[FieldSpot.Batter, FieldSpot.Second]}
+        runners={[{ spot: FieldSpot.Second, name: 'T. JULIEN' }]}
+      />,
+    )
+    screen.getByRole('img', { name: 'T. JULIEN on 2nd' })
+  })
+
+  it('names every runner in on-field reading order, first to third', () => {
+    render(
+      <FieldDiagram
+        runnersOn={[FieldSpot.Batter, FieldSpot.Third, FieldSpot.First]}
+        runners={[
+          { spot: FieldSpot.Third, name: 'C. DIAZ' },
+          { spot: FieldSpot.First, name: 'S. ORTIZ' },
+        ]}
+      />,
+    )
+    screen.getByRole('img', { name: 'S. ORTIZ on 1st and C. DIAZ on 3rd' })
+  })
+
+  it('still says "Bases empty" when nobody is on', () => {
+    render(<FieldDiagram runnersOn={[FieldSpot.Batter]} runners={[]} />)
+    screen.getByRole('img', { name: 'Bases empty' })
+  })
+})

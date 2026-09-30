@@ -291,8 +291,9 @@ function winnerOf(game: Doc<'games'>): ClubSide | null {
 // ─── The gate ───────────────────────────────────────────────────────────────
 
 /** Which of the game's two clubs the caller owns. The two lookups are
- * independent, so they go out together. */
-async function ownershipOf(
+ * independent, so they go out together. Exported for the resolved at-bat read
+ * model, which gates on the same question. */
+export async function ownershipOf(
   ctx: Ctx,
   game: Doc<'games'>,
   user: Doc<'users'>,

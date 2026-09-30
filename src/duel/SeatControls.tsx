@@ -1,4 +1,4 @@
-import { Button } from '../../components/ui/Button'
+import { Button } from '../components/ui/Button'
 import { DuelSeat, SeatKind, type SeatKinds } from './seatAgent'
 
 const SEAT_LABEL = new Map<DuelSeat, string>([

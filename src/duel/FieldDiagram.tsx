@@ -1,5 +1,5 @@
 import { BASE_HALF, BASE_SPOTS, DIAMOND_PATH, FIELD_VIEWBOX, spotPoint } from './fieldMovement'
-import { FieldSpot } from './scenario'
+import { FieldSpot, type RunnerOnBase } from './scenario'
 
 interface FieldDiagramProps {
   /**
@@ -8,6 +8,8 @@ interface FieldDiagramProps {
    * diamond the caller overlays (the reveal drives its own animated tokens).
    */
   runnersOn?: readonly FieldSpot[]
+  /** Who is on each occupied base, when known — named in the description. */
+  runners?: readonly RunnerOnBase[]
   /** Size classes; the diagram scales with its box (overlays use the 240 viewBox). */
   className?: string
 }
@@ -35,13 +37,32 @@ const BASE_NAMES: ReadonlyArray<[FieldSpot, string]> = [
   [FieldSpot.Third, '3rd'],
 ]
 
-/** The base state as a screen-reader sentence, so assistive tech hears what the
- * tokens show: "Bases empty" / "Runner on 2nd" / … / "Bases loaded". */
-export function describeBases(runnersOn: readonly FieldSpot[]): string {
+/** The anonymous sentence: "Bases empty" / "Runner on 2nd" / … / "Bases loaded". */
+function describeOccupancy(runnersOn: readonly FieldSpot[]): string {
   const on = BASE_NAMES.filter(([spot]) => runnersOn.includes(spot)).map(([, name]) => name)
   if (on.length === 0) return 'Bases empty'
   if (on.length === 3) return 'Bases loaded'
   return `Runner${on.length > 1 ? 's' : ''} on ${on.join(' and ')}`
+}
+
+/** The named sentence: "T. JULIEN on 2nd" / "S. ORTIZ on 1st and C. DIAZ on 3rd". */
+function describeRunners(runners: readonly RunnerOnBase[]): string {
+  const named = BASE_NAMES.flatMap(([spot, base]) =>
+    runners.filter((runner) => runner.spot === spot).map((runner) => `${runner.name} on ${base}`),
+  )
+  return named.length === 0 ? 'Bases empty' : named.join(' and ')
+}
+
+/**
+ * The base state as a screen-reader sentence, so assistive tech hears what the
+ * tokens show. When the caller knows who the runners are it names them (SAN-39);
+ * otherwise it reports occupancy alone.
+ */
+export function describeBases(
+  runnersOn: readonly FieldSpot[],
+  runners?: readonly RunnerOnBase[],
+): string {
+  return runners ? describeRunners(runners) : describeOccupancy(runnersOn)
 }
 
 /**
@@ -55,9 +76,9 @@ export function describeBases(runnersOn: readonly FieldSpot[]): string {
  * diamond is the wrong stage for a batted ball, and a whole park is the wrong
  * readout for base occupancy. Both position from the same `spotPoint` geometry.
  */
-export function FieldDiagram({ runnersOn, className = 'h-60 w-60' }: FieldDiagramProps) {
+export function FieldDiagram({ runnersOn, runners, className = 'h-60 w-60' }: FieldDiagramProps) {
   const a11y = runnersOn
-    ? ({ role: 'img', 'aria-label': describeBases(runnersOn) } as const)
+    ? ({ role: 'img', 'aria-label': describeBases(runnersOn, runners) } as const)
     : ({ 'aria-hidden': true } as const)
   return (
     <div {...a11y} className={`relative ${className}`}>

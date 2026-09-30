@@ -39,7 +39,7 @@ export const OUTCOME_BAND_KEYS = [
  * Which bands count is a rule of the game, so it belongs beside the bands
  * themselves rather than beside whichever consumer asks first. Box-score hit
  * totals (`convex/gameView.ts`) read it. Two older copies of the same set
- * predate this one — `src/design/duel/scenario.ts` and
+ * predate this one — `src/duel/scenario.ts` and
  * `src/components/ui/OutcomeLadder.tsx` — and should collapse onto it
  * (ADR-0025 § Consequences); until they do, this is the canonical one, not the
  * only one.

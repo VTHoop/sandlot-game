@@ -1,10 +1,12 @@
-import { Button } from '../../components/ui/Button'
+import { Button } from '../components/ui/Button'
 import type { HalfSummary } from './duelLoop'
 import { formatInning } from './scenario'
 
 interface HalfSummaryCardProps {
   summary: HalfSummary
-  onRestart: () => void
+  /** Offer to play the half again — the showcase's fixture loop. Omitted in a real
+   * game, where the summary is where the half stops. */
+  onRestart?: () => void
 }
 
 function StatBlock({ label, value }: { label: string; value: number }) {
@@ -28,9 +30,11 @@ export function HalfSummaryCard({ summary, onRestart }: HalfSummaryCardProps) {
         <StatBlock label="RUNS" value={summary.runs} />
         <StatBlock label="HITS" value={summary.hits} />
       </dl>
-      <Button variant="consequence" className="px-6 py-3 text-sm" onClick={onRestart}>
-        PLAY AGAIN
-      </Button>
+      {onRestart && (
+        <Button variant="consequence" className="px-6 py-3 text-sm" onClick={onRestart}>
+          PLAY AGAIN
+        </Button>
+      )}
     </div>
   )
 }

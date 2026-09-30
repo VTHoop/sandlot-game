@@ -79,7 +79,7 @@ or resolution, the screen is wrong. One amber action per screen, maximum.
 - **Choreography over easing-candy.** Motion exists to pace tension: commit (snap) →
   wait (still) → reveal (flap, held breath, bloom) → consequence (tracer, runners,
   scoreboard tick). The reveal timeline lives in
-  `src/design/duel/RevealMotion.tsx` — a designed artifact; don't re-time it casually.
+  `src/duel/RevealMotion.tsx` — a designed artifact; don't re-time it casually.
 - **Drama is situational, not decorative** (ADR-0013): the held breath before the
   outcome scales with outcome quality *and* leverage (`scenario.ts`: walk-off, lead
   change, new tie, RBI, late-and-close), capped so stacked drama never drags. Routine

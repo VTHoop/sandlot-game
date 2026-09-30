@@ -1,4 +1,5 @@
 import type { BaseState, GroundBallResult } from '@sandlot/engine/atBat'
+import type { Half } from '@sandlot/engine/game'
 import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { ConvexError } from 'convex/values'
 import type { Id } from './_generated/dataModel'
@@ -44,6 +45,55 @@ export interface DuelView {
   rbi?: number
   outsAfter?: number
   basesAfter?: BaseState
+}
+
+/** One total per club. The read model's `ClubTotals`, restated here so this leaf
+ * module stays free of the server modules (it is structurally the same type). */
+interface ClubPairOf<T> {
+  home: T
+  away: T
+}
+
+/** A player on the field, by identity and display name. */
+interface NamedPlayer {
+  id: Id<'players'>
+  name: string
+}
+
+/**
+ * The most recently resolved at-bat, complete enough to render its reveal from
+ * this alone (SAN-39): who it was between, both numbers, what it did, and the
+ * board as it stood BEFORE the play.
+ *
+ * Both numbers are present because the at-bat is resolved — this view is built
+ * from the `atBats` log, where a row exists only once both sides have locked
+ * (ADR-0016). It never reads the vault, so a number committed to the NEXT at-bat
+ * cannot appear in it.
+ */
+export interface ResolvedAtBatView {
+  sequence: number
+  inning: number
+  half: Half
+  pitcher: NamedPlayer
+  batter: NamedPlayer
+  pitchNumber: number
+  batterNumber: number
+  outcome: OutcomeBandKey
+  /** The ground-ball sub-result (SAN-16), or null for every other band. */
+  groundBallResult: GroundBallResult | null
+  runsScored: number
+  outsBefore: number
+  outsAfter: number
+  basesBefore: BaseState
+  basesAfter: BaseState
+  /** Each club's runs before this at-bat. */
+  scoreBefore: ClubPairOf<number>
+  /** Each club's hits before this at-bat. */
+  hitsBefore: ClubPairOf<number>
+  /** Whether this at-bat's out was the third, ending its half. */
+  endedHalf: boolean
+  /** The batting club's runs and hits in this half, through this at-bat. */
+  halfTotals: { runs: number; hits: number }
 }
 
 /**

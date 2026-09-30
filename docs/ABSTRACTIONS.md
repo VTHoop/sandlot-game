@@ -71,7 +71,7 @@ at a URL.
 |---|---|---|
 | `/design` | anyone, signed out too | the code-split showcase — **outside** the gate, never linked |
 | `/` | signed in + provisioned | `Landing`: wordmark, "open your game's link" hint, Clerk `<UserButton>` (sign-out lives there) |
-| `/game/:id` | signed in + provisioned | `GameScreen`: loading while `getGame` is pending, one combined "not found / not yours" on `null` (ADR-0025), a matchup placeholder otherwise — SAN-39 fills it in |
+| `/game/:id` | signed in + provisioned | `GameScreen` (SAN-39): loading while `getGame` is pending; a redirect to `/` on `null` (missing and not-yours stay indistinguishable, ADR-0025); `StartGame` for a scheduled game; the code-split `LiveGame` — the duel — for a live one; a placeholder for a final one (SAN-67) |
 | `*` | signed in + provisioned | `NotFound`, with a link home |
 
 **`AuthGate` is a layout route** — everything but `/design` is its child, so no
@@ -97,6 +97,37 @@ what keeps a 375px phone free of horizontal scroll. `HomeLink` is a router
 `<Link>` wearing `buttonClassName('surface')`, so it looks like a button and
 stays a link.
 
+## The live game (`src/shell/LiveGame.tsx` + `src/duel/liveDuel.ts`, SAN-39, ADR-0031)
+
+`/game/:id` for a live game is **server-driven**: which screen shows is a function
+of two subscriptions, and the client keeps nothing the server could tell it.
+
+- **`getGame`** gives the situation, the locks and `viewerOwns`; **`getLastAtBat`**
+  gives the reveal. `getActiveDuel` is not subscribed to — its resolved view does
+  not survive the next commit (see the resolved at-bat read model).
+- **`liveDuel.ts` is the pure half.** `turnFor(view)` answers whose turn it is for
+  this viewer from `viewerOwns`, the half and the locks: a seat they own that has
+  not locked → `Commit` (pitcher first, for an owner of both); otherwise
+  `Waiting` on the seat still out. It takes neither `viewer` nor `viewerSeat`,
+  which resolve a two-club owner to one side. `situationOf` / `matchupOf` /
+  `revealOf` / `halfSummaryOf` build the screens' view-models straight off the
+  server's views, through the same `buildReveal` / `buildMatchup` the fixture
+  path uses.
+- **`LiveGame` owns only what the server cannot know:** which reveal this viewer
+  has dismissed (`dismissed`, opened on the at-bat already on the books so a load
+  never replays it), whether the half's summary is up, and a notice when a commit
+  did not land. Screen order: summary → an undismissed reveal → the open at-bat.
+- **A commit is one seat, one mutation** (`commitPitch` / `commitSwing`), and the
+  screen then waits for the subscription — it never advances itself. A refused
+  commit shows the server's `reason` (ADR-0026); any other failure shows "Couldn't
+  send your number. Try again."; either remounts the entry empty, and the turn
+  follows whatever the locks say.
+- **The half summary is where it stops.** After the third out's reveal the summary
+  shows with no action; the next half is a reload away until SAN-67.
+- **Not used here:** `playHalfInning` and `createConvexDuelAdapter`. That loop
+  drives both seats from one client holding both numbers; it remains the
+  showcase's fixture path (and the hotseat adapter's tests).
+
 ## UI foundation (`src/components/ui/`)
 
 Extracted from the at-bat duel design spike (ADR-0011/0012,
@@ -108,7 +139,7 @@ form controls in screens:
 - **`ScoreTile`** — scoreboard tile for any committed/displayed number.
 - **`ScoreTileInput`** — the only input for duel numbers (ADR-0014): styled
   `inputMode="numeric"` tile driven by the device keyboard (strips non-digits and
-  leading zeros, caps at 4; validity lives in `src/design/duel/duelNumber.ts`).
+  leading zeros, caps at 4; validity lives in `src/duel/duelNumber.ts`).
 - **`OutcomeLadder`** — fixed best→worst outcome strip; keys mirror the engine's
   band names (`HR…K`); `highlight` marks a resolved outcome. Commit screen only
   (ADR-0013/0014).
@@ -118,7 +149,7 @@ form controls in screens:
 - **`Card`** — surface panel for grouped content.
 
 Reveal choreography is Motion-driven (`motion` v12, ADR-0013) with situational drama
-pacing derived in `src/design/duel/scenario.ts` (pure, unit-tested).
+pacing derived in `src/duel/scenario.ts` (pure, unit-tested).
 
 Components style themselves exclusively from semantic `@theme` tokens in
 `src/styles/app.css`; raw hues and Tailwind stock colors are forbidden.
@@ -276,6 +307,29 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
   holding a player that no longer exists, throws — corrupt authoritative state,
   and an empty base would show the batter a situation that is not the real one.
 
+## Resolved at-bat read model (`convex/atBatView.ts`, SAN-39)
+
+`getLastAtBat({ game })` returns the most recently resolved at-bat as a
+`ResolvedAtBatView` (declared in `duelContract.ts`), or `null` — for a game with
+no resolved at-bat, and identically for a non-participant, no caller, and an
+unknown game (ADR-0025's refusal to be an existence oracle).
+
+- **It exists because `getActiveDuel` cannot serve a reveal.** That query shows
+  the last resolved at-bat only until a seat commits to the next one, and the
+  bot commits the moment an at-bat opens (SAN-58). This one reads the log, which
+  only grows, so the last at-bat stays readable — and survives a reload.
+- **Complete enough to render from alone:** both players named, both numbers,
+  the outcome and ground-ball sub-result, runs, outs and bases before and after,
+  plus the board as it stood *before* the play (`scoreBefore`, `hitsBefore`,
+  folded from the earlier log rows). `endedHalf` marks the third out, and
+  `halfTotals` carries the batting club's runs and hits in that half.
+- **The vault is not reachable from it.** It reads `atBats` and never
+  `duelCommitments`; a log row exists only once both sides have locked, so a
+  number committed to the at-bat now open cannot appear. A test commits one and
+  searches the whole payload for it.
+- **Absolute**, like `getGame`: totals are home/away and both participants read
+  the same view (ADR-0030).
+
 ## Duel wire vocabulary (`convex/duelContract.ts`)
 
 What a commit hands back (`DuelCommitResult` — the at-bat id, its `sequence`, and
@@ -420,7 +474,7 @@ npx convex run seed:mintDevGame '{"homeTeam":"…","awayTeam":"…"}'   # anothe
 npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
 ```
 
-## Duel adapter (`src/design/duel/adapter.ts` + `roster.ts`)
+## Duel adapter (`src/duel/adapter.ts` + `roster.ts`)
 
 The pure, headless boundary (SAN-45) that bridges the roster-free engine to the
 UI's data shapes — no React, no I/O, the same resolve → apply → reveal logic the
@@ -536,7 +590,7 @@ Surfaced as the **PLAY** tab of the `/design` showcase — no new route.
   epoch that remounts a fresh half-inning. `RevealMotion` carries an optional advance
   affordance (`onAdvance` / `advanceLabel`) so the container can drive the sequence.
 
-## Convex-backed duel adapter (`src/design/duel/convexAdapter.ts`, SAN-57)
+## Convex-backed duel adapter (`src/duel/convexAdapter.ts`, SAN-57)
 
 ADR-0026. The second `DuelAdapter`: the same `playHalfInning` loop and the same components,
 with the in-memory state swapped for server round-trips. Nothing consumes it on a

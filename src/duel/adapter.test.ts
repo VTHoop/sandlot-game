@@ -2,7 +2,7 @@ import { type BaseState, GroundBallResult, type HitterAttributes } from '@sandlo
 import { GameStatus, Half, type LiveGameState } from '@sandlot/engine/game'
 import { OUTCOME_BAND_KEYS, type OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { describe, expect, it } from 'vitest'
-import { OUTCOME_LADDER, type OutcomeKey } from '../../components/ui/OutcomeLadder'
+import { OUTCOME_LADDER, type OutcomeKey } from '../components/ui/OutcomeLadder'
 import {
   accumulateHits,
   assembleRunnerSpeeds,

@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Button } from '../../components/ui/Button'
-import { Card } from '../../components/ui/Card'
-import { OutcomeLadder } from '../../components/ui/OutcomeLadder'
-import { Scoreboard } from '../../components/ui/Scoreboard'
-import { ScoreTileInput } from '../../components/ui/ScoreTileInput'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
+import { OutcomeLadder } from '../components/ui/OutcomeLadder'
+import { Scoreboard } from '../components/ui/Scoreboard'
+import { ScoreTileInput } from '../components/ui/ScoreTileInput'
 import { DuelChrome } from './DuelChrome'
 import { isValidDuelNumber } from './duelNumber'
 import { FieldDiagram } from './FieldDiagram'
@@ -93,7 +93,7 @@ function CommitAction({
         <span className="text-consequence">NUMBER LOCKED</span>
         {bothLocked ? ' — both numbers are in' : ` — waiting on ${opponent}`}
       </p>
-      {bothLocked && (
+      {bothLocked && onReveal && (
         <Button variant="ghost" className="px-4 py-1.5 text-sm" onClick={onReveal}>
           PLAY THE REVEAL →
         </Button>
@@ -136,6 +136,7 @@ export function DuelCommit({
         <div className="flex items-stretch gap-3">
           <FieldDiagram
             runnersOn={liveFieldSpots(situation)}
+            runners={situation.runners}
             className="h-36 w-36 shrink-0 self-center"
           />
           <MatchupCard {...matchup} />

@@ -199,12 +199,16 @@ describe('App — signed in', () => {
     expect(screen.queryByText(/not found/i)).toBeNull()
   })
 
-  it('shows one combined not-found / not-yours state with a link home when getGame is null', async () => {
+  it('goes home without an error when getGame is null', async () => {
+    // Was a "Game not found" screen (SAN-38). SAN-39 makes it a plain redirect:
+    // a missing game and someone else's are still indistinguishable (ADR-0025),
+    // and neither is worth a dead-end page.
     sdk.getGame.mockReturnValue(null)
     openAt('/game/abc123')
 
-    await screen.findByRole('heading', { name: /game not found/i })
-    expect(screen.getByRole('link', { name: /home/i }).getAttribute('href')).toBe('/')
+    await screen.findByText(/open your game’s link/i)
+    expect(window.location.pathname).toBe('/')
+    expect(screen.queryByText(/not found/i)).toBeNull()
   })
 
   it('renders a placeholder naming the matchup for a game the viewer can read', async () => {

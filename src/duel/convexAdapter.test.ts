@@ -4,11 +4,11 @@ import { GameStatus, Half } from '@sandlot/engine/game'
 import type { WithoutSystemFields } from 'convex/server'
 import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
-import { api } from '../../../convex/_generated/api'
-import type { Doc, Id } from '../../../convex/_generated/dataModel'
-import type { MutationCtx } from '../../../convex/_generated/server'
-import { DuelRejection, DuelStatus } from '../../../convex/duelContract'
-import schema from '../../../convex/schema'
+import { api } from '../../convex/_generated/api'
+import type { Doc, Id } from '../../convex/_generated/dataModel'
+import type { MutationCtx } from '../../convex/_generated/server'
+import { DuelRejection, DuelStatus } from '../../convex/duelContract'
+import schema from '../../convex/schema'
 import {
   type ConvexDuelAdapter,
   createConvexDuelAdapter,
@@ -31,7 +31,7 @@ import { DuelSeat, type SeatAgent } from './seatAgent'
  */
 
 // convex-test discovers the function modules; exclude the test files themselves.
-const modules = import.meta.glob(['../../../convex/**/*.ts', '!../../../convex/**/*.test.ts'])
+const modules = import.meta.glob(['../../convex/**/*.ts', '!../../convex/**/*.test.ts'])
 
 /** The hotseat manager, holding both clubs. */
 const MANAGER = { subject: 'hotseat-manager' }
