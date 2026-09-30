@@ -276,6 +276,29 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
   holding a player that no longer exists, throws — corrupt authoritative state,
   and an empty base would show the batter a situation that is not the real one.
 
+## Resolved at-bat read model (`convex/atBatView.ts`, SAN-39)
+
+`getLastAtBat({ game })` returns the most recently resolved at-bat as a
+`ResolvedAtBatView` (declared in `duelContract.ts`), or `null` — for a game with
+no resolved at-bat, and identically for a non-participant, no caller, and an
+unknown game (ADR-0025's refusal to be an existence oracle).
+
+- **It exists because `getActiveDuel` cannot serve a reveal.** That query shows
+  the last resolved at-bat only until a seat commits to the next one, and the
+  bot commits the moment an at-bat opens (SAN-58). This one reads the log, which
+  only grows, so the last at-bat stays readable — and survives a reload.
+- **Complete enough to render from alone:** both players named, both numbers,
+  the outcome and ground-ball sub-result, runs, outs and bases before and after,
+  plus the board as it stood *before* the play (`scoreBefore`, `hitsBefore`,
+  folded from the earlier log rows). `endedHalf` marks the third out, and
+  `halfTotals` carries the batting club's runs and hits in that half.
+- **The vault is not reachable from it.** It reads `atBats` and never
+  `duelCommitments`; a log row exists only once both sides have locked, so a
+  number committed to the at-bat now open cannot appear. A test commits one and
+  searches the whole payload for it.
+- **Absolute**, like `getGame`: totals are home/away and both participants read
+  the same view (ADR-0030).
+
 ## Duel wire vocabulary (`convex/duelContract.ts`)
 
 What a commit hands back (`DuelCommitResult` — the at-bat id, its `sequence`, and
