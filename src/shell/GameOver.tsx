@@ -17,6 +17,9 @@ import { HomeLink, Screen } from './Screen'
 
 const CELL = 'px-2 py-1.5 text-center tabular-nums'
 
+/** The club column stays put while a long extra-innings line scrolls under it. */
+const CLUB_CELL = 'sticky left-0 bg-surface px-2 py-1.5 text-left'
+
 /** One club's runs in an inning, or null for a bottom half never played. Explicit
  * reads, one per side — no computed member access (AGENTS.md). */
 const runsIn = (line: InningLine, side: ClubSide): number | null =>
@@ -29,11 +32,7 @@ function LineRow({ game, side }: { game: FinalGameView; side: ClubSide }) {
   const name = home ? game.home.name : game.away.name
   return (
     <tr className="border-t border-edge">
-      <th
-        scope="row"
-        aria-label={name}
-        className="px-2 py-1.5 text-left font-display tracking-wider"
-      >
+      <th scope="row" aria-label={name} className={`${CLUB_CELL} font-display tracking-wider`}>
         {clubLabel(name)}
       </th>
       {game.lineScore.map((line) => (
@@ -65,7 +64,7 @@ function LineScore({ game }: { game: FinalGameView }) {
           <caption className="sr-only">Line score</caption>
           <thead>
             <tr className="text-[11px] tracking-[0.18em] text-muted">
-              <th scope="col" className="px-2 py-1.5 text-left">
+              <th scope="col" className={CLUB_CELL}>
                 <span className="sr-only">Club</span>
               </th>
               {game.lineScore.map((line) => (
