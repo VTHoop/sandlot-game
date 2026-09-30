@@ -11,7 +11,9 @@
 // SANDLOT_DEV_SEED=true on the dev deployment, and you signed in to the app once.
 import { spawnSync } from 'node:child_process'
 
-const APP_ORIGIN = 'http://localhost:5173'
+// The port the agent preview serves on (`.claude/launch.json`). A plain
+// `pnpm dev` serves on Vite's default 5173 instead.
+const APP_ORIGIN = 'http://localhost:5183'
 const USAGE = 'usage: pnpm dev:game [--hotseat] [--as user_…]'
 
 interface DevGameArgs {
