@@ -115,9 +115,11 @@ async function isParticipant(ctx: Ctx, game: Doc<'games'>, user: Doc<'users'>): 
  * being cheap, the maintained rollups are where the totals belong (ADR-0004).
  */
 export const getLastAtBat = query({
-  args: { game: v.id('games') },
+  args: { game: v.string() },
   handler: async (ctx, args): Promise<ResolvedAtBatView | null> => {
-    const game = await ctx.db.get(args.game)
+    // Red checkpoint: the argument is widened so the spec compiles, and the id is
+    // not yet normalised — a malformed one still throws.
+    const game = await ctx.db.get(args.game as Id<'games'>)
     if (!game) return null
     const user = await maybeUser(ctx)
     if (!user || !(await isParticipant(ctx, game, user))) return null

@@ -100,7 +100,7 @@ async function seedLiveGame() {
 
 type Harness = Awaited<ReturnType<typeof seedLiveGame>>['t']
 
-const read = (t: Harness, identity: { subject: string }, game: Id<'games'>) =>
+const read = (t: Harness, identity: { subject: string }, game: string) =>
   t.withIdentity(identity).query(api.atBatView.getLastAtBat, { game })
 
 /** The view, or fail the test rather than the type system on a null. */
@@ -150,6 +150,19 @@ describe('getLastAtBat — the participant gate', () => {
       return id
     })
     expect(await read(t, HOME, vanished)).toBeNull()
+  })
+})
+
+describe('getLastAtBat — an id that names no game', () => {
+  it('reads a malformed id, or another table’s, as null rather than throwing', async () => {
+    // Same rule as `getGame` (ADR-0025): every refusal is one null. Argument
+    // validation throwing here would make this query answer differently from the
+    // one beside it for the same bad id.
+    const { t, game, awayLeadoff } = await seedLiveGame()
+    await playTop(t, game, HOME_RUN)
+
+    expect(await read(t, HOME, 'not-a-game-id')).toBeNull()
+    expect(await read(t, HOME, awayLeadoff)).toBeNull()
   })
 })
 
