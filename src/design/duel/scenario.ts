@@ -225,9 +225,8 @@ function battingScore(scenario: RevealScenario): BattingScore {
 
 /**
  * The first inning that counts as late: the last two of regulation. Read off the
- * engine's own regulation length (one layer owns a domain, AGENTS.md) — a
- * nine-inning assumption here meant a six-inning game never reached "late", and
- * never produced a walk-off.
+ * engine's own regulation length rather than restated here (one layer owns a
+ * domain, AGENTS.md).
  */
 const LATE_INNING = REGULATION_INNINGS - 1
 
