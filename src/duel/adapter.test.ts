@@ -433,6 +433,7 @@ describe('resolveDuelAtBat', () => {
       outcome: '1B',
       inning: 1,
       half: 'TOP',
+      outsBefore: 0,
       outs: 0,
       runsScored: 0,
       scoreBefore: { away: 0, home: 0 },

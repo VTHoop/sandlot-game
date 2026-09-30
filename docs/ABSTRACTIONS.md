@@ -623,6 +623,8 @@ Surfaced as the **PLAY** tab of the `/design` showcase — no new route.
   that sets each seat to human/bot independently. Changing a seat or restarting bumps an
   epoch that remounts a fresh half-inning. `RevealMotion` carries an optional advance
   affordance (`onAdvance` / `advanceLabel`) so the container can drive the sequence.
+  It and ↺ REPLAY mount only once the outcome lands, and the scoreboard shows
+  `outsBefore` until then (ADR-0033).
 
 ## Convex-backed duel adapter (`src/duel/convexAdapter.ts`, SAN-57)
 

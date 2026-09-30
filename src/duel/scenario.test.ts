@@ -13,6 +13,7 @@ const base: RevealScenario = {
   outcome: '2B',
   inning: REGULATION_INNINGS - 1,
   half: 'BOTTOM',
+  outsBefore: 2,
   outs: 2,
   runsScored: 1,
   scoreBefore: { away: 4, home: 4 },
