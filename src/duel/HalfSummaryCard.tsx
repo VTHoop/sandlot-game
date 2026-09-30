@@ -25,13 +25,14 @@ interface HalfSummaryCardProps {
 function ClubScore({ label, runs }: { label: string; runs: number }) {
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="font-display text-sm tracking-wider text-chalk">{label}</span>
-      <span className="font-display text-5xl text-chalk">{runs}</span>
+      <span className="font-display text-sm tracking-wider text-consequence">{label}</span>
+      <span className="font-display text-5xl text-consequence">{runs}</span>
     </div>
   )
 }
 
-/** The game score, away then home, by club label (ADR-0030) — the card's lead. */
+/** The game score, away then home, by club label (ADR-0030) — the card's lead,
+ * and its amber: scoring is consequence. */
 function GameScore({ summary }: { summary: HalfSummary }) {
   const { clubs, score } = summary
   return (
@@ -98,10 +99,9 @@ function NextHalfControl({ next }: { next: NextHalf }) {
 export function HalfSummaryCard({ summary, next, onRestart }: HalfSummaryCardProps) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-7 px-6 text-center">
-      <p className="font-body text-[11px] tracking-[0.22em] text-muted uppercase">
+      <h2 className="font-body text-[11px] tracking-[0.22em] text-muted uppercase">
         {formatInning(summary)} · in the books
-      </p>
-      <h2 className="font-display text-3xl tracking-wider text-chalk">END OF HALF</h2>
+      </h2>
       <GameScore summary={summary} />
       <HalfTotals summary={summary} />
       {next && <NextHalfControl next={next} />}

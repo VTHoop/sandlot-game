@@ -126,9 +126,10 @@ keeps nothing the server could tell it.
   send your number. Try again."; either remounts the entry empty, and the turn
   follows whatever the locks say.
 - **Between halves** (SAN-67): after the third out's reveal, `HalfSummaryCard`
-  leads with the game score, away then home, as that at-bat left it
-  (`halfSummaryOf` folds its runs into `scoreBefore`; SAN-70). The half's runs
-  and hits sit beneath, smaller and never amber. Then its `next` — the side change
+  leads with the game score in amber, away then home, as that at-bat left it
+  (`halfSummaryOf` folds its runs into `scoreBefore`; SAN-70). The inning line
+  ("TOP 3RD · in the books") is its heading; there is no END OF HALF title. The
+  half's runs and hits sit beneath, smaller and never amber. Then its `next` — the side change
   (`sideChangeOf`: the half the server has already opened and the club batting
   in it) and CONTINUE, which takes focus. It stays until tapped. There is no
   between-halves server state (ADR-0017), so a reload lands on the next half's
