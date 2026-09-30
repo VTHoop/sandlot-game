@@ -76,6 +76,7 @@ Needs `CS_ACCESS_TOKEN` — a free personal token from https://codescene.io/user
 - The ratchet runs *after* the merge, so it is an alarm, not a blocker: CodeScene analyses `main`, not arbitrary branches. Pre-merge enforcement is the PR bot's job.
 - **Boy Scout Rule (binding, judged by eye):** every file you touch should leave more readable than you found it — smaller functions, fewer branches, clearer names. You don't need a score to know when you've made a function worse.
 - **⛔ NEVER add `biome-ignore`, `// @ts-ignore`, or `as any` to dodge a finding.** Fix the code.
+  - **The one exception:** a `biome-ignore` is allowed only where the rule conflicts with a WCAG requirement. The comment must name the criterion (e.g. `WCAG 2.1.1`), and the PR must call it out. Example: `tabIndex={0}` on the line score's scroll region in `src/shell/GameOver.tsx`, which `noNoninteractiveTabindex` rejects but WCAG 2.1.1 (keyboard access to scrollable content) requires.
 - **⛔ NEVER use the Suppress link CodeScene offers next to a finding.** It is one click and it is always the wrong click. `scripts/check-code-health.ts` was itself flagged (Primitive Obsession, String Heavy Function Arguments) and refactored to 10.00 instead — the fix improved the code, which is the usual outcome when the gate looks like the problem.
 
 ### Security & static analysis — Codacy (mandatory)
