@@ -435,7 +435,8 @@ export function halfLabel(half: Half): 'TOP' | 'BOTTOM' {
 }
 
 /** The score as the live state holds it: one total per club, no flip. */
-function scoreBefore(state: DuelState): ClubPair<number> {
+/** Each club's runs in a state — the score on the board at that moment. */
+export function scoreOf(state: DuelState): ClubPair<number> {
   return { away: state.awayScore, home: state.homeScore }
 }
 
@@ -514,7 +515,7 @@ export function buildReveal(params: {
     half: halfLabel(state.half),
     outs: resolved.outsAfter,
     runsScored: resolved.runsScored,
-    scoreBefore: scoreBefore(state),
+    scoreBefore: scoreOf(state),
     hitsBefore: board.hits,
     headline: deriveHeadline(outcome, resolved.groundBallResult),
     scoreline: deriveScoreline({
@@ -664,7 +665,7 @@ export function deriveSituation(state: DuelState, board: Board, roster: Roster):
     inning: state.inning,
     half: halfLabel(state.half),
     outs: state.outs,
-    scoreBefore: scoreBefore(state),
+    scoreBefore: scoreOf(state),
     hitsBefore: { ...board.hits },
     runnersOn: occupiedBases(state.bases),
   }

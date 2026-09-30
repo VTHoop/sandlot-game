@@ -126,7 +126,9 @@ keeps nothing the server could tell it.
   send your number. Try again."; either remounts the entry empty, and the turn
   follows whatever the locks say.
 - **Between halves** (SAN-67): after the third out's reveal, `HalfSummaryCard`
-  shows the half's runs and hits plus its `next` — the side change
+  leads with the game score, away then home, as that at-bat left it
+  (`halfSummaryOf` folds its runs into `scoreBefore`; SAN-70). The half's runs
+  and hits sit beneath, smaller and never amber. Then its `next` — the side change
   (`sideChangeOf`: the half the server has already opened and the club batting
   in it) and CONTINUE, which takes focus. It stays until tapped. There is no
   between-halves server state (ADR-0017), so a reload lands on the next half's
@@ -608,7 +610,8 @@ Surfaced as the **PLAY** tab of the `/design` showcase — no new route.
   is a local here and is **never** passed to the batter agent, so the secret lives only
   in this loop and the adapter it resolves through. The `RevealGate` seam lets the caller
   present each reveal and await the advance; `HalfSummary` accrues the batting side's
-  runs/hits for the end-of-half card.
+  runs/hits for the end-of-half card, and closes with the club labels and the adapter's
+  score once the half is over (SAN-70).
 - **`useDuelPlay(roster, context, seats)` — the React seam.** Bridges the loop's
   promise-based agents/gate to React state and builds each seat's agent from `seats`:
   a **human** seat's `requestNumber` parks a resolver and shows the commit screen; a

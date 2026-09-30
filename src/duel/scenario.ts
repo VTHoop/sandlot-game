@@ -287,6 +287,17 @@ export function deriveDrama(scenario: RevealScenario): Drama {
   }
 }
 
+/** Each club's runs once a play is in: its runs go to the club that batted
+ * (top = away, SAN-21). */
+export function scoreAfter(
+  play: Pick<RevealScenario, 'half' | 'scoreBefore' | 'runsScored'>,
+): ClubPair<number> {
+  const { half, scoreBefore, runsScored } = play
+  return half === 'TOP'
+    ? { away: scoreBefore.away + runsScored, home: scoreBefore.home }
+    : { away: scoreBefore.away, home: scoreBefore.home + runsScored }
+}
+
 /** What a scoreboard needs from a situation or a reveal. */
 type Scored = Pick<RevealScenario, 'clubs' | 'scoreBefore' | 'hitsBefore'>
 

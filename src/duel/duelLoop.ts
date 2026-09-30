@@ -1,5 +1,5 @@
 import { GameStatus } from '@sandlot/engine/game'
-import { type DuelAdapter, type DuelState, deriveSituation } from './adapter'
+import { type DuelAdapter, type DuelState, deriveSituation, scoreOf } from './adapter'
 import type { Roster } from './roster'
 import { type ClubPair, isHit, type RevealScenario } from './scenario'
 import { DuelSeat, type SeatAgent } from './seatAgent'
@@ -32,24 +32,18 @@ export interface RevealGate {
  * or a bot (SAN-48) — the loop drives whatever `SeatAgent` each slot holds. */
 export type SeatAgents = Record<DuelSeat, SeatAgent>
 
-const emptyHalfSummary = (): HalfSummary => ({
-  half: 'TOP',
-  inning: 1,
-  runs: 0,
-  hits: 0,
-  // Stubbed for the red checkpoint (SAN-70).
-  clubs: { away: '', home: '' },
-  score: { away: 0, home: 0 },
-})
+/** What the loop counts as the half plays: everything but the closing board. */
+type HalfTally = Omit<HalfSummary, 'clubs' | 'score'>
 
-/** Fold one reveal into the running half summary (batting side runs + hits). */
-function accrueHalf(summary: HalfSummary, reveal: RevealScenario): HalfSummary {
+const emptyTally = (): HalfTally => ({ half: 'TOP', inning: 1, runs: 0, hits: 0 })
+
+/** Fold one reveal into the running half tally (batting side runs + hits). */
+function accrueHalf(tally: HalfTally, reveal: RevealScenario): HalfTally {
   return {
-    ...summary,
     half: reveal.half,
     inning: reveal.inning,
-    runs: summary.runs + reveal.runsScored,
-    hits: summary.hits + (isHit(reveal.outcome) ? 1 : 0),
+    runs: tally.runs + reveal.runsScored,
+    hits: tally.hits + (isHit(reveal.outcome) ? 1 : 0),
   }
 }
 
@@ -86,7 +80,7 @@ export async function playHalfInning(
   gate: RevealGate,
 ): Promise<HalfSummary> {
   const start = adapter.state()
-  let summary = emptyHalfSummary()
+  let tally = emptyTally()
   let atBats = 0
   while (sameHalf(adapter.state(), start)) {
     atBats += 1
@@ -106,8 +100,9 @@ export async function playHalfInning(
     // see is the POST-at-bat one — reading it early would re-seat the same
     // batter and commit the at-bat twice.
     const { reveal } = await adapter.playAtBat(pitch, swing)
-    summary = accrueHalf(summary, reveal)
+    tally = accrueHalf(tally, reveal)
     await gate.present(reveal, !sameHalf(adapter.state(), start))
   }
-  return summary
+  // The adapter has folded the last at-bat in, so its score is the half's closing one.
+  return { ...tally, clubs: adapter.clubs(), score: scoreOf(adapter.state()) }
 }
