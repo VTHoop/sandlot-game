@@ -1,4 +1,7 @@
+import { REGULATION_INNINGS } from '@sandlot/engine/game'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
+import type { TeamLine } from '../../components/ui/Scoreboard'
+import { DuelSeat } from './seatAgent'
 
 /**
  * A node on the base-running path — where a runner starts or ends on the reveal's
@@ -34,19 +37,55 @@ export interface RunnerMovement {
   retired: boolean
 }
 
-/** A resolved at-bat from the viewer's (batter's) perspective. */
+/** One value per club, in absolute terms — never "you" and "them". */
+export interface ClubPair<T> {
+  away: T
+  home: T
+}
+
+/** How many characters of a club's name its scoreboard label keeps. */
+const CLUB_LABEL_LENGTH = 3
+
+/**
+ * The scoreboard label for a club: the first three letters of its name,
+ * uppercased ("Ridgeview Rail" → "RID"). Spaces and punctuation are skipped so a
+ * two-word name does not spend a slot on the gap ("El Paso Suns" → "ELP").
+ *
+ * A stand-in until clubs carry a label of their own (SAN-68): two clubs whose
+ * names open alike read alike here.
+ */
+export function clubLabel(name: string): string {
+  return name
+    .replace(/[^\p{L}\p{N}]/gu, '')
+    .slice(0, CLUB_LABEL_LENGTH)
+    .toUpperCase()
+}
+
+/**
+ * A resolved at-bat, described by what happened rather than by who is looking
+ * (SAN-39, ADR-0030): the two numbers are the pitch and the swing, the two
+ * players are named, and every total is away/home. The same scenario therefore
+ * reads correctly to the club that batted, the club that pitched, and an owner of
+ * both — there is no perspective to get wrong. `half` says which club batted
+ * (top = away, SAN-21).
+ */
 export interface RevealScenario {
-  you: number
-  them: number
-  opponent: string
+  pitch: number
+  swing: number
+  /** The pitcher's display name. */
+  pitcher: string
+  /** The batter's display name. */
+  batter: string
+  /** Each club's scoreboard label. */
+  clubs: ClubPair<string>
   outcome: OutcomeKey
   inning: number
   half: 'TOP' | 'BOTTOM'
   outs: number
   /** Runs the batting team scored on this play. */
   runsScored: number
-  scoreBefore: { you: number; opp: number }
-  hitsBefore: { you: number; opp: number }
+  scoreBefore: ClubPair<number>
+  hitsBefore: ClubPair<number>
   scoreline: string
   /** The headline word(s) the reveal shouts — the specific result, not just the
    * band. A groundball resolves into a fielder's choice / double play / etc., each
@@ -60,14 +99,14 @@ export interface RevealScenario {
 
 /**
  * The non-secret situation shown on the commit and waiting screens: a deliberate
- * subset of `RevealScenario` that EXCLUDES `you`/`them` (and the resolved
+ * subset of `RevealScenario` that EXCLUDES `pitch`/`swing` (and the resolved
  * `outcome`/`scoreline`). The commit screen must be structurally incapable of
  * carrying either duel number — the pitch is the vault's secret (ADR-0014,
  * AGENTS.md game integrity).
  */
 export type DuelSituation = Pick<
   RevealScenario,
-  'opponent' | 'inning' | 'half' | 'outs' | 'scoreBefore' | 'hitsBefore'
+  'pitcher' | 'batter' | 'clubs' | 'inning' | 'half' | 'outs' | 'scoreBefore' | 'hitsBefore'
 > & {
   /**
    * Which bases are occupied right now, in lead order (third → first), so the
@@ -152,26 +191,61 @@ export interface Drama {
   hold: number
 }
 
-function computeTags(scenario: RevealScenario, after: number): DramaTags {
-  const { outcome, runsScored, scoreBefore, inning, half } = scenario
+/**
+ * The score as the club at bat sees it — the one place drama takes a side. Every
+ * tag below is about the BATTING club (it is the one that can score on the play),
+ * and which club that is follows the half: away bats the top, home the bottom
+ * (SAN-21). This is not a viewer's perspective: it is the same for everyone
+ * watching the at-bat.
+ */
+interface BattingScore {
+  /** The batting club's scoreboard label. */
+  label: string
+  before: number
+  after: number
+  fielding: number
+}
+
+function battingScore(scenario: RevealScenario): BattingScore {
+  const { half, clubs, scoreBefore, runsScored } = scenario
+  return half === 'TOP'
+    ? {
+        label: clubs.away,
+        before: scoreBefore.away,
+        after: scoreBefore.away + runsScored,
+        fielding: scoreBefore.home,
+      }
+    : {
+        label: clubs.home,
+        before: scoreBefore.home,
+        after: scoreBefore.home + runsScored,
+        fielding: scoreBefore.away,
+      }
+}
+
+/**
+ * The first inning that counts as late: the last two of regulation. Read off the
+ * engine's own regulation length rather than restated here (one layer owns a
+ * domain, AGENTS.md).
+ */
+const LATE_INNING = REGULATION_INNINGS - 1
+
+function computeTags(scenario: RevealScenario, score: BattingScore): DramaTags {
+  const { outcome, runsScored, inning, half } = scenario
   return {
     rbi: runsScored > 0 && isHit(outcome),
-    leadChange: scoreBefore.you <= scoreBefore.opp && after > scoreBefore.opp,
-    newTie: runsScored > 0 && after === scoreBefore.opp,
-    walkOff: half === 'BOTTOM' && inning >= 9 && after > scoreBefore.opp,
-    lateAndClose: inning >= 7 && Math.abs(scoreBefore.you - scoreBefore.opp) <= 1,
+    leadChange: score.before <= score.fielding && score.after > score.fielding,
+    newTie: runsScored > 0 && score.after === score.fielding,
+    // Only the home club can walk off: it bats last, in the bottom half.
+    walkOff: half === 'BOTTOM' && inning >= REGULATION_INNINGS && score.after > score.fielding,
+    lateAndClose: inning >= LATE_INNING && Math.abs(score.before - score.fielding) <= 1,
   }
 }
 
-function computeCallout(
-  tags: DramaTags,
-  after: number,
-  opp: number,
-  runsScored: number,
-): string | null {
-  if (tags.walkOff) return 'WALK-OFF WIN!'
-  if (tags.leadChange) return `LEAD CHANGE — YOU LEAD ${after}–${opp}`
-  if (tags.newTie) return `ALL TIED AT ${after}`
+function computeCallout(tags: DramaTags, score: BattingScore, runsScored: number): string | null {
+  if (tags.walkOff) return 'WALK-OFF!'
+  if (tags.leadChange) return `LEAD CHANGE — ${score.label} LEADS ${score.after}–${score.fielding}`
+  if (tags.newTie) return `ALL TIED AT ${score.after}`
   if (tags.rbi) return runsScored === 1 ? 'RBI' : `${runsScored} RBI`
   return null
 }
@@ -191,15 +265,54 @@ function computeBoost(tags: DramaTags): number {
  * headline. Priority: walk-off > lead change > new tie > RBI.
  */
 export function deriveDrama(scenario: RevealScenario): Drama {
-  const after = scenario.scoreBefore.you + scenario.runsScored
-  const tags = computeTags(scenario, after)
+  const score = battingScore(scenario)
+  const tags = computeTags(scenario, score)
   return {
     tags,
-    callout: computeCallout(tags, after, scenario.scoreBefore.opp, scenario.runsScored),
+    callout: computeCallout(tags, score, scenario.runsScored),
     hold:
       (OUTCOME_HOLD.get(scenario.outcome) ?? 0) + Math.min(computeBoost(tags), MAX_SITUATION_BOOST),
   }
 }
+
+/** What a scoreboard needs from a situation or a reveal. */
+type Scored = Pick<RevealScenario, 'clubs' | 'scoreBefore' | 'hitsBefore'>
+
+/**
+ * The two scoreboard rows, away then home, as they stood BEFORE the at-bat. One
+ * builder for the commit, waiting and reveal screens, so all three show the same
+ * board.
+ */
+export function scoreboardLines(scored: Scored): ClubPair<TeamLine> {
+  const { clubs, scoreBefore, hitsBefore } = scored
+  return {
+    away: { label: clubs.away, runs: scoreBefore.away, hits: hitsBefore.away },
+    home: { label: clubs.home, runs: scoreBefore.home, hits: hitsBefore.home },
+  }
+}
+
+/** A seat's occupant and what they commit: the pitcher's pitch, the batter's swing. */
+export interface SeatCommitter {
+  player: string
+  act: 'pitch' | 'swing'
+}
+
+/** Who sits in a seat this at-bat, and the name of the number they owe. */
+export function committerOf(
+  seat: DuelSeat,
+  situation: Pick<DuelSituation, 'pitcher' | 'batter'>,
+): SeatCommitter {
+  return seat === DuelSeat.Pitcher
+    ? { player: situation.pitcher, act: 'pitch' }
+    : { player: situation.batter, act: 'swing' }
+}
+
+/** The seat across the duel from this one. */
+export const oppositeSeat = (seat: DuelSeat): DuelSeat =>
+  seat === DuelSeat.Pitcher ? DuelSeat.Batter : DuelSeat.Pitcher
+
+/** The header every duel screen wears: the away club at the home club. */
+export const matchupTitle = (clubs: ClubPair<string>): string => `${clubs.away} @ ${clubs.home}`
 
 const ORDINALS = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH']
 

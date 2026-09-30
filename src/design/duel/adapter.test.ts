@@ -6,6 +6,7 @@ import { OUTCOME_LADDER, type OutcomeKey } from '../../components/ui/OutcomeLadd
 import {
   accumulateHits,
   assembleRunnerSpeeds,
+  type Board,
   createDuelAdapter,
   deriveHeadline,
   deriveMatchup,
@@ -17,8 +18,12 @@ import {
   resolveDuelAtBat,
   toOutcomeKey,
 } from './adapter'
-import { GAME_CONTEXT, ROSTER, type Roster, type RosterPlayer } from './roster'
+import { CLUB_NAMES, GAME_CONTEXT, ROSTER, type Roster, type RosterPlayer } from './roster'
 import { FieldSpot, type RunnerMovement } from './scenario'
+
+/** The fixture clubs as the scoreboard labels them, with nobody having hit yet. */
+const CLUBS = { away: 'HAR', home: 'RID' } as const
+const board = (hits = { away: 0, home: 0 }): Board => ({ clubs: CLUBS, hits })
 
 // Probed against away-1 (R. VANCE) vs home-p (H. MARSH), bases empty, 0 outs:
 // the folded difference lands these bands. Keep those two attribute blocks stable.
@@ -104,7 +109,8 @@ describe('OutcomeBandKey → OutcomeKey mapping', () => {
 describe('deriveScoreline', () => {
   // One uniform shape (outcome + post-state bases + runs → line), so the cases are
   // a table rather than near-identical test functions. The batter id is always
-  // 'b'; `basesAfter` is what reaches base after the play.
+  // 'b'; `basesAfter` is what reaches base after the play. The line names the
+  // batter in the third person, so it reads the same from either seat (SAN-39).
   const cases: Array<{
     name: string
     outcome: OutcomeKey
@@ -117,68 +123,70 @@ describe('deriveScoreline', () => {
       outcome: '1B',
       basesAfter: { first: 'b', second: null, third: null },
       runsScored: 0,
-      expected: 'you stand on 1st',
+      expected: 'R. VANCE stands on 1st',
     },
     {
       name: 'a run-scoring double: runs and landing base',
       outcome: '2B',
       basesAfter: { first: null, second: 'b', third: null },
       runsScored: 1,
-      expected: '1 run scores · you stand on 2nd',
+      expected: '1 run scores · R. VANCE stands on 2nd',
     },
     {
       name: 'a run-scoring triple: the batter ends up on third',
       outcome: '3B',
       basesAfter: { first: null, second: null, third: 'b' },
       runsScored: 2,
-      expected: '2 runs score · you stand on 3rd',
+      expected: '2 runs score · R. VANCE stands on 3rd',
     },
     {
       name: 'a grand slam: pluralized runs, batter cleared the bases',
       outcome: 'HR',
       basesAfter: { first: null, second: null, third: null },
       runsScored: 4,
-      expected: '4 runs score · you go yard',
+      expected: '4 runs score · R. VANCE goes yard',
     },
     {
       name: 'a bases-loaded walk: a forced run plus reaching first',
       outcome: 'BB',
       basesAfter: { first: 'b', second: 'x', third: 'y' },
       runsScored: 1,
-      expected: '1 run scores · you reach 1st',
+      expected: '1 run scores · R. VANCE reaches 1st',
     },
     {
       name: 'a strikeout: the out phrasing, no runs',
       outcome: 'K',
       basesAfter: { first: null, second: null, third: null },
       runsScored: 0,
-      expected: 'you strike out',
+      expected: 'R. VANCE strikes out',
     },
     {
       name: 'a fly out: its out phrasing',
       outcome: 'FO',
       basesAfter: { first: null, second: null, third: null },
       runsScored: 0,
-      expected: 'you fly out',
+      expected: 'R. VANCE flies out',
     },
     {
       name: 'a pop out: its out phrasing',
       outcome: 'PO',
       basesAfter: { first: null, second: null, third: null },
       runsScored: 0,
-      expected: 'you pop out',
+      expected: 'R. VANCE pops out',
     },
     {
       name: 'a groundout: its out phrasing',
       outcome: 'GB',
       basesAfter: { first: null, second: null, third: null },
       runsScored: 0,
-      expected: 'you ground out',
+      expected: 'R. VANCE grounds out',
     },
   ]
 
   it.each(cases)('$name', ({ outcome, basesAfter, runsScored, expected }) => {
-    expect(deriveScoreline({ outcome, basesAfter, runsScored, batter: 'b' })).toBe(expected)
+    expect(
+      deriveScoreline({ outcome, basesAfter, runsScored, batter: 'b', batterName: 'R. VANCE' }),
+    ).toBe(expected)
   })
 })
 
@@ -395,25 +403,20 @@ describe('deriveRunnerMovements', () => {
 })
 
 describe('accumulateHits', () => {
-  it('credits the batting team on a hit', () => {
-    expect(accumulateHits({ you: 0, opp: 0 }, '1B')).toEqual({ you: 1, opp: 0 })
-    expect(accumulateHits({ you: 2, opp: 1 }, 'HR')).toEqual({ you: 3, opp: 1 })
+  it('credits the club that was batting: away in the top half, home in the bottom', () => {
+    expect(accumulateHits({ away: 0, home: 0 }, '1B', Half.Top)).toEqual({ away: 1, home: 0 })
+    expect(accumulateHits({ away: 2, home: 1 }, 'HR', Half.Bottom)).toEqual({ away: 2, home: 2 })
   })
 
   it('leaves the totals untouched on a non-hit', () => {
-    expect(accumulateHits({ you: 1, opp: 0 }, 'K')).toEqual({ you: 1, opp: 0 })
-    expect(accumulateHits({ you: 1, opp: 0 }, 'BB')).toEqual({ you: 1, opp: 0 })
+    expect(accumulateHits({ away: 1, home: 0 }, 'K', Half.Top)).toEqual({ away: 1, home: 0 })
+    expect(accumulateHits({ away: 1, home: 0 }, 'BB', Half.Bottom)).toEqual({ away: 1, home: 0 })
   })
 })
 
 describe('resolveDuelAtBat', () => {
   it('maps a hit to an AppliedAtBat and a RevealScenario', () => {
-    const { applied, reveal } = resolveDuelAtBat(
-      HIT_AT_BAT.pitch,
-      HIT_AT_BAT.swing,
-      liveState(),
-      ROSTER,
-    )
+    const { applied, reveal } = resolveDuelAtBat(HIT_AT_BAT, liveState(), ROSTER, board())
     expect(applied).toEqual({
       sequence: 0,
       outsBefore: 0,
@@ -422,75 +425,57 @@ describe('resolveDuelAtBat', () => {
       runsScored: 0,
     })
     expect(reveal).toEqual({
-      you: HIT_AT_BAT.swing,
-      them: HIT_AT_BAT.pitch,
-      opponent: 'H. MARSH',
+      pitch: HIT_AT_BAT.pitch,
+      swing: HIT_AT_BAT.swing,
+      pitcher: 'H. MARSH',
+      batter: 'R. VANCE',
+      clubs: CLUBS,
       outcome: '1B',
       inning: 1,
       half: 'TOP',
       outs: 0,
       runsScored: 0,
-      scoreBefore: { you: 0, opp: 0 },
-      hitsBefore: { you: 0, opp: 0 },
+      scoreBefore: { away: 0, home: 0 },
+      hitsBefore: { away: 0, home: 0 },
       headline: 'SINGLE!',
-      scoreline: 'you stand on 1st',
+      scoreline: 'R. VANCE stands on 1st',
       movements: [{ from: FieldSpot.Batter, to: FieldSpot.First, retired: false }],
     })
   })
 
   it('maps an out: a third strike records an out and no base runner', () => {
-    const { applied, reveal } = resolveDuelAtBat(
-      OUT_AT_BAT.pitch,
-      OUT_AT_BAT.swing,
-      liveState(),
-      ROSTER,
-    )
+    const { applied, reveal } = resolveDuelAtBat(OUT_AT_BAT, liveState(), ROSTER, board())
     expect(reveal.outcome).toBe('K')
     expect(applied.outsAfter).toBe(1)
     expect(applied.basesAfter).toEqual({ first: null, second: null, third: null })
     expect(reveal.outs).toBe(1)
-    expect(reveal.scoreline).toBe('you strike out')
+    expect(reveal.scoreline).toBe('R. VANCE strikes out')
   })
 
   it('maps a walk: the batter reaches first', () => {
-    const { applied, reveal } = resolveDuelAtBat(
-      WALK_AT_BAT.pitch,
-      WALK_AT_BAT.swing,
-      liveState(),
-      ROSTER,
-    )
+    const { applied, reveal } = resolveDuelAtBat(WALK_AT_BAT, liveState(), ROSTER, board())
     expect(reveal.outcome).toBe('BB')
     expect(applied.basesAfter).toEqual({ first: 'away-1', second: null, third: null })
-    expect(reveal.scoreline).toBe('you reach 1st')
+    expect(reveal.scoreline).toBe('R. VANCE reaches 1st')
   })
 
-  it('threads a running hit total into hitsBefore', () => {
-    const { reveal } = resolveDuelAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing, liveState(), ROSTER, {
-      you: 3,
-      opp: 2,
-    })
-    expect(reveal.hitsBefore).toEqual({ you: 3, opp: 2 })
-  })
-
-  it('labels the half from the live state without flipping perspective', () => {
+  it('threads the running hit totals into hitsBefore, club for club', () => {
     const { reveal } = resolveDuelAtBat(
-      HIT_AT_BAT.pitch,
-      HIT_AT_BAT.swing,
-      liveState({ half: Half.Bottom }),
+      HIT_AT_BAT,
+      liveState(),
       ROSTER,
+      board({ away: 3, home: 2 }),
     )
-    expect(reveal.half).toBe('BOTTOM')
-    // Perspective stays the batting team as "you": runs still credit your score side.
-    expect(reveal.scoreBefore).toEqual({ you: 0, opp: 0 })
+    expect(reveal.hitsBefore).toEqual({ away: 3, home: 2 })
   })
 
-  it('fixes "you" to the batting team — the home side bats the bottom half', () => {
-    // Bottom half: the home team is at bat against the away pitcher, so "you" is
-    // the home score (2), not the away score (5). Perspective follows the batting
-    // team, not a hardcoded side.
+  it('describes a bottom-half at-bat in the same absolute terms — nothing flips', () => {
+    // The home club bats against the away pitcher. Scores stay away/home, the
+    // numbers stay pitch/swing, and each player is named by what they did — so the
+    // reveal reads the same to the club batting, the club pitching, and an owner of
+    // both (SAN-39).
     const { reveal } = resolveDuelAtBat(
-      HIT_AT_BAT.pitch,
-      HIT_AT_BAT.swing,
+      HIT_AT_BAT,
       liveState({
         half: Half.Bottom,
         currentBatter: 'home-1',
@@ -499,10 +484,15 @@ describe('resolveDuelAtBat', () => {
         awayScore: 5,
       }),
       ROSTER,
+      board({ away: 4, home: 1 }),
     )
     expect(reveal.half).toBe('BOTTOM')
-    expect(reveal.scoreBefore).toEqual({ you: 2, opp: 5 })
-    expect(reveal.opponent).toBe('G. PIKE')
+    expect(reveal.scoreBefore).toEqual({ away: 5, home: 2 })
+    expect(reveal.hitsBefore).toEqual({ away: 4, home: 1 })
+    expect(reveal.pitch).toBe(HIT_AT_BAT.pitch)
+    expect(reveal.swing).toBe(HIT_AT_BAT.swing)
+    expect(reveal.pitcher).toBe('G. PIKE')
+    expect(reveal.batter).toBe('J. WHITLOCK')
   })
 
   // Each rejection is the same shape (a live state that can't seat the matchup →
@@ -524,7 +514,7 @@ describe('resolveDuelAtBat', () => {
       error: /pitcher attribute block/,
     },
   ])('$name', ({ state, error }) => {
-    expect(() => resolveDuelAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing, state, ROSTER)).toThrow(error)
+    expect(() => resolveDuelAtBat(HIT_AT_BAT, state, ROSTER, board())).toThrow(error)
   })
 })
 
@@ -544,74 +534,89 @@ describe('createDuelAdapter', () => {
   }
 
   it('accumulates the running hit count across at-bats', () => {
-    const adapter = createDuelAdapter(roster, context)
+    const adapter = createDuelAdapter(roster, context, CLUB_NAMES)
 
     const first = adapter.playAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing)
     expect(first.reveal.outcome).toBe('1B')
-    expect(first.reveal.hitsBefore).toEqual({ you: 0, opp: 0 })
-    expect(adapter.hits()).toEqual({ you: 1, opp: 0 })
+    expect(first.reveal.hitsBefore).toEqual({ away: 0, home: 0 })
+    expect(adapter.hits()).toEqual({ away: 1, home: 0 })
 
     const second = adapter.playAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing)
     expect(second.reveal.outcome).toBe('1B')
     // The first hit is now on the books before the second at-bat reveals.
-    expect(second.reveal.hitsBefore).toEqual({ you: 1, opp: 0 })
-    expect(adapter.hits()).toEqual({ you: 2, opp: 0 })
+    expect(second.reveal.hitsBefore).toEqual({ away: 1, home: 0 })
+    expect(adapter.hits()).toEqual({ away: 2, home: 0 })
 
     // State advanced through the engine: two at-bats folded in, runner aboard.
     expect(adapter.state().lastResolvedSequence).toBe(1)
     expect(adapter.state().bases.first).toBeTruthy()
   })
 
-  it('swaps the hit totals to the new batting side when the third out flips the half', () => {
-    const adapter = createDuelAdapter(roster, context)
+  it('keeps each club’s hits its own when the third out flips the half', () => {
+    const adapter = createDuelAdapter(roster, context, CLUB_NAMES)
 
-    // Top half: the away side singles (its running hits → 1), then strikes out
-    // three times to end the half.
+    // Top half: the away side singles, then strikes out three times to end it.
     adapter.playAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing)
-    expect(adapter.hits()).toEqual({ you: 1, opp: 0 })
+    expect(adapter.hits()).toEqual({ away: 1, home: 0 })
     adapter.playAtBat(OUT_AT_BAT.pitch, OUT_AT_BAT.swing)
     adapter.playAtBat(OUT_AT_BAT.pitch, OUT_AT_BAT.swing)
     adapter.playAtBat(OUT_AT_BAT.pitch, OUT_AT_BAT.swing)
 
-    // The half flipped: the home side now bats, so its own total is "you" (0) and
-    // the away team's hit carries as "opp" — not stale away "you".
+    // The half flipped and nothing moved: the totals are absolute, so there is no
+    // swap to get wrong.
     expect(adapter.state().half).toBe(Half.Bottom)
-    expect(adapter.hits()).toEqual({ you: 0, opp: 1 })
+    expect(adapter.hits()).toEqual({ away: 1, home: 0 })
 
     const bottom = adapter.playAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing)
-    expect(bottom.reveal.hitsBefore).toEqual({ you: 0, opp: 1 })
+    expect(bottom.reveal.hitsBefore).toEqual({ away: 1, home: 0 })
+    // The home club's hit lands on the home total.
+    expect(adapter.hits()).toEqual({ away: 1, home: 1 })
+  })
+
+  it('labels the clubs with the first three letters of their names', () => {
+    const adapter = createDuelAdapter(roster, context, {
+      away: 'Harbor Kingfishers',
+      home: 'Ridgeview Rail',
+    })
+    expect(adapter.clubs()).toEqual({ away: 'HAR', home: 'RID' })
+    expect(adapter.playAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing).reveal.clubs).toEqual({
+      away: 'HAR',
+      home: 'RID',
+    })
   })
 
   it('hands back defensive copies that cannot corrupt internal state', () => {
-    const adapter = createDuelAdapter(roster, context)
+    const adapter = createDuelAdapter(roster, context, CLUB_NAMES)
 
     const snapState = adapter.state()
     snapState.outs = 2
     snapState.bases.first = 'tamper'
     const snapHits = adapter.hits()
-    snapHits.you = 99
+    snapHits.away = 99
 
     // The adapter's own state is untouched by the mutated snapshots.
     expect(adapter.state().outs).toBe(0)
     expect(adapter.state().bases.first).toBeNull()
-    expect(adapter.hits()).toEqual({ you: 0, opp: 0 })
+    expect(adapter.hits()).toEqual({ away: 0, home: 0 })
   })
 })
 
 describe('deriveSituation', () => {
-  it('projects the non-secret situation for the seat on the clock', () => {
+  it('projects the non-secret situation in absolute terms', () => {
     const situation = deriveSituation(
       liveState({ awayScore: 2, homeScore: 1, outs: 1 }),
-      { you: 3, opp: 4 },
+      board({ away: 3, home: 4 }),
       ROSTER,
     )
     expect(situation).toEqual({
-      opponent: 'H. MARSH',
+      pitcher: 'H. MARSH',
+      batter: 'R. VANCE',
+      clubs: CLUBS,
       inning: 1,
       half: 'TOP',
       outs: 1,
-      scoreBefore: { you: 2, opp: 1 },
-      hitsBefore: { you: 3, opp: 4 },
+      scoreBefore: { away: 2, home: 1 },
+      hitsBefore: { away: 3, home: 4 },
       runnersOn: [],
     })
   })
@@ -619,7 +624,7 @@ describe('deriveSituation', () => {
   it('projects occupied bases in lead order so the commit field mirrors the live diamond', () => {
     const situation = deriveSituation(
       liveState({ bases: { first: 'away-1', second: null, third: 'away-2' } }),
-      { you: 0, opp: 0 },
+      board(),
       ROSTER,
     )
     // Occupancy only (no runner identity), lead order like the reveal's starters.
@@ -629,39 +634,47 @@ describe('deriveSituation', () => {
   it('projects a loaded diamond — every base branch, second included', () => {
     const situation = deriveSituation(
       liveState({ bases: { first: 'away-1', second: 'away-2', third: 'away-3' } }),
-      { you: 0, opp: 0 },
+      board(),
       ROSTER,
     )
     expect(situation.runnersOn).toEqual([FieldSpot.Third, FieldSpot.Second, FieldSpot.First])
   })
 
   it('is structurally free of either duel number (secret-state law)', () => {
-    const situation = deriveSituation(liveState(), { you: 0, opp: 0 }, ROSTER)
-    expect(situation).not.toHaveProperty('you')
-    expect(situation).not.toHaveProperty('them')
+    const situation = deriveSituation(liveState(), board(), ROSTER)
+    expect(situation).not.toHaveProperty('pitch')
+    expect(situation).not.toHaveProperty('swing')
   })
 
-  it('credits the home score as “you” once the home side bats the bottom half', () => {
+  it('keeps the scores away/home once the home side bats the bottom half', () => {
     const situation = deriveSituation(
-      liveState({ half: Half.Bottom, awayScore: 5, homeScore: 3, currentPitcher: 'away-p' }),
-      { you: 0, opp: 0 },
+      liveState({
+        half: Half.Bottom,
+        awayScore: 5,
+        homeScore: 3,
+        currentBatter: 'home-1',
+        currentPitcher: 'away-p',
+      }),
+      board(),
       ROSTER,
     )
-    expect(situation.scoreBefore).toEqual({ you: 3, opp: 5 })
+    expect(situation.scoreBefore).toEqual({ away: 5, home: 3 })
+    expect(situation.pitcher).toBe('G. PIKE')
+    expect(situation.batter).toBe('J. WHITLOCK')
   })
 })
 
 describe('deriveMatchup', () => {
-  it('mirrors the live pitcher-vs-batter matchup for both seats, mapping attrs to pips', () => {
+  it('names the one real pitcher-vs-batter matchup, mapping attrs to pips', () => {
+    // One matchup, not a "you" side and an "opponent" side: both seats are looking
+    // at the same two players.
     const matchup = deriveMatchup(liveState(), ROSTER, GAME_CONTEXT)
-    // Both seats depict the SAME real matchup; DuelCommit orients it per seat.
-    expect(matchup.you).toBe(matchup.opponent)
-    expect(matchup.you.pitcher).toEqual({ name: 'H. MARSH', attrs: { VEL: 3, MOV: 3, CMD: 1 } })
-    expect(matchup.you.batter).toEqual({
+    expect(matchup.pitcher).toEqual({ name: 'H. MARSH', attrs: { VEL: 3, MOV: 3, CMD: 1 } })
+    expect(matchup.batter).toEqual({
       name: 'R. VANCE',
       attrs: { PWR: 3, CON: 3, SPD: 3, EYE: 5 },
     })
-    expect(matchup.you.dueUp).toEqual(['T. JULIEN', 'S. ORTIZ'])
+    expect(matchup.dueUp).toEqual(['T. JULIEN', 'S. ORTIZ'])
   })
 
   it('reads the home batting order when the home side bats the bottom half', () => {
@@ -670,8 +683,8 @@ describe('deriveMatchup', () => {
       ROSTER,
       GAME_CONTEXT,
     )
-    expect(matchup.you.batter.name).toBe('J. WHITLOCK')
-    expect(matchup.you.pitcher.name).toBe('G. PIKE')
-    expect(matchup.you.dueUp).toEqual(['Q. BAKER', 'C. DIAZ'])
+    expect(matchup.batter.name).toBe('J. WHITLOCK')
+    expect(matchup.pitcher.name).toBe('G. PIKE')
+    expect(matchup.dueUp).toEqual(['Q. BAKER', 'C. DIAZ'])
   })
 })

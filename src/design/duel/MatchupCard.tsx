@@ -7,20 +7,12 @@ export interface MatchupSide {
   attrs: Readonly<Record<string, number>>
 }
 
-/** One side's players in the two-sided matchup; `DuelCommit` orients it by seat. */
-interface DuelSeatPlayers {
-  pitcher: MatchupSide
-  batter: MatchupSide
-  dueUp: readonly string[]
-}
-
-/** Both managers' players. The commit screen flips which side pitches vs. swings. */
+/**
+ * The at-bat's matchup: who is throwing, who is swinging, and who is due up
+ * behind the batter. One matchup, the same from either seat (SAN-39) — it is
+ * exactly what the card renders.
+ */
 export interface DuelMatchup {
-  you: DuelSeatPlayers
-  opponent: DuelSeatPlayers
-}
-
-interface MatchupCardProps {
   pitcher: MatchupSide
   batter: MatchupSide
   dueUp: readonly string[]
@@ -38,7 +30,7 @@ function SideBlock({ side }: { side: MatchupSide }) {
 }
 
 /** The duel context: who's throwing, who's swinging, and who's coming up. */
-export function MatchupCard({ pitcher, batter, dueUp }: MatchupCardProps) {
+export function MatchupCard({ pitcher, batter, dueUp }: DuelMatchup) {
   return (
     <Card className="flex flex-1 flex-col gap-2 px-3 py-2.5">
       <SideBlock side={pitcher} />

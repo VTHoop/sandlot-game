@@ -15,12 +15,13 @@ import {
   type DuelView,
   duelRejectionOf,
 } from '../../../convex/duelContract'
-import type { ClubTotals, GameView, PlayerView, SeatView } from '../../../convex/gameView'
+import type { ClubTotals, ClubView, GameView, PlayerView, SeatView } from '../../../convex/gameView'
 import {
+  type AtBatPlayers,
   buildMatchup,
   buildReveal,
-  byBattingSide,
   type DuelAdapter,
+  type DuelNumbers,
   type DuelResolution,
   type DuelState,
   type ResolvedFacts,
@@ -29,6 +30,7 @@ import {
 } from './adapter'
 import type { DuelMatchup } from './MatchupCard'
 import type { Roster, RosterPlayer } from './roster'
+import { type ClubPair, clubLabel } from './scenario'
 import { DuelSeat } from './seatAgent'
 
 /**
@@ -54,12 +56,10 @@ import { DuelSeat } from './seatAgent'
  * report the very ordinal the commit resolved, or this throws — loudly and
  * uncategorised, because by then the commit has already succeeded.
  *
- * PERSPECTIVE — the server answers absolutely (home/away, ADR-0025) and the
- * split to `you`/`opp` happens here, off the batting side, through the same
- * `byBattingSide` the fixture path uses for scores. So the two agree across a
- * half boundary without this module keeping a running total of its own. "You" is
- * still the batter, as it is throughout `adapter.ts`; keying it off `viewer`
- * instead belongs to SAN-39, which owns the first screen with a real viewer.
+ * NO PERSPECTIVE — the server answers absolutely (home/away, ADR-0025) and this
+ * module hands those totals straight through: the view-models are absolute too
+ * (SAN-39, ADR-0030; see `adapter.ts`'s header). There is no `you`/`opp` split
+ * to keep in step across a half boundary, and no running total kept here.
  *
  * NETWORK FAILURE IS NOT MODELLED HERE. The Convex client retries a mutation
  * across a dropped connection, so the only final failures are the application
@@ -167,9 +167,14 @@ function toDuelState(view: LiveGameView): DuelState {
 /** Everything the adapter answers `state()` / `hits()` / `matchup()` from. */
 interface Snapshot {
   state: DuelState
-  /** Absolute, as the server sends them — split by half on the way out. */
+  /** Absolute, as the server sends them. */
   hits: ClubTotals
   dueUp: readonly string[]
+}
+
+/** Both clubs' scoreboard labels, off the names the server gives them. */
+function clubLabels(view: { away: ClubView; home: ClubView }): ClubPair<string> {
+  return { away: clubLabel(view.away.name), home: clubLabel(view.home.name) }
 }
 
 function liveSnapshot(view: LiveGameView): Snapshot {
@@ -283,25 +288,16 @@ async function commit(send: () => Promise<DuelCommitResult>): Promise<DuelCommit
 function requireAtBat(
   snapshot: Snapshot,
   players: ReadonlyMap<string, RosterPlayer>,
-): { batter: string; opponent: string } {
+): AtBatPlayers {
   const { status, currentBatter, currentPitcher } = snapshot.state
   if (status !== GameStatus.Live) {
     throw new Error('The game is not live, so there is no at-bat to play')
   }
+  const batter = seated(players, currentBatter, SeatedRole.Batter)
   return {
-    batter: seated(players, currentBatter, SeatedRole.Batter).id,
-    opponent: seated(players, currentPitcher, SeatedRole.Pitcher).player.name,
+    batter: { id: batter.id, name: batter.player.name },
+    pitcher: seated(players, currentPitcher, SeatedRole.Pitcher).player.name,
   }
-}
-
-/**
- * The pair one at-bat is committed with. They travel together because they are
- * only ever validated and sent together — see {@link assertCommittable} for why
- * splitting them is the failure this type exists to prevent.
- */
-interface DuelNumbers {
-  pitch: number
-  swing: number
 }
 
 /** The seat whose number the ring cannot hold, or null. Reuses the loop's own
@@ -392,6 +388,8 @@ export async function createConvexDuelAdapter(gateway: DuelGateway): Promise<Con
   }
 
   const players = new Map<string, RosterPlayer>()
+  // A game's two clubs do not change under it, so their labels are read once.
+  const clubs = clubLabels(opening)
   let snapshot = liveSnapshot(opening)
 
   /**
@@ -418,7 +416,8 @@ export async function createConvexDuelAdapter(gateway: DuelGateway): Promise<Con
 
   return {
     state: () => ({ ...snapshot.state, bases: { ...snapshot.state.bases } }),
-    hits: () => byBattingSide(snapshot.state.half, snapshot.hits),
+    hits: () => ({ ...snapshot.hits }),
+    clubs: () => ({ ...clubs }),
     roster: () => players,
     matchup: () =>
       buildMatchup(
@@ -430,7 +429,7 @@ export async function createConvexDuelAdapter(gateway: DuelGateway): Promise<Con
 
     async playAtBat(pitch: number, swing: number): Promise<DuelResolution> {
       const before = snapshot
-      const { batter, opponent } = requireAtBat(before, players)
+      const atBatPlayers = requireAtBat(before, players)
       const resolution = await commitBothSeats(gateway, { pitch, swing })
 
       // Both reads go out together, and this does not settle until they land:
@@ -453,9 +452,8 @@ export async function createConvexDuelAdapter(gateway: DuelGateway): Promise<Con
           swing: revealed.swing,
           state: before.state,
           resolved: revealed,
-          batter,
-          opponent,
-          hitsBefore: byBattingSide(before.state.half, before.hits),
+          players: atBatPlayers,
+          board: { clubs: { ...clubs }, hits: { ...before.hits } },
         }),
       }
     },

@@ -25,18 +25,21 @@ describe('DesignShowcase', () => {
   it('supports locking first on the pitcher seat (order-independent commits)', () => {
     screen.getByText('NOT YET ENTERED')
     lockNumber('472')
-    expect(screen.getByRole('status').textContent).toContain('waiting on Maddie')
+    expect(screen.getByRole('status').textContent).toContain('waiting on T. JULIEN')
   })
 
-  it('shows opponent presence in the chrome and outs in the scoreboard', () => {
-    screen.getByRole('img', { name: 'Maddie is offline' })
+  it('shows the matchup in the chrome and outs in the scoreboard', () => {
+    // The chrome used to name "the opponent" and show a presence dot. There is no
+    // presence data, and no single opponent once one account can own both clubs, so
+    // it names the matchup instead (SAN-39).
+    screen.getByText('HAR @ RID')
     screen.getByRole('img', { name: '2 outs' })
     fireEvent.click(button('BATTER'))
-    screen.getByRole('img', { name: 'Maddie is online' })
+    screen.getByText('HAR @ RID')
   })
 
   it("NEVER renders the opponent's number anywhere on the batter seat", () => {
-    const secretText = String(SHOWCASE_SCENARIO.them)
+    const secretText = String(SHOWCASE_SCENARIO.pitch)
     fireEvent.click(button('BATTER'))
     screen.getByText(/LOCKED/)
     expect(document.body.textContent).not.toContain(secretText)
@@ -45,16 +48,19 @@ describe('DesignShowcase', () => {
     expect(document.body.textContent).not.toContain(secretText)
   })
 
-  it('shows the player matchup with attributes and due-up hitters on both seats', () => {
-    screen.getByText('A. PARKER')
-    screen.getByText('C. DIAZ')
-    screen.getByText('VEL')
-    screen.getByText('J. WHITLOCK')
+  it('shows the same player matchup, attributes and due-up hitters on both seats', () => {
+    // One real matchup, seen from either seat — not a "you" side and an "opponent"
+    // side with different players on each tab (SAN-39).
+    const matchupIsShown = () => {
+      screen.getByText('M. SLOANE')
+      screen.getByText('T. JULIEN')
+      screen.getByText('VEL')
+      screen.getByText('EYE')
+      screen.getByText('R. VANCE')
+    }
+    matchupIsShown()
     fireEvent.click(button('BATTER'))
-    screen.getByText('M. SLOANE')
-    screen.getByText('T. JULIEN')
-    screen.getByText('EYE')
-    screen.getByText('R. VANCE')
+    matchupIsShown()
   })
 
   it('moves from a locked swing into the reveal when both numbers are in', () => {
@@ -66,16 +72,17 @@ describe('DesignShowcase', () => {
 
   it('shows both numbers, the outcome, and the situational callout on the reveal', () => {
     fireEvent.click(button('REVEAL'))
-    screen.getByText(String(SHOWCASE_SCENARIO.you))
-    screen.getByText(String(SHOWCASE_SCENARIO.them))
-    screen.getByText('LEAD CHANGE — YOU LEAD 5–4')
+    screen.getByText(String(SHOWCASE_SCENARIO.pitch))
+    screen.getByText(String(SHOWCASE_SCENARIO.swing))
+    screen.getByText('LEAD CHANGE — RID LEADS 5–4')
     screen.getByText(SHOWCASE_SCENARIO.scoreline)
   })
 
   it('replaces the outcome ladder with a live scoreboard on the reveal', () => {
     fireEvent.click(button('REVEAL'))
-    screen.getByText('MAD')
-    screen.getByText('BOT 8TH')
+    screen.getByText('HAR')
+    screen.getByText('RID')
+    screen.getByText('BOT 5TH')
     expect(screen.queryByText('GB')).toBeNull()
   })
 
@@ -87,7 +94,7 @@ describe('DesignShowcase', () => {
 
   it('shows the async waiting state with the scoreboard', () => {
     fireEvent.click(button('WAITING'))
-    screen.getByText(/IT’S MADDIE’S TURN/)
-    screen.getByText('MAD')
+    screen.getByText('WAITING ON M. SLOANE’S PITCH')
+    screen.getByText('HAR')
   })
 })

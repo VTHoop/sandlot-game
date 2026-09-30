@@ -23,6 +23,8 @@ import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
 import type { DuelMatchup, MatchupSide } from './MatchupCard'
 import type { Roster, RosterPlayer } from './roster'
 import {
+  type ClubPair,
+  clubLabel,
   type DuelSituation,
   FieldSpot,
   isHit,
@@ -46,18 +48,17 @@ import {
  * threads an in-memory state for fixtures/previews only. Do not route real game
  * progression through here; call the mutation and reuse this for the reveal.
  *
- * PERSPECTIVE — read before touching the reveal. The `RevealScenario` is a
- * view-model: its `you` / `them` / `opponent` / `scoreBefore` are all relative to
- * "the side this reveal is rendered FOR". In SAN-45's scope that side is fixed to
- * the **batter** (a single half-inning reveal — the at-bat is the batter's
- * moment), so `you` = the batting team throughout this module. This is NOT a
- * permanent law: when two-sided async multiplayer lands, the logged-in user owns a
- * team across BOTH halves and "you" becomes *their* side — which is the pitching
- * team during the opponent's at-bat. The generalization is local to this adapter:
- * add a `viewer` input and key the three perspective-bearing spots (`you`/`them`,
- * `scoreBefore`, `opponent`) off it instead of off the batting side. The engine
- * stays perspective-free and the `RevealScenario` shape does not change. Do not
- * let downstream UI assume `you === batter` on its own — decide it only here.
+ * NO PERSPECTIVE — the view-models this module builds are absolute (SAN-39,
+ * ADR-0030). A `RevealScenario` names the pitch and the swing, the pitcher and the
+ * batter, and carries every total as away/home; nothing in it is "you" or "them".
+ * It used to be rendered FOR the batter, which held for a single hotseat
+ * half-inning and for nothing after it: a club that is pitching is not the
+ * batter, and an owner of both clubs is nobody's opponent. Describing the at-bat
+ * by what happened means there is no viewer to thread through here at all — the
+ * server already answers absolutely (ADR-0025), and this module no longer
+ * translates that away. Do not reintroduce a viewer-relative field; a screen
+ * that wants to mark "yours" does it from `getGame`'s `viewerOwns`, on top of
+ * these shapes.
  */
 
 /**
@@ -85,18 +86,24 @@ export type DuelState = Pick<
   | 'currentPitcher'
 >
 
-/** Running hit totals from the reveal's perspective: `you` = the side the reveal
- * is rendered for (the batter, in SAN-45 — see the module header), `opp` = the
- * other side. */
-export interface HitTotals {
-  you: number
-  opp: number
-}
+/** Each club's running hit total, absolute. */
+export type HitTotals = ClubPair<number>
 
 /** A fresh zeroed hit-total. A factory, NOT a shared singleton: each adapter and
  * each defaulted call gets its own object, so a caller can never mutate one
  * snapshot and corrupt another instance (cf. the engine freezing `EMPTY_BASES`). */
-const noHits = (): HitTotals => ({ you: 0, opp: 0 })
+const noHits = (): HitTotals => ({ away: 0, home: 0 })
+
+/**
+ * What the scoreboard knows that the live state does not: each club's label and
+ * its hits so far. The engine tracks neither (hits are a log rollup, ADR-0004;
+ * a club's name is not the engine's business, ADR-0009), so whoever holds the
+ * state hands these in beside it.
+ */
+export interface Board {
+  clubs: ClubPair<string>
+  hits: HitTotals
+}
 
 /** One resolved at-bat split into its two consumers: the `AppliedAtBat` the
  * engine's `advance` folds in, and the `RevealScenario` the reveal renders. */
@@ -211,11 +218,12 @@ export function toOutcomeKey(band: OutcomeBandKey): OutcomeKey {
 
 // ── Scoreline derivation ────────────────────────────────────────────────────
 
+/** What the batter did when they made an out, in the third person. */
 const OUT_PHRASE: ReadonlyMap<OutcomeKey, string> = new Map([
-  ['FO', 'you fly out'],
-  ['PO', 'you pop out'],
-  ['GB', 'you ground out'],
-  ['K', 'you strike out'],
+  ['FO', 'flies out'],
+  ['PO', 'pops out'],
+  ['GB', 'grounds out'],
+  ['K', 'strikes out'],
 ])
 
 /** Where the batter ended up, read from the post-state bases (null = scored or out). */
@@ -231,26 +239,32 @@ function runsClause(runsScored: number): string | null {
   return runsScored === 1 ? '1 run scores' : `${runsScored} runs score`
 }
 
-function batterClause(outcome: OutcomeKey, landing: string | null): string {
-  if (landing) return outcome === 'BB' ? `you reach ${landing}` : `you stand on ${landing}`
-  if (isHit(outcome)) return 'you go yard'
-  return OUT_PHRASE.get(outcome) ?? 'you are out'
+/** What became of the batter, as a verb phrase for their name to lead. */
+function batterVerb(outcome: OutcomeKey, landing: string | null): string {
+  if (landing) return outcome === 'BB' ? `reaches ${landing}` : `stands on ${landing}`
+  if (isHit(outcome)) return 'goes yard'
+  return OUT_PHRASE.get(outcome) ?? 'is out'
 }
 
 /**
  * Derive the reveal's scoreline from the resolved outcome and base movement (the
- * engine produces neither): the runs that crossed the plate plus where the batter
- * ended up, joined into one line — e.g. "1 run scores · you stand on 2nd".
+ * engine produces neither): the runs that crossed the plate plus what became of
+ * the batter, joined into one line — e.g. "1 run scores · R. VANCE stands on 2nd".
+ *
+ * The batter is named rather than addressed as "you", so the line is true for
+ * whoever reads it (SAN-39, ADR-0030).
  */
 export function deriveScoreline(params: {
   outcome: OutcomeKey
   basesAfter: BaseState
   runsScored: number
   batter: RunnerId
+  /** The batter's display name — the line names them in the third person. */
+  batterName: string
 }): string {
   const landing = batterLanding(params.basesAfter, params.batter)
-  const clauses = [runsClause(params.runsScored), batterClause(params.outcome, landing)]
-  return clauses.filter((c): c is string => c !== null).join(' · ')
+  const batterClause = `${params.batterName} ${batterVerb(params.outcome, landing)}`
+  return [runsClause(params.runsScored), batterClause].filter((c) => c !== null).join(' · ')
 }
 
 // ── Headline (the reveal's shouted result) ───────────────────────────────────
@@ -403,10 +417,14 @@ export function deriveRunnerMovements(params: {
 
 // ── Hit accumulation ────────────────────────────────────────────────────────
 
-/** Fold one outcome into the running hit totals: a hit credits the batting team
- * ("you"); anything else leaves the totals untouched. */
-export function accumulateHits(hits: HitTotals, outcome: OutcomeKey): HitTotals {
-  return isHit(outcome) ? { you: hits.you + 1, opp: hits.opp } : hits
+/** Fold one outcome into the running hit totals: a hit credits the club that was
+ * batting — away in the top half, home in the bottom (SAN-21); anything else
+ * leaves the totals untouched. */
+export function accumulateHits(hits: HitTotals, outcome: OutcomeKey, half: Half): HitTotals {
+  if (!isHit(outcome)) return hits
+  return half === Half.Top
+    ? { away: hits.away + 1, home: hits.home }
+    : { away: hits.away, home: hits.home + 1 }
 }
 
 // ── Resolve → apply → reveal ────────────────────────────────────────────────
@@ -416,30 +434,9 @@ function halfLabel(half: Half): 'TOP' | 'BOTTOM' {
   return half === Half.Top ? 'TOP' : 'BOTTOM'
 }
 
-/**
- * Split an absolute home/away pair into the reveal's perspective. In SAN-45's
- * scope the reveal is rendered for the batter, so "you" = the batting team: the
- * away team bats the top half and the home team the bottom (SAN-21), and the
- * mapping follows the half — a bottom-half reveal credits the home side, not the
- * away one. This is one of the three perspective-bearing spots the module header
- * calls out: when a `viewer` input lands, key "you"/"opp" off the viewer's team
- * here instead of off the batting side.
- *
- * Scores and hit totals take the same split, which is why it is one function: the
- * server hands both over absolutely (ADR-0025), and the two must agree about who
- * "you" is or a half boundary would flip one and not the other.
- */
-export function byBattingSide(
-  half: Half,
-  totals: { home: number; away: number },
-): { you: number; opp: number } {
-  return half === Half.Top
-    ? { you: totals.away, opp: totals.home }
-    : { you: totals.home, opp: totals.away }
-}
-
-function scoreBefore(state: DuelState): { you: number; opp: number } {
-  return byBattingSide(state.half, { home: state.homeScore, away: state.awayScore })
+/** The score as the live state holds it: one total per club, no flip. */
+function scoreBefore(state: DuelState): ClubPair<number> {
+  return { away: state.awayScore, home: state.homeScore }
 }
 
 function buildApplied(state: LiveGameState, resolved: ResolvedAtBat): AppliedAtBat {
@@ -467,51 +464,65 @@ export interface ResolvedFacts {
   basesAfter: BaseState
 }
 
+/** The two numbers one at-bat is resolved from. They travel as a pair: neither
+ * means anything without the other. */
+export interface DuelNumbers {
+  pitch: number
+  swing: number
+}
+
 /**
- * Build the reveal a resolved at-bat renders as. Perspective-bearing throughout —
- * `you`/`them`, `opponent` and `scoreBefore` are all the batter's (see the module
- * header) — and derived entirely from the before-state plus the resolved facts,
- * so it holds whether those facts came from the local engine call or from the
- * server's authoritative one.
+ * The two players an at-bat is between, by id and display name. The batter's id
+ * travels because the base state is keyed by it; the pitcher is only ever named.
+ */
+export interface AtBatPlayers {
+  batter: { id: RunnerId; name: string }
+  pitcher: string
+}
+
+/**
+ * Build the reveal a resolved at-bat renders as. Absolute throughout (see the
+ * module header) and derived entirely from the before-state plus the resolved
+ * facts, so it holds whether those facts came from the local engine call or from
+ * the server's authoritative one.
  */
 export function buildReveal(params: {
   pitch: number
   swing: number
   state: DuelState
   resolved: ResolvedFacts
-  batter: RunnerId
-  opponent: string
-  hitsBefore: HitTotals
+  players: AtBatPlayers
+  board: Board
 }): RevealScenario {
-  const { pitch, swing, state, resolved, batter, opponent, hitsBefore } = params
+  const { pitch, swing, state, resolved, players, board } = params
   const outcome = toOutcomeKey(resolved.outcome)
   return {
     movements: deriveRunnerMovements({
       basesBefore: state.bases,
       basesAfter: resolved.basesAfter,
-      batter,
+      batter: players.batter.id,
       runsScored: resolved.runsScored,
       groundBallResult: resolved.groundBallResult,
     }),
-    // `you`/`them` are perspective-bearing: the batter's own swing vs. the pitch
-    // they faced (SAN-45 renders for the batter). A `viewer` input would flip these
-    // for the pitching side — see the module header.
-    you: swing,
-    them: pitch,
-    opponent,
+    pitch,
+    swing,
+    pitcher: players.pitcher,
+    batter: players.batter.name,
+    clubs: board.clubs,
     outcome,
     inning: state.inning,
     half: halfLabel(state.half),
     outs: resolved.outsAfter,
     runsScored: resolved.runsScored,
     scoreBefore: scoreBefore(state),
-    hitsBefore,
+    hitsBefore: board.hits,
     headline: deriveHeadline(outcome, resolved.groundBallResult),
     scoreline: deriveScoreline({
       outcome,
       basesAfter: resolved.basesAfter,
       runsScored: resolved.runsScored,
-      batter,
+      batter: players.batter.id,
+      batterName: players.batter.name,
     }),
   }
 }
@@ -521,20 +532,16 @@ export function buildReveal(params: {
  * the `AppliedAtBat` (for `advance`) and the `RevealScenario` (for the reveal).
  * Pure: it reads the seated batter/pitcher from the live state, looks their
  * attributes up in the roster, assembles runner speeds, and resolves — the same
- * boundary the Convex vault runs server-side. `hitsBefore` is the running hit
- * total as of before this at-bat (surfaced as `RevealScenario.hitsBefore`).
- *
- * The reveal is built FOR THE BATTER (SAN-45 perspective scope — see the module
- * header): `opponent` is the pitcher faced, the third perspective-bearing spot a
- * future `viewer` input would generalize.
+ * boundary the Convex vault runs server-side. `board` is the scoreboard as of
+ * before this at-bat (its hits surface as `RevealScenario.hitsBefore`).
  */
 export function resolveDuelAtBat(
-  pitch: number,
-  swing: number,
+  numbers: DuelNumbers,
   state: LiveGameState,
   roster: Roster,
-  hitsBefore: HitTotals = noHits(),
+  board: Board,
 ): DuelResolution {
+  const { pitch, swing } = numbers
   const batter = seated(roster, state.currentBatter, SeatedRole.Batter)
   const pitcher = seated(roster, state.currentPitcher, SeatedRole.Pitcher)
   const resolved = resolveAtBat({
@@ -553,9 +560,11 @@ export function resolveDuelAtBat(
     swing,
     state,
     resolved,
-    batter: batter.id,
-    opponent: pitcher.player.name,
-    hitsBefore,
+    players: {
+      batter: { id: batter.id, name: batter.player.name },
+      pitcher: pitcher.player.name,
+    },
+    board,
   })
   return { applied, reveal }
 }
@@ -574,7 +583,10 @@ export function resolveDuelAtBat(
  */
 export interface DuelAdapter {
   state(): DuelState
+  /** Each club's hits so far, absolute. */
   hits(): HitTotals
+  /** Each club's scoreboard label. */
+  clubs(): ClubPair<string>
   playAtBat(pitch: number, swing: number): DuelResolution | Promise<DuelResolution>
 }
 
@@ -589,26 +601,21 @@ export interface InMemoryDuelAdapter extends DuelAdapter {
 }
 
 /**
- * Roll the running hit totals forward for the next at-bat: credit the side that
- * just batted, then — if the third out flipped the half — swap `you`↔`opp` so the
- * incoming batting side's own total is "you". The two teams alternate, so a side's
- * total is never lost, it just moves between the two slots. This keeps `hitsBefore`
- * consistent with the half-based `scoreBefore` (see `buildReveal`); within a single
- * half-inning (SAN-45's scope) the half never changes and this is a plain credit.
+ * Create a duel adapter seeded from the lineups and the two clubs' names. Each
+ * `playAtBat` resolves the current matchup, folds the result into the live state
+ * via the engine's `advance`, and credits a hit to the club that was batting —
+ * so successive at-bats carry the correct `hitsBefore` and base state. The
+ * totals are absolute, so a third out that flips the half moves nothing.
  */
-function rollHitTotals(hits: HitTotals, outcome: OutcomeKey, before: Half, after: Half): HitTotals {
-  const credited = accumulateHits(hits, outcome)
-  return before === after ? credited : { you: credited.opp, opp: credited.you }
-}
-
-/**
- * Create a duel adapter seeded from the lineups. Each `playAtBat` resolves the
- * current matchup, folds the result into the live state via the engine's
- * `advance`, and rolls the hit count forward — so successive at-bats carry the
- * correct `hitsBefore` and base state, and the totals follow the batting side if
- * a third out flips the half.
- */
-export function createDuelAdapter(roster: Roster, context: GameContext): InMemoryDuelAdapter {
+export function createDuelAdapter(
+  roster: Roster,
+  context: GameContext,
+  clubNames: ClubPair<string>,
+): InMemoryDuelAdapter {
+  const clubs: ClubPair<string> = {
+    away: clubLabel(clubNames.away),
+    home: clubLabel(clubNames.home),
+  }
   let liveState = startGame(context)
   let hitTotals: HitTotals = noHits()
   return {
@@ -617,16 +624,12 @@ export function createDuelAdapter(roster: Roster, context: GameContext): InMemor
     // back into resolution, so copy it too.
     state: () => ({ ...liveState, bases: { ...liveState.bases } }),
     hits: () => ({ ...hitTotals }),
+    clubs: () => ({ ...clubs }),
     playAtBat(pitch, swing) {
-      const resolution = resolveDuelAtBat(pitch, swing, liveState, roster, hitTotals)
-      const nextState = advance(liveState, resolution.applied, context)
-      hitTotals = rollHitTotals(
-        hitTotals,
-        resolution.reveal.outcome,
-        liveState.half,
-        nextState.half,
-      )
-      liveState = nextState
+      const board = { clubs: { ...clubs }, hits: { ...hitTotals } }
+      const resolution = resolveDuelAtBat({ pitch, swing }, liveState, roster, board)
+      hitTotals = accumulateHits(hitTotals, resolution.reveal.outcome, liveState.half)
+      liveState = advance(liveState, resolution.applied, context)
       return resolution
     },
   }
@@ -648,22 +651,21 @@ function occupiedBases(bases: BaseState): FieldSpot[] {
 }
 
 /**
- * Project the non-secret situation for the seat about to commit — the whole input
- * a commit screen (and a seat agent) is allowed to see. The return type
- * `DuelSituation` structurally excludes both duel numbers, and `opponent` is the
- * pitcher faced (matching the reveal's perspective). `scoreBefore` is the third
- * perspective-bearing spot the module header calls out — it already keys "you" off
- * the batting side via {@link scoreBefore}.
+ * Project the non-secret situation — the whole input a commit screen (and a seat
+ * agent) is allowed to see. The return type `DuelSituation` structurally excludes
+ * both duel numbers. It is the same for either seat: both players are named and
+ * every total is away/home (see the module header).
  */
-export function deriveSituation(state: DuelState, hits: HitTotals, roster: Roster): DuelSituation {
-  const pitcher = seated(roster, state.currentPitcher, SeatedRole.Pitcher)
+export function deriveSituation(state: DuelState, board: Board, roster: Roster): DuelSituation {
   return {
-    opponent: pitcher.player.name,
+    pitcher: seated(roster, state.currentPitcher, SeatedRole.Pitcher).player.name,
+    batter: seated(roster, state.currentBatter, SeatedRole.Batter).player.name,
+    clubs: board.clubs,
     inning: state.inning,
     half: halfLabel(state.half),
     outs: state.outs,
     scoreBefore: scoreBefore(state),
-    hitsBefore: { you: hits.you, opp: hits.opp },
+    hitsBefore: { ...board.hits },
     runnersOn: occupiedBases(state.bases),
   }
 }
@@ -697,11 +699,10 @@ function dueUp(state: LiveGameState, context: GameContext, roster: Roster): stri
 }
 
 /**
- * Assemble the two-sided matchup from players that are already resolved. Hotseat
- * casts the currently-batting side as "you", so both seats depict the SAME real
- * pitcher-vs-batter matchup — `DuelCommit.orientSeat` flips which side throws vs.
- * swings per seat. Attribute blocks are mapped from the engine domain to the UI's
- * pip labels here (the components never see the engine shapes).
+ * Assemble the matchup from players that are already resolved: the one real
+ * pitcher-vs-batter pairing, which both seats look at. Attribute blocks are
+ * mapped from the engine domain to the UI's pip labels here (the components never
+ * see the engine shapes).
  *
  * `dueUp` is passed in rather than derived, because the two paths learn it
  * differently: the fixture path walks its own lineups, and the Convex path is
@@ -712,12 +713,11 @@ export function buildMatchup(
   batter: RosterPlayer,
   dueUp: readonly string[],
 ): DuelMatchup {
-  const side = {
+  return {
     pitcher: { name: pitcher.name, attrs: displayPitcher(pitcherAttributes(pitcher)) },
     batter: { name: batter.name, attrs: displayHitter(hitterAttributes(batter)) },
     dueUp,
   }
-  return { you: side, opponent: side }
 }
 
 /** Build the commit screen's matchup from fixture state and lineups. */

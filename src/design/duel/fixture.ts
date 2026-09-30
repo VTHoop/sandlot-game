@@ -2,34 +2,35 @@ import type { DuelMatchup } from './MatchupCard'
 import { type DuelSituation, FieldSpot, type RevealScenario } from './scenario'
 
 /**
- * Player-level matchup context for the commit screen (managers duel; players
- * match up). Names are first initial + last name.
+ * The showcase at-bat's matchup (managers duel; players match up). Names are
+ * first initial + last name. One matchup: both seats look at the same two
+ * players.
  */
 export const SHOWCASE_MATCHUP = {
-  you: {
-    pitcher: { name: 'A. PARKER', attrs: { VEL: 4, MOV: 3, CMD: 2 } },
-    batter: { name: 'T. JULIEN', attrs: { PWR: 3, CON: 4, SPD: 3, EYE: 5 } },
-    dueUp: ['R. VANCE', 'S. ORTIZ'],
-  },
-  opponent: {
-    pitcher: { name: 'M. SLOANE', attrs: { VEL: 3, MOV: 4, CMD: 3 } },
-    batter: { name: 'C. DIAZ', attrs: { PWR: 4, CON: 3, SPD: 2, EYE: 3 } },
-    dueUp: ['J. WHITLOCK', 'Q. BAKER'],
-  },
+  pitcher: { name: 'M. SLOANE', attrs: { VEL: 3, MOV: 4, CMD: 3 } },
+  batter: { name: 'T. JULIEN', attrs: { PWR: 3, CON: 4, SPD: 3, EYE: 5 } },
+  dueUp: ['R. VANCE', 'S. ORTIZ'],
 } satisfies DuelMatchup
 
+/**
+ * A go-ahead double in the bottom of the fifth: the home club (RID) breaks a tie
+ * one inning short of regulation, so the reveal shows a lead change and the
+ * late-and-close beat without being a walk-off.
+ */
 export const SHOWCASE_SCENARIO: RevealScenario = {
-  you: 472,
-  them: 519,
-  opponent: 'Maddie',
+  pitch: 519,
+  swing: 472,
+  pitcher: SHOWCASE_MATCHUP.pitcher.name,
+  batter: SHOWCASE_MATCHUP.batter.name,
+  clubs: { away: 'HAR', home: 'RID' },
   outcome: '2B',
-  inning: 8,
+  inning: 5,
   half: 'BOTTOM',
   outs: 2,
   runsScored: 1,
-  scoreBefore: { you: 4, opp: 4 },
-  hitsBefore: { you: 7, opp: 6 },
-  scoreline: 'Your runner scores from 2nd · you stand on 2nd',
+  scoreBefore: { away: 4, home: 4 },
+  hitsBefore: { away: 6, home: 7 },
+  scoreline: '1 run scores · T. JULIEN stands on 2nd',
   headline: 'DOUBLE!',
   movements: [
     { from: FieldSpot.Second, to: FieldSpot.Home, retired: false },
@@ -39,11 +40,13 @@ export const SHOWCASE_SCENARIO: RevealScenario = {
 
 /**
  * The commit/waiting view of the showcase scenario, built by naming only the
- * non-secret fields — the derived object literally has no `you`/`them` slot to
- * leak the pitch through (secret-state law, ADR-0014).
+ * non-secret fields — the derived object literally has no `pitch`/`swing` slot
+ * to leak a number through (secret-state law, ADR-0014).
  */
 export const SHOWCASE_SITUATION = {
-  opponent: SHOWCASE_SCENARIO.opponent,
+  pitcher: SHOWCASE_SCENARIO.pitcher,
+  batter: SHOWCASE_SCENARIO.batter,
+  clubs: SHOWCASE_SCENARIO.clubs,
   inning: SHOWCASE_SCENARIO.inning,
   half: SHOWCASE_SCENARIO.half,
   outs: SHOWCASE_SCENARIO.outs,

@@ -3,16 +3,19 @@ import { compressToOutcome, REVEAL_TEMPO, revealBeats } from './revealTiming'
 import { FieldSpot, type RevealScenario } from './scenario'
 
 const scenario = (overrides: Partial<RevealScenario> = {}): RevealScenario => ({
-  you: 400,
-  them: 500,
-  opponent: 'ARM',
+  pitch: 500,
+  swing: 400,
+  pitcher: 'ARM',
+  batter: 'BAT',
+  clubs: { away: 'AWY', home: 'HOM' },
   outcome: 'HR',
-  inning: 7,
+  // Mid-game, so the drama is the play's own: a lead change, not a walk-off.
+  inning: 4,
   half: 'BOTTOM',
   outs: 1,
   runsScored: 4,
-  scoreBefore: { you: 2, opp: 5 },
-  hitsBefore: { you: 4, opp: 6 },
+  scoreBefore: { away: 5, home: 2 },
+  hitsBefore: { away: 6, home: 4 },
   scoreline: 'grand slam',
   headline: 'HOME RUN!',
   movements: [

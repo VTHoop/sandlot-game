@@ -2,7 +2,7 @@ import { MotionConfig, motion, useReducedMotion } from 'motion/react'
 import { memo, useEffect, useMemo, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
-import { Scoreboard } from '../../components/ui/Scoreboard'
+import { Scoreboard, type TeamLine } from '../../components/ui/Scoreboard'
 import { ScoreTile } from '../../components/ui/ScoreTile'
 import { Ballpark, type BallparkCamera, HIT_SPRAY, landingZone } from './Ballpark'
 import {
@@ -17,12 +17,14 @@ import { type MovementPath, movementPath, RUNNER_STAGGER, travelDuration } from 
 import { cameraFrameAt, frameToViewBox } from './revealCamera'
 import { compressToOutcome, REVEAL_TEMPO, revealBeats } from './revealTiming'
 import {
+  type ClubPair,
   deriveDrama,
   FieldSpot,
   formatInning,
   isHit,
   type RevealScenario,
   type RunnerMovement,
+  scoreboardLines,
 } from './scenario'
 
 const FLAP_SPRING = { type: 'spring', stiffness: 320, damping: 17 } as const
@@ -50,6 +52,20 @@ interface ScoreFlapsProps {
   secondFlapAt: number
 }
 
+/**
+ * One of the duel's two numbers: what it is, the number, and who threw it. The
+ * name sits under the tile rather than beside the label — two "SWING · NAME"
+ * labels side by side are wider than a phone.
+ */
+function DuelNumber({ label, value, player }: { label: string; value: number; player: string }) {
+  return (
+    <div data-testid="duel-number" className="flex flex-col items-center gap-1.5">
+      <ScoreTile label={label} value={String(value)} size="md" />
+      <span className="font-body text-[10px] tracking-wider text-chalk">{player}</span>
+    </div>
+  )
+}
+
 function ScoreFlaps({ scenario, firstFlapAt, secondFlapAt }: ScoreFlapsProps) {
   return (
     <div className="flex gap-8">
@@ -59,7 +75,7 @@ function ScoreFlaps({ scenario, firstFlapAt, secondFlapAt }: ScoreFlapsProps) {
         transition={{ ...FLAP_SPRING, delay: firstFlapAt }}
         style={{ transformOrigin: 'top' }}
       >
-        <ScoreTile label="you" value={String(scenario.you)} size="md" />
+        <DuelNumber label="pitch" value={scenario.pitch} player={scenario.pitcher} />
       </motion.div>
       <motion.div
         initial={{ rotateX: -92, opacity: 0 }}
@@ -67,7 +83,7 @@ function ScoreFlaps({ scenario, firstFlapAt, secondFlapAt }: ScoreFlapsProps) {
         transition={{ ...FLAP_SPRING, delay: secondFlapAt }}
         style={{ transformOrigin: 'top' }}
       >
-        <ScoreTile label={scenario.opponent} value={String(scenario.them)} size="md" />
+        <DuelNumber label="swing" value={scenario.swing} player={scenario.batter} />
       </motion.div>
     </div>
   )
@@ -445,6 +461,31 @@ const FieldPlay = memo(function FieldPlay({
   )
 })
 
+/** What the play has put on the board so far: nothing until each tick lands. */
+interface Tally {
+  runs: number
+  hits: number
+}
+
+const credited = (line: TeamLine, tally: Tally): TeamLine => ({
+  ...line,
+  runs: line.runs + tally.runs,
+  hits: line.hits + tally.hits,
+})
+
+/**
+ * The scoreboard as the reveal has counted it so far: the pre-play rows, with the
+ * play's runs and hit added to the club that was BATTING — away in the top half,
+ * home in the bottom (SAN-21). Not "your" row: the run belongs to whoever scored
+ * it, whichever club is watching.
+ */
+function tickedBoard(scenario: RevealScenario, tally: Tally): ClubPair<TeamLine> {
+  const board = scoreboardLines(scenario)
+  return scenario.half === 'TOP'
+    ? { away: credited(board.away, tally), home: board.home }
+    : { away: board.away, home: credited(board.home, tally) }
+}
+
 interface RevealMotionProps {
   scenario: RevealScenario
   onReplay?: () => void
@@ -503,9 +544,14 @@ export function RevealMotion({
     }
   }, [reduceMotion, hitTickAt, runTickAt])
 
+  const board = tickedBoard(scenario, {
+    runs: runsCounted ? scenario.runsScored : 0,
+    hits: hitCounted && isHit(scenario.outcome) ? 1 : 0,
+  })
+
   const zone = useMemo(
-    () => sprayedZone(scenario.outcome, scenario.you * 10000 + scenario.them),
-    [scenario.outcome, scenario.you, scenario.them],
+    () => sprayedZone(scenario.outcome, scenario.swing * 10000 + scenario.pitch),
+    [scenario.outcome, scenario.swing, scenario.pitch],
   )
 
   return (
@@ -530,7 +576,7 @@ export function RevealMotion({
           runnersAt={runnersAt}
         />
         <motion.p
-          className="font-body text-[13px] tracking-[0.12em] text-consequence uppercase"
+          className="text-center font-body text-[13px] tracking-[0.12em] text-consequence uppercase"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: scorelineAt, duration: slow(0.5) }}
@@ -547,16 +593,8 @@ export function RevealMotion({
             ↺ REPLAY
           </Button>
           <Scoreboard
-            away={{
-              label: scenario.opponent.slice(0, 3).toUpperCase(),
-              runs: scenario.scoreBefore.opp,
-              hits: scenario.hitsBefore.opp,
-            }}
-            home={{
-              label: 'YOU',
-              runs: scenario.scoreBefore.you + (runsCounted ? scenario.runsScored : 0),
-              hits: scenario.hitsBefore.you + (hitCounted && isHit(scenario.outcome) ? 1 : 0),
-            }}
+            away={board.away}
+            home={board.home}
             inning={formatInning(scenario)}
             outs={scenario.outs}
           />

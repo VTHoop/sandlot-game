@@ -80,7 +80,8 @@ export async function playHalfInning(
     if (atBats > MAX_AT_BATS_PER_HALF) {
       throw new Error(`Half-inning exceeded ${MAX_AT_BATS_PER_HALF} at-bats without ending`)
     }
-    const situation = deriveSituation(adapter.state(), adapter.hits(), roster)
+    const board = { clubs: adapter.clubs(), hits: adapter.hits() }
+    const situation = deriveSituation(adapter.state(), board, roster)
     const pitch = await agents[DuelSeat.Pitcher].requestNumber({
       seat: DuelSeat.Pitcher,
       situation,

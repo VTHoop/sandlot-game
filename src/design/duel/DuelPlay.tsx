@@ -1,16 +1,12 @@
-import type { GameContext } from '@sandlot/engine/game'
 import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { DuelCommit } from './DuelCommit'
 import { HalfSummaryCard } from './HalfSummaryCard'
 import { RevealMotion } from './RevealMotion'
-import { GAME_CONTEXT, ROSTER, type Roster } from './roster'
+import { CLUB_NAMES, GAME_CONTEXT, ROSTER } from './roster'
 import { SeatControls } from './SeatControls'
 import { DuelSeat, SeatKind, type SeatKinds } from './seatAgent'
-import { type PlayView, PlayViewKind, useDuelPlay } from './useDuelPlay'
-
-const seatLabel = (seat: DuelSeat): 'pitcher' | 'batter' =>
-  seat === DuelSeat.Pitcher ? 'pitcher' : 'batter'
+import { type DuelFixture, type PlayView, PlayViewKind, useDuelPlay } from './useDuelPlay'
 
 function CommitView({
   view,
@@ -24,11 +20,10 @@ function CommitView({
     // hands keyboard focus to that entry (focusOnMount) instead of the body.
     <DuelCommit
       key={view.seat}
-      seat={seatLabel(view.seat)}
+      seat={view.seat}
       matchup={view.matchup}
       situation={view.situation}
       opponentLocked={view.opponentLocked}
-      opponentOnline={false}
       onLock={onLock}
       focusOnMount
     />
@@ -49,15 +44,14 @@ function ErrorView({ message, onRestart }: { message: string; onRestart: () => v
 }
 
 interface HalfInningProps {
-  roster: Roster
-  context: GameContext
+  fixture: DuelFixture
   seats: SeatKinds
   onRestart: () => void
 }
 
 /** One live half-inning: the loop's current view rendered by the shared screens. */
-function DuelHalfInning({ roster, context, seats, onRestart }: HalfInningProps) {
-  const { view, submitNumber, advanceReveal } = useDuelPlay(roster, context, seats)
+function DuelHalfInning({ fixture, seats, onRestart }: HalfInningProps) {
+  const { view, submitNumber, advanceReveal } = useDuelPlay(fixture, seats)
   const [replayKey, setReplayKey] = useState(0)
 
   if (!view) return null
@@ -80,10 +74,8 @@ function DuelHalfInning({ roster, context, seats, onRestart }: HalfInningProps) 
   return <HalfSummaryCard summary={view.summary} onRestart={onRestart} />
 }
 
-interface DuelPlayProps {
-  roster?: Roster
-  context?: GameContext
-}
+/** Every part defaults to the showcase fixture; a test supplies its own. */
+type DuelPlayProps = Partial<DuelFixture>
 
 const BOTH_HUMAN = {
   [DuelSeat.Pitcher]: SeatKind.Human,
@@ -97,7 +89,11 @@ const BOTH_HUMAN = {
  * restarting bumps an epoch that remounts a fresh half-inning — the loop's one-shot
  * effect re-seeds cleanly with the current seat fills.
  */
-export function DuelPlay({ roster = ROSTER, context = GAME_CONTEXT }: DuelPlayProps = {}) {
+export function DuelPlay({
+  roster = ROSTER,
+  context = GAME_CONTEXT,
+  clubs = CLUB_NAMES,
+}: DuelPlayProps = {}) {
   const [seats, setSeats] = useState<SeatKinds>(BOTH_HUMAN)
   const [epoch, setEpoch] = useState(0)
   const setSeat = (seat: DuelSeat, kind: SeatKind) => {
@@ -110,8 +106,7 @@ export function DuelPlay({ roster = ROSTER, context = GAME_CONTEXT }: DuelPlayPr
       <div className="min-h-0 flex-1">
         <DuelHalfInning
           key={epoch}
-          roster={roster}
-          context={context}
+          fixture={{ roster, context, clubs }}
           seats={seats}
           onRestart={() => {
             setEpoch((e) => e + 1)
