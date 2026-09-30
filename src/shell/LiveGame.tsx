@@ -1,3 +1,4 @@
+import { GameStatus } from '@sandlot/engine/game'
 import { useMutation, useQuery } from 'convex/react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { api } from '../../convex/_generated/api'
@@ -9,7 +10,11 @@ import {
   halfSummaryOf,
   type LiveGameView,
   matchupOf,
+  type PlayedGameView,
+  RevealAdvance,
+  revealAdvanceOf,
   revealOf,
+  sideChangeOf,
   situationOf,
   type Turn,
   TurnKind,
@@ -18,20 +23,26 @@ import {
 import { RevealMotion } from '../duel/RevealMotion'
 import { DuelSeat } from '../duel/seatAgent'
 import { WaitingTurn } from '../duel/WaitingTurn'
+import { GameOver } from './GameOver'
 import { Screen, Waiting } from './Screen'
 import '../duel/duel.css'
 
 /**
- * A live game at `/game/:id` (SAN-39, ADR-0031): the duel's screens, driven by
- * the server.
+ * A game at `/game/:id` from its first pitch to its final (SAN-39, SAN-67): the
+ * duel's screens, driven by the server (ADR-0031), carried across half
+ * boundaries and on to the game-over screen (ADR-0032).
  *
  * Which screen shows is decided from two subscriptions and nothing else —
  * `getGame` for the situation and the locks, `getLastAtBat` for the reveal
  * (`../duel/liveDuel` holds the decisions). This component owns only what the
- * server cannot know: which reveal this viewer has already watched, and what to
- * tell them when a commit did not land. It never resolves an at-bat, never holds
- * a number that is not the viewer's own, and commits one owned seat at a time
- * through `commitPitch` / `commitSwing`.
+ * server cannot know: which reveal this viewer has already watched, whether
+ * they have moved past a half's summary, and what to tell them when a commit
+ * did not land. Crossing a half is not one of those — the server has already
+ * opened the next half by the time its summary shows.
+ *
+ * It never resolves an at-bat, never holds a number that is not the viewer's
+ * own, and commits one owned seat at a time through `commitPitch` /
+ * `commitSwing`.
  */
 
 /** A `dismissed` sequence below every real one: no at-bat has been watched. */
@@ -107,9 +118,22 @@ function CommitTurn({ game, turn, atBatKey, onNotice }: CommitTurnProps) {
 
 interface RevealTurnProps {
   atBat: ResolvedAtBatView
-  game: LiveGameView
-  /** The viewer is done with this reveal; it is handed the at-bat it showed. */
-  onAdvance: (shown: ResolvedAtBatView) => void
+  game: PlayedGameView
+  /** The viewer is done with this reveal; it is handed the at-bat it showed and
+   * where advancing past it leads. */
+  onAdvance: (shown: ResolvedAtBatView, advance: RevealAdvance) => void
+}
+
+/** The advance control's words for where it leads (`liveDuel.revealAdvanceOf`). */
+function advanceLabelOf(advance: RevealAdvance): string {
+  switch (advance) {
+    case RevealAdvance.FinalScore:
+      return 'FINAL SCORE →'
+    case RevealAdvance.EndOfHalf:
+      return 'END OF HALF →'
+    case RevealAdvance.NextBatter:
+      return 'NEXT BATTER →'
+  }
 }
 
 /**
@@ -126,6 +150,7 @@ function RevealTurn({ atBat, game, onAdvance }: RevealTurnProps) {
   const [replayKey, setReplayKey] = useState(0)
   const { home, away } = game
   const scenario = useMemo(() => revealOf(shown, { home, away }), [shown, home, away])
+  const advance = revealAdvanceOf(shown, atBat, game)
   return (
     <RevealMotion
       key={replayKey}
@@ -134,9 +159,9 @@ function RevealTurn({ atBat, game, onAdvance }: RevealTurnProps) {
         setReplayKey((k) => k + 1)
       }}
       onAdvance={() => {
-        onAdvance(shown)
+        onAdvance(shown, advance)
       }}
-      advanceLabel={shown.endedHalf ? 'END OF HALF →' : 'NEXT BATTER →'}
+      advanceLabel={advanceLabelOf(advance)}
     />
   )
 }
@@ -152,14 +177,19 @@ function OpenAtBat({ game, atBatKey, onNotice }: Omit<CommitTurnProps, 'turn'>) 
 }
 
 interface LiveGameProps {
-  game: LiveGameView
+  game: PlayedGameView
 }
 
 /**
  * The screens, once both subscriptions have answered. `dismissed` opens on the
  * at-bat already on the books, so loading the page never replays it: the viewer
  * lands on the at-bat that is open (SAN-39's "whose turn is unambiguous on
- * load"). An at-bat that resolves after that is one they have not seen.
+ * load") — or, for a finished game, on the game-over screen. An at-bat that
+ * resolves after that is one they have not seen.
+ *
+ * The same instance carries on when the game goes final under it, which is how
+ * the game-ending at-bat is revealed before the game-over screen (SAN-67): the
+ * screen does not remount, so that at-bat is still one this viewer has not seen.
  */
 function LiveGameScreens({
   game,
@@ -169,21 +199,32 @@ function LiveGameScreens({
   const [summary, setSummary] = useState<HalfSummary | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  // The half is over and its summary is where this screen stops; carrying on to
-  // the next half is SAN-67's.
-  if (summary) {
+  // A half is over: its summary, and the side change into the half the server
+  // has already opened. It stays until the viewer continues.
+  if (summary && game.status === GameStatus.Live) {
+    const next = {
+      change: sideChangeOf(game),
+      onContinue: () => {
+        setSummary(null)
+      },
+    }
     return (
       <DuelFrame notice={null}>
-        <HalfSummaryCard summary={summary} />
+        <HalfSummaryCard summary={summary} next={next} />
       </DuelFrame>
     )
   }
 
   if (lastAtBat && lastAtBat.sequence > dismissed) {
-    const advance = (shown: ResolvedAtBatView) => {
+    const advance = (shown: ResolvedAtBatView, to: RevealAdvance) => {
       setDismissed(shown.sequence)
       setNotice(null)
-      if (shown.endedHalf) setSummary(halfSummaryOf(shown))
+      // The card announces the half the server has opened, so it needs a live
+      // game; once the game is final, what follows is its final reveal or
+      // game-over, never a half card.
+      if (to === RevealAdvance.EndOfHalf && game.status === GameStatus.Live) {
+        setSummary(halfSummaryOf(shown))
+      }
     }
     return (
       <DuelFrame notice={null}>
@@ -193,6 +234,8 @@ function LiveGameScreens({
       </DuelFrame>
     )
   }
+
+  if (game.status === GameStatus.Final) return <GameOver game={game} />
 
   return (
     <DuelFrame notice={notice}>

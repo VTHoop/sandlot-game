@@ -4,6 +4,7 @@ import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import { duelLocks } from './atBat'
+import { ClubSide } from './clubSide'
 import { type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
 
 /**
@@ -33,11 +34,9 @@ import { type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
  * fields only to decide which seats it drives.
  */
 
-/** Which club of the matchup a value belongs to. */
-export enum ClubSide {
-  Home = 'home',
-  Away = 'away',
-}
+// Defined in a leaf so the client can import it without this module's server
+// runtime (see `clubSide.ts`).
+export { ClubSide }
 
 /** Which seat a club occupies in the at-bat currently on the field. */
 export enum SeatRole {
@@ -95,6 +94,18 @@ export interface LockView {
 }
 
 /**
+ * One inning of a finished game's line score: the runs each club scored in its
+ * half. `home` is null when the bottom half was never played — the home club
+ * already led after the top of the last inning — which a line score marks "X".
+ * The away club always bats, so its half is never missing.
+ */
+export interface InningLine {
+  inning: number
+  away: number
+  home: number | null
+}
+
+/**
  * Which of the two clubs the caller owns — both, for the one-account hotseat
  * (ADR-0028). Two named flags rather than a list, so a reader asks for the club
  * it means instead of searching.
@@ -149,6 +160,8 @@ export type GameView =
       hits: ClubTotals
       /** The club that won, or null — see {@link winnerOf}. */
       winner: ClubSide | null
+      /** Runs by inning, first to last, including any extra innings. */
+      lineScore: InningLine[]
     })
 
 // ─── Resolving references to renderable data ────────────────────────────────
@@ -250,30 +263,88 @@ async function clubView(ctx: Ctx, id: Id<'teams'>): Promise<ClubView> {
 // ─── Derived totals ─────────────────────────────────────────────────────────
 
 /**
+ * A game's whole at-bat log, in order. Rebuilding totals from it per read is the
+ * always-correct option at a six-inning game's log length. If it ever stops being
+ * cheap, the maintained `boxScoreLine` rollup is where the totals belong
+ * (ADR-0004) — not a field on the live row. Shared with the resolved at-bat read
+ * model, which folds the same log.
+ */
+export function atBatLog(ctx: Ctx, game: Id<'games'>): Promise<Doc<'atBats'>[]> {
+  return ctx.db
+    .query('atBats')
+    .withIndex('by_game', (q) => q.eq('game', game))
+    .collect()
+}
+
+/** A logged at-bat's half as the engine's enum; the persisted literal equals the
+ * enum's value, so the cast relabels only. */
+export const halfOf = (atBat: Doc<'atBats'>): Half => atBat.half as Half
+
+/** A club pair with `amount` added to the club that batted this at-bat — away in
+ * the top half, home in the bottom (SAN-21). */
+export function creditBatting(
+  totals: ClubTotals,
+  atBat: Doc<'atBats'>,
+  amount: number,
+): ClubTotals {
+  return halfOf(atBat) === Half.Top
+    ? { home: totals.home, away: totals.away + amount }
+    : { home: totals.home + amount, away: totals.away }
+}
+
+/** 1 for an at-bat that went for a hit, else 0. */
+export const hitsOf = (atBat: Doc<'atBats'>): number => (isHitBand(atBat.outcome) ? 1 : 0)
+
+/** The logged at-bats of one half. */
+export function rowsInHalf(
+  log: readonly Doc<'atBats'>[],
+  inning: number,
+  half: Half,
+): Doc<'atBats'>[] {
+  return log.filter((atBat) => atBat.inning === inning && halfOf(atBat) === half)
+}
+
+/**
  * Each club's hits, folded out of the at-bat log. Nothing on the `games` row
  * tracks them — the fixture adapter keeps its own running count in memory — and
  * the log already records both the outcome band and the half it was struck in,
  * which names the club that was batting (top = away, SAN-21).
- *
- * Rebuilding the pair per read is the always-correct option at a six-inning
- * game's log length. If it ever stops being cheap, the maintained `boxScoreLine`
- * rollup is where the totals belong (ADR-0004) — not a field on the live row.
  */
-async function hitTotals(ctx: Ctx, game: Id<'games'>): Promise<ClubTotals> {
-  const log = await ctx.db
-    .query('atBats')
-    .withIndex('by_game', (q) => q.eq('game', game))
-    .collect()
-  return log.reduce<ClubTotals>(
-    (totals, atBat) => {
-      if (!isHitBand(atBat.outcome)) return totals
-      // The persisted literal equals the enum's value; the cast relabels only.
-      return (atBat.half as Half) === Half.Top
-        ? { home: totals.home, away: totals.away + 1 }
-        : { home: totals.home + 1, away: totals.away }
-    },
-    { home: 0, away: 0 },
-  )
+function hitTotalsOf(log: readonly Doc<'atBats'>[]): ClubTotals {
+  return log.reduce<ClubTotals>((totals, atBat) => creditBatting(totals, atBat, hitsOf(atBat)), {
+    home: 0,
+    away: 0,
+  })
+}
+
+/** The runs scored in one half, or null when the log has no row for it — the
+ * half was never played. A played half always has a row: it takes three outs,
+ * or a walk-off's winning run, to end one. */
+function halfRuns(log: readonly Doc<'atBats'>[], inning: number, half: Half): number | null {
+  const rows = rowsInHalf(log, inning, half)
+  if (!rows.length) return null
+  return rows.reduce((runs, atBat) => runs + atBat.runsScored, 0)
+}
+
+/**
+ * A finished game's runs by inning, from the first inning to the last one the log
+ * reaches — extra innings included, since nothing caps them (ADR-0017).
+ *
+ * Only a bottom half can be missing: the engine skips it when the home club
+ * already leads after the top of the last inning. Every inning's top half is
+ * always played, so a gap there is corrupt state, and this refuses rather than
+ * rendering an inning nobody played.
+ */
+function lineScoreOf(log: readonly Doc<'atBats'>[]): InningLine[] {
+  const lastInning = log.reduce((last, atBat) => Math.max(last, atBat.inning), 0)
+  return Array.from({ length: lastInning }, (_, index) => {
+    const inning = index + 1
+    const away = halfRuns(log, inning, Half.Top)
+    if (away === null) {
+      throw new Error(`A final game's at-bat log skips the top of inning ${inning}`)
+    }
+    return { inning, away, home: halfRuns(log, inning, Half.Bottom) }
+  })
 }
 
 /**
@@ -321,12 +392,12 @@ function viewerSideOf(owns: ClubOwnership): ClubSide | null {
 
 async function liveView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): Promise<GameView> {
   const viewerTeam = common.viewer === ClubSide.Home ? game.homeTeam : game.awayTeam
-  const [bases, batter, pitcher, dueUp, hits, locks] = await Promise.all([
+  const [bases, batter, pitcher, dueUp, log, locks] = await Promise.all([
     basesView(ctx, game.bases),
     seatView(ctx, game.currentBatter, SeatRole.Batting),
     seatView(ctx, game.currentPitcher, SeatRole.Pitching),
     dueUpView(ctx, game),
-    hitTotals(ctx, game._id),
+    atBatLog(ctx, game._id),
     duelLocks(ctx, game._id),
   ])
   return {
@@ -338,7 +409,7 @@ async function liveView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): P
     outs: game.outs,
     bases,
     score: { home: game.homeScore, away: game.awayScore },
-    hits,
+    hits: hitTotalsOf(log),
     batter,
     pitcher,
     dueUp,
@@ -351,12 +422,14 @@ async function liveView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): P
 }
 
 async function finalView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): Promise<GameView> {
+  const log = await atBatLog(ctx, game._id)
   return {
     ...common,
     status: GameStatus.Final,
     score: { home: game.homeScore, away: game.awayScore },
-    hits: await hitTotals(ctx, game._id),
+    hits: hitTotalsOf(log),
     winner: winnerOf(game),
+    lineScore: lineScoreOf(log),
   }
 }
 

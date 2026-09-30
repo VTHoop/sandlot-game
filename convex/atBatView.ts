@@ -1,11 +1,18 @@
 import { type GroundBallResult, OUTS_PER_INNING } from '@sandlot/engine/atBat'
-import { Half } from '@sandlot/engine/game'
-import { isHitBand } from '@sandlot/engine/outcomes'
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import type { ResolvedAtBatView } from './duelContract'
-import { type ClubOwnership, type ClubTotals, ownershipOf } from './gameView'
+import {
+  atBatLog,
+  type ClubOwnership,
+  type ClubTotals,
+  creditBatting,
+  halfOf,
+  hitsOf,
+  ownershipOf,
+  rowsInHalf,
+} from './gameView'
 import { type Ctx, maybeUser } from './participants'
 
 /**
@@ -28,20 +35,6 @@ import { type Ctx, maybeUser } from './participants'
  * home/away and the answer is the same for both participants.
  */
 
-/** The persisted half as the engine's enum; the literal equals the enum's value,
- * so the cast relabels only. */
-const halfOf = (atBat: Doc<'atBats'>): Half => atBat.half as Half
-
-/** A club's pair with `amount` added to the club that batted this at-bat — away
- * in the top half, home in the bottom (SAN-21). */
-function creditBatting(totals: ClubTotals, atBat: Doc<'atBats'>, amount: number): ClubTotals {
-  return halfOf(atBat) === Half.Top
-    ? { home: totals.home, away: totals.away + amount }
-    : { home: totals.home + amount, away: totals.away }
-}
-
-const hitsOf = (atBat: Doc<'atBats'>): number => (isHitBand(atBat.outcome) ? 1 : 0)
-
 /** The board as the log had left it before its last row: each club's runs and
  * hits, folded from every earlier at-bat. */
 function boardBefore(earlier: readonly Doc<'atBats'>[]): { score: ClubTotals; hits: ClubTotals } {
@@ -59,15 +52,13 @@ function halfTotalsThrough(
   log: readonly Doc<'atBats'>[],
   last: Doc<'atBats'>,
 ): { runs: number; hits: number } {
-  return log
-    .filter((atBat) => atBat.inning === last.inning && atBat.half === last.half)
-    .reduce(
-      (totals, atBat) => ({
-        runs: totals.runs + atBat.runsScored,
-        hits: totals.hits + hitsOf(atBat),
-      }),
-      { runs: 0, hits: 0 },
-    )
+  return rowsInHalf(log, last.inning, halfOf(last)).reduce(
+    (totals, atBat) => ({
+      runs: totals.runs + atBat.runsScored,
+      hits: totals.hits + hitsOf(atBat),
+    }),
+    { runs: 0, hits: 0 },
+  )
 }
 
 /**
@@ -113,10 +104,7 @@ export const getLastAtBat = query({
     const user = await maybeUser(ctx)
     if (!user || !isParticipant(await ownershipOf(ctx, game, user))) return null
 
-    const log = await ctx.db
-      .query('atBats')
-      .withIndex('by_game', (q) => q.eq('game', game._id))
-      .collect()
+    const log = await atBatLog(ctx, game._id)
     // The last row, destructured off a slice rather than indexed — no computed
     // member access (AGENTS.md).
     const [last] = log.slice(-1)

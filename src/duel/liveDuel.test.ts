@@ -2,10 +2,20 @@ import { Half } from '@sandlot/engine/game'
 import { describe, expect, it } from 'vitest'
 import type { ResolvedAtBatView } from '../../convex/duelContract'
 import { ClubSide, SeatRole } from '../../convex/gameView'
-import { halfSummaryOf, matchupOf, revealOf, situationOf, TurnKind, turnFor } from './liveDuel'
+import {
+  halfSummaryOf,
+  matchupOf,
+  RevealAdvance,
+  revealAdvanceOf,
+  revealOf,
+  sideChangeOf,
+  situationOf,
+  TurnKind,
+  turnFor,
+} from './liveDuel'
 import { FieldSpot } from './scenario'
 import { DuelSeat } from './seatAgent'
-import { CLUBS, liveView, locks, owns, player, resolvedAtBat } from './testing/liveViews'
+import { CLUBS, finalView, liveView, locks, owns, player, resolvedAtBat } from './testing/liveViews'
 
 describe('turnFor — which seat this client drives', () => {
   it('gives an away-only owner the batter’s seat in the top half', () => {
@@ -190,5 +200,52 @@ describe('halfSummaryOf', () => {
     expect(
       halfSummaryOf(resolvedAtBat({ endedHalf: true, halfTotals: { runs: 2, hits: 3 } })),
     ).toEqual({ half: 'BOTTOM', inning: 3, runs: 2, hits: 3 })
+  })
+})
+
+describe('revealAdvanceOf — where advancing past a reveal leads', () => {
+  const PLAY = resolvedAtBat({ sequence: 40, endedHalf: false })
+  const THIRD_OUT = resolvedAtBat({ sequence: 40, outsAfter: 3, endedHalf: true })
+
+  it('goes to the next batter after a play that did not end the half', () => {
+    expect(revealAdvanceOf(PLAY, PLAY, liveView())).toBe(RevealAdvance.NextBatter)
+  })
+
+  it('goes to the half’s summary after the third out', () => {
+    expect(revealAdvanceOf(THIRD_OUT, THIRD_OUT, liveView())).toBe(RevealAdvance.EndOfHalf)
+  })
+
+  it('goes to the final score after the at-bat that ended the game — a walk-off ends no half', () => {
+    expect(revealAdvanceOf(PLAY, PLAY, finalView())).toBe(RevealAdvance.FinalScore)
+  })
+
+  it('goes to the final score after a last out, not to a half summary', () => {
+    expect(revealAdvanceOf(THIRD_OUT, THIRD_OUT, finalView())).toBe(RevealAdvance.FinalScore)
+  })
+
+  it('does not call an older reveal the final one when the game ended under it', () => {
+    // Possible from a second tab or device: the game-ending at-bat is newer, and
+    // it is revealed next.
+    const ending = resolvedAtBat({ sequence: 41 })
+    expect(revealAdvanceOf(PLAY, ending, finalView())).toBe(RevealAdvance.NextBatter)
+    expect(revealAdvanceOf(THIRD_OUT, ending, finalView())).toBe(RevealAdvance.EndOfHalf)
+  })
+})
+
+describe('sideChangeOf — the half the server has opened', () => {
+  it('names the away club batting in the top half', () => {
+    expect(sideChangeOf(liveView({ inning: 4, half: Half.Top }))).toEqual({
+      inning: 4,
+      half: 'TOP',
+      batting: CLUBS.away.name,
+    })
+  })
+
+  it('names the home club batting in the bottom half', () => {
+    expect(sideChangeOf(liveView({ inning: 3, half: Half.Bottom }))).toEqual({
+      inning: 3,
+      half: 'BOTTOM',
+      batting: CLUBS.home.name,
+    })
   })
 })

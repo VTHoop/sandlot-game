@@ -11,7 +11,11 @@
 // SANDLOT_DEV_SEED=true on the dev deployment, and you signed in to the app once.
 import { spawnSync } from 'node:child_process'
 
-const APP_ORIGIN = 'http://localhost:5173'
+// Where the app may be served locally, in the order they are tried: a plain
+// `pnpm dev` (Vite's default, and what Playwright uses), then the agent
+// preview's pinned port. The link names whichever is answering.
+const APP_ORIGINS = ['http://localhost:5173', 'http://localhost:5183'] as const
+const PROBE_TIMEOUT_MS = 500
 const USAGE = 'usage: pnpm dev:game [--hotseat] [--as user_…]'
 
 interface DevGameArgs {
@@ -45,7 +49,24 @@ function parseGameId(stdout: string): string {
   return id
 }
 
-function main(): number {
+/** Whether a dev server answers at `origin`: any response is yes, a refused
+ * connection or a timeout is no. */
+function isServing(origin: string): Promise<boolean> {
+  return fetch(origin, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) }).then(
+    () => true,
+    () => false,
+  )
+}
+
+/** The first origin with a dev server behind it, or null when none is up. */
+async function servingOrigin(): Promise<string | null> {
+  for (const origin of APP_ORIGINS) {
+    if (await isServing(origin)) return origin
+  }
+  return null
+}
+
+async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2))
   const run = spawnSync('npx', ['convex', 'run', 'seed:devGame', JSON.stringify(args)], {
     encoding: 'utf8',
@@ -55,13 +76,20 @@ function main(): number {
 
   const game = parseGameId(run.stdout)
   const seating = args.hotseat ? 'you hold both clubs' : 'you are home; the bot is away'
-  console.log(`New game (${seating}):\n  ${APP_ORIGIN}/game/${game}`)
+  const origin = await servingOrigin()
+  console.log(`New game (${seating}):\n  ${origin ?? APP_ORIGINS[0]}/game/${game}`)
+  if (!origin) {
+    console.log('No dev server is answering; start one with `pnpm dev` (and `npx convex dev`).')
+  }
   return 0
 }
 
-try {
-  process.exitCode = main()
-} catch (error) {
-  console.error(error instanceof Error ? error.message : error)
-  process.exitCode = 1
-}
+main().then(
+  (code) => {
+    process.exitCode = code
+  },
+  (error: unknown) => {
+    console.error(error instanceof Error ? error.message : error)
+    process.exitCode = 1
+  },
+)

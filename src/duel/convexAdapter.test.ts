@@ -548,17 +548,53 @@ describe('the Convex-backed adapter — snapshot coherence', () => {
 })
 
 describe('the Convex-backed adapter — a game that ends', () => {
-  /** Bottom of the 6th, tied: the home club taking the lead is a walk-off. */
+  /**
+   * Bottom of the 6th, tied: the home club taking the lead is a walk-off.
+   *
+   * The log holds the scoreless game that got here — one strikeout ending each
+   * half from the top of the 1st through the top of the 6th — so the final read
+   * has an inning-by-inning record to fold its line score from, as a played game
+   * always does.
+   */
   async function seedWalkOff() {
     const seeded = await seedLiveGame()
-    await seeded.t.run((ctx) =>
-      ctx.db.patch(seeded.game, {
+    await seeded.t.run(async (ctx) => {
+      const halves = Array.from({ length: 11 }, (_, index) => ({
+        inning: Math.floor(index / 2) + 1,
+        half: index % 2 === 0 ? ('top' as const) : ('bottom' as const),
+      }))
+      for (const [sequence, { inning, half }] of halves.entries()) {
+        const awayBats = half === 'top'
+        await ctx.db.insert('atBats', {
+          game: seeded.game,
+          sequence,
+          inning,
+          half,
+          batter: awayBats ? seeded.awayLeadoff : seeded.homeLeadoff,
+          pitcher: awayBats ? seeded.homePitcher : seeded.awayPitcher,
+          outsBefore: 2,
+          basesBefore: EMPTY_BASES,
+          batterNumber: STRIKEOUT.swing,
+          pitchNumber: STRIKEOUT.pitch,
+          outcome: 'K',
+          groundBallResult: null,
+          swingType: 'normal',
+          buntResult: null,
+          runsScored: 0,
+          rbi: 0,
+          basesAfter: EMPTY_BASES,
+          outsAfter: 3,
+          createdAt: 0,
+        })
+      }
+      await ctx.db.patch(seeded.game, {
         inning: 6,
         half: 'bottom',
         currentBatter: seeded.homeLeadoff,
         currentPitcher: seeded.awayPitcher,
-      }),
-    )
+        lastResolvedSequence: halves.length - 1,
+      })
+    })
     return seeded
   }
 

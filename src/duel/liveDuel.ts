@@ -28,6 +28,13 @@ import { DuelSeat } from './seatAgent'
 /** A live game as the read model returns it. */
 export type LiveGameView = Extract<GameView, { status: GameStatus.Live }>
 
+/** A finished game as the read model returns it. */
+export type FinalGameView = Extract<GameView, { status: GameStatus.Final }>
+
+/** A game that has been played at all: `/game/:id`'s duel screens, from the first
+ * pitch through the game-over screen they end on. */
+export type PlayedGameView = LiveGameView | FinalGameView
+
 /** What this client should be doing about the at-bat now open. */
 export enum TurnKind {
   /** A seat this viewer drives has not locked: ask them for its number. */
@@ -171,6 +178,58 @@ export function revealOf(
       hits: { away: atBat.hitsBefore.away, home: atBat.hitsBefore.home },
     },
   })
+}
+
+/** Where advancing past a reveal leads. */
+export enum RevealAdvance {
+  /** The next at-bat — or the next reveal, if another resolved meanwhile. */
+  NextBatter = 'next-batter',
+  /** The half's summary. */
+  EndOfHalf = 'end-of-half',
+  /** The game-over screen. */
+  FinalScore = 'final-score',
+}
+
+/**
+ * Where advancing past the reveal of `shown` leads, given the latest resolved
+ * at-bat and the game's status (SAN-67, ADR-0032).
+ *
+ * The game-ending at-bat is the latest one of a final game. The half flag
+ * cannot say so — a walk-off ends no half by outs — and neither can the status
+ * alone: from a second tab or device the game can go final while an older
+ * reveal is still on screen, and the at-bat that ended it is then revealed next.
+ */
+export function revealAdvanceOf(
+  shown: ResolvedAtBatView,
+  latest: ResolvedAtBatView,
+  game: Pick<PlayedGameView, 'status'>,
+): RevealAdvance {
+  if (game.status === GameStatus.Final && shown.sequence === latest.sequence) {
+    return RevealAdvance.FinalScore
+  }
+  return shown.endedHalf ? RevealAdvance.EndOfHalf : RevealAdvance.NextBatter
+}
+
+/** The half now open and the club batting in it. */
+export interface SideChange {
+  inning: number
+  half: ReturnType<typeof halfLabel>
+  /** The batting club's name. */
+  batting: string
+}
+
+/**
+ * The side change the end-of-half card announces: the half now open and the club
+ * batting in it. Read off the server's live state, which has already turned the
+ * half over by the time the card shows (ADR-0017) — never counted forward from
+ * the half that ended.
+ */
+export function sideChangeOf(view: LiveGameView): SideChange {
+  return {
+    inning: view.inning,
+    half: halfLabel(view.half),
+    batting: view.half === Half.Top ? view.away.name : view.home.name,
+  }
 }
 
 /** The end-of-half card for the half this at-bat closed, from the server's totals. */

@@ -88,8 +88,10 @@ function StartGame({ game }: { game: ScheduledGame }) {
  * does not try: all three go home.
  *
  * What renders follows the game's status, as the server reports it: a scheduled
- * game offers to start, a live one is the duel (`./LiveGame`). How a final
- * game renders is SAN-67's; until then it keeps the placeholder.
+ * game offers to start; a live or final one is the duel (`./LiveGame`), which
+ * ends on the game-over screen. Live and final render the same element in the
+ * same place, so a game that ends while the duel is on screen keeps that
+ * instance — and with it, the game-ending at-bat still to reveal (SAN-67).
  */
 export function GameScreen() {
   const { id } = useParams<'id'>()
@@ -98,22 +100,11 @@ export function GameScreen() {
 
   if (game === undefined) return <LoadingGame />
   if (game === null) return <Navigate to="/" replace />
-  if (game.status === GameStatus.Live) {
-    return (
-      <Suspense fallback={<LoadingGame />}>
-        <LiveGame game={game} />
-      </Suspense>
-    )
-  }
   if (game.status === GameStatus.Scheduled) return <StartGame game={game} />
   return (
-    <Screen>
-      <Title>
-        {game.away.name} at {game.home.name}
-      </Title>
-      <p className="text-sm text-muted">The game screen is on its way.</p>
-      <HomeLink />
-    </Screen>
+    <Suspense fallback={<LoadingGame />}>
+      <LiveGame game={game} />
+    </Suspense>
   )
 }
 

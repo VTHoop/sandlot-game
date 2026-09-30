@@ -28,6 +28,7 @@ import {
   SeatedRole,
   seated,
 } from './adapter'
+import type { LiveGameView, PlayedGameView } from './liveDuel'
 import type { DuelMatchup } from './MatchupCard'
 import type { Roster, RosterPlayer } from './roster'
 import { type ClubPair, clubLabel } from './scenario'
@@ -125,9 +126,6 @@ export interface ConvexDuelAdapter extends DuelAdapter {
 }
 
 // ─── Boundary mapping (read model → the shapes the duel screens want) ────────
-
-/** A live game as the read model returns it. */
-type LiveGameView = Extract<GameView, { status: GameStatus.Live }>
 
 /**
  * One player resolved for the client: the display name the screens show, the
@@ -466,9 +464,7 @@ export async function createConvexDuelAdapter(gateway: DuelGateway): Promise<Con
  * distinguish them, deliberately (ADR-0025), and neither is something to carry
  * on past with an empty snapshot. `scheduled` has no seats to commit for.
  */
-async function requireReadableView(
-  gateway: DuelGateway,
-): Promise<LiveGameView | Extract<GameView, { status: GameStatus.Final }>> {
+async function requireReadableView(gateway: DuelGateway): Promise<PlayedGameView> {
   const view = await gateway.readGame()
   if (!view) throw new Error('No readable game — it does not exist, or you are not in it')
   if (view.status === GameStatus.Scheduled) {

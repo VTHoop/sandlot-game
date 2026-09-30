@@ -2,7 +2,7 @@ import { GameStatus, Half } from '@sandlot/engine/game'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type { ResolvedAtBatView } from '../../../convex/duelContract'
 import { ClubSide, type GameView, SeatRole } from '../../../convex/gameView'
-import type { LiveGameView } from '../liveDuel'
+import type { FinalGameView, LiveGameView } from '../liveDuel'
 
 /**
  * Server views for tests: what `getGame` and `getLastAtBat` would hand a client,
@@ -52,6 +52,32 @@ export function liveView(overrides: Partial<LiveGameView> = {}): LiveGameView {
     },
     dueUp: [player('d1', 'S. ORTIZ'), player('d2', 'C. DIAZ')],
     locks: locks(false, false),
+    ...overrides,
+  }
+}
+
+/**
+ * A finished six-inning game, read by the AWAY owner: Ridgeview (home) won 3–1
+ * without batting in the bottom of the 6th.
+ */
+export function finalView(overrides: Partial<FinalGameView> = {}): FinalGameView {
+  return {
+    id: GAME_ID,
+    status: GameStatus.Final,
+    ...CLUBS,
+    viewer: ClubSide.Away,
+    viewerOwns: owns(false, true),
+    score: { home: 3, away: 1 },
+    hits: { home: 6, away: 4 },
+    winner: ClubSide.Home,
+    lineScore: [
+      { inning: 1, away: 0, home: 2 },
+      { inning: 2, away: 0, home: 0 },
+      { inning: 3, away: 1, home: 0 },
+      { inning: 4, away: 0, home: 1 },
+      { inning: 5, away: 0, home: 0 },
+      { inning: 6, away: 0, home: null },
+    ],
     ...overrides,
   }
 }
