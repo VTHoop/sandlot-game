@@ -427,6 +427,9 @@ describe('/game/:id — a commit that does not land', () => {
   })
 })
 
+/** The half card's heading: its inning line (SAN-70 dropped the END OF HALF title). */
+const HALF_CARD = /· in the books$/
+
 describe('/game/:id — between halves (SAN-67)', () => {
   /** The third out of the top of the 3rd, struck while the viewer waited. */
   const THIRD_OUT = resolvedAtBat({
@@ -453,7 +456,7 @@ describe('/game/:id — between halves (SAN-67)', () => {
     })
     opened.serverReports({ game: liveView({ ...NEXT_HALF, viewerOwns }), lastAtBat: THIRD_OUT })
     fireEvent.click(await screen.findByRole('button', { name: 'END OF HALF →' }))
-    await screen.findByRole('heading', { name: 'END OF HALF' })
+    await screen.findByRole('heading', { name: HALF_CARD })
     return opened
   }
 
@@ -488,7 +491,7 @@ describe('/game/:id — between halves (SAN-67)', () => {
     // The other seat locks into the next at-bat while the card is up.
     serverReports({ game: liveView({ ...NEXT_HALF, locks: locks(true, false) }) })
 
-    screen.getByRole('heading', { name: 'END OF HALF' })
+    screen.getByRole('heading', { name: HALF_CARD })
     expect(screen.queryByLabelText(/your number/i)).toBeNull()
   })
 
@@ -499,7 +502,7 @@ describe('/game/:id — between halves (SAN-67)', () => {
 
     await screen.findByLabelText(/your number/i)
     screen.getByText('BOT 3RD')
-    expect(screen.queryByRole('heading', { name: 'END OF HALF' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: HALF_CARD })).toBeNull()
   })
 
   it('shows the same card to an owner of both clubs', async () => {
@@ -515,7 +518,7 @@ describe('/game/:id — between halves (SAN-67)', () => {
 
     await screen.findByLabelText(/your number/i)
     screen.getByText('BOT 3RD')
-    expect(screen.queryByRole('heading', { name: 'END OF HALF' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: HALF_CARD })).toBeNull()
   })
 })
 
@@ -582,7 +585,7 @@ describe('/game/:id — the game ends (SAN-67)', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'FINAL SCORE →' }))
     await screen.findByRole('heading', { name: 'FINAL' })
-    expect(screen.queryByRole('heading', { name: 'END OF HALF' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: HALF_CARD })).toBeNull()
   })
 
   it('lands on the game-over screen on a reload after the final, without replaying the last play', async () => {

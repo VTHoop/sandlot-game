@@ -24,6 +24,14 @@ describe('HalfSummaryCard — the game score takes the forefront (SAN-70)', () =
     expect(scoreRegion().textContent).toBe('HAR4RID1')
   })
 
+  it('shows the club labels and their scores in amber', () => {
+    render(<HalfSummaryCard summary={SUMMARY} />)
+    const score = within(scoreRegion())
+    for (const text of ['HAR', '4', 'RID', '1']) {
+      expect(score.getByText(text).closest('.text-consequence')).not.toBeNull()
+    }
+  })
+
   it('keeps the half’s runs and hits, beneath the score', () => {
     render(<HalfSummaryCard summary={SUMMARY} />)
     const half = halfRegion()
@@ -43,5 +51,11 @@ describe('HalfSummaryCard — the game score takes the forefront (SAN-70)', () =
     for (const figure of within(halfRegion()).getAllByText(/\S/)) {
       expect(figure.className).not.toMatch(/consequence/)
     }
+  })
+
+  it('carries no END OF HALF title: the inning line heads the card', () => {
+    render(<HalfSummaryCard summary={SUMMARY} />)
+    expect(screen.queryByText('END OF HALF')).toBeNull()
+    screen.getByRole('heading', { name: 'TOP 3RD · in the books' })
   })
 })
