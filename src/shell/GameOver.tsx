@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { ClubSide, type InningLine } from '../../convex/gameView'
+import { ClubSide } from '../../convex/clubSide'
+import type { InningLine } from '../../convex/gameView'
 import { Card } from '../components/ui/Card'
 import type { FinalGameView } from '../duel/liveDuel'
 import { clubLabel } from '../duel/scenario'

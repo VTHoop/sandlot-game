@@ -11,6 +11,7 @@
 import type * as atBat from "../atBat.js";
 import type * as atBatView from "../atBatView.js";
 import type * as bot from "../bot.js";
+import type * as clubSide from "../clubSide.js";
 import type * as duelContract from "../duelContract.js";
 import type * as game from "../game.js";
 import type * as gameView from "../gameView.js";
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   atBat: typeof atBat;
   atBatView: typeof atBatView;
   bot: typeof bot;
+  clubSide: typeof clubSide;
   duelContract: typeof duelContract;
   game: typeof game;
   gameView: typeof gameView;

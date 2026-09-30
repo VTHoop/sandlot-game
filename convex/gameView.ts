@@ -4,6 +4,7 @@ import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import { duelLocks } from './atBat'
+import { ClubSide } from './clubSide'
 import { type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
 
 /**
@@ -33,11 +34,9 @@ import { type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
  * fields only to decide which seats it drives.
  */
 
-/** Which club of the matchup a value belongs to. */
-export enum ClubSide {
-  Home = 'home',
-  Away = 'away',
-}
+// Defined in a leaf so the client can import it without this module's server
+// runtime (see `clubSide.ts`).
+export { ClubSide }
 
 /** Which seat a club occupies in the at-bat currently on the field. */
 export enum SeatRole {
