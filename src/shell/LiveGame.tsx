@@ -11,6 +11,8 @@ import {
   type LiveGameView,
   matchupOf,
   type PlayedGameView,
+  RevealAdvance,
+  revealAdvanceOf,
   revealOf,
   sideChangeOf,
   situationOf,
@@ -26,9 +28,9 @@ import { Screen, Waiting } from './Screen'
 import '../duel/duel.css'
 
 /**
- * A game at `/game/:id` from its first pitch to its final (SAN-39, SAN-67,
- * ADR-0031): the duel's screens, driven by the server, ending on the game-over
- * screen.
+ * A game at `/game/:id` from its first pitch to its final (SAN-39, SAN-67): the
+ * duel's screens, driven by the server (ADR-0031), carried across half
+ * boundaries and on to the game-over screen (ADR-0032).
  *
  * Which screen shows is decided from two subscriptions and nothing else —
  * `getGame` for the situation and the locks, `getLastAtBat` for the reveal
@@ -36,9 +38,11 @@ import '../duel/duel.css'
  * server cannot know: which reveal this viewer has already watched, whether
  * they have moved past a half's summary, and what to tell them when a commit
  * did not land. Crossing a half is not one of those — the server has already
- * opened the next half by the time its summary shows. It never resolves an at-bat, never holds
- * a number that is not the viewer's own, and commits one owned seat at a time
- * through `commitPitch` / `commitSwing`.
+ * opened the next half by the time its summary shows.
+ *
+ * It never resolves an at-bat, never holds a number that is not the viewer's
+ * own, and commits one owned seat at a time through `commitPitch` /
+ * `commitSwing`.
  */
 
 /** A `dismissed` sequence below every real one: no at-bat has been watched. */
@@ -115,18 +119,21 @@ function CommitTurn({ game, turn, atBatKey, onNotice }: CommitTurnProps) {
 interface RevealTurnProps {
   atBat: ResolvedAtBatView
   game: PlayedGameView
-  /** The viewer is done with this reveal; it is handed the at-bat it showed. */
-  onAdvance: (shown: ResolvedAtBatView) => void
+  /** The viewer is done with this reveal; it is handed the at-bat it showed and
+   * where advancing past it leads. */
+  onAdvance: (shown: ResolvedAtBatView, advance: RevealAdvance) => void
 }
 
-/**
- * Where a reveal's advance goes. The game-ending at-bat is the one that is
- * latest once the game is final — a walk-off ends no half by outs, so the half
- * flag alone cannot tell it apart.
- */
-function advanceLabelOf(shown: ResolvedAtBatView, latest: ResolvedAtBatView, game: PlayedGameView) {
-  if (game.status === GameStatus.Final && shown.sequence === latest.sequence) return 'FINAL SCORE →'
-  return shown.endedHalf ? 'END OF HALF →' : 'NEXT BATTER →'
+/** The advance control's words for where it leads (`liveDuel.revealAdvanceOf`). */
+function advanceLabelOf(advance: RevealAdvance): string {
+  switch (advance) {
+    case RevealAdvance.FinalScore:
+      return 'FINAL SCORE →'
+    case RevealAdvance.EndOfHalf:
+      return 'END OF HALF →'
+    case RevealAdvance.NextBatter:
+      return 'NEXT BATTER →'
+  }
 }
 
 /**
@@ -143,6 +150,7 @@ function RevealTurn({ atBat, game, onAdvance }: RevealTurnProps) {
   const [replayKey, setReplayKey] = useState(0)
   const { home, away } = game
   const scenario = useMemo(() => revealOf(shown, { home, away }), [shown, home, away])
+  const advance = revealAdvanceOf(shown, atBat, game)
   return (
     <RevealMotion
       key={replayKey}
@@ -151,9 +159,9 @@ function RevealTurn({ atBat, game, onAdvance }: RevealTurnProps) {
         setReplayKey((k) => k + 1)
       }}
       onAdvance={() => {
-        onAdvance(shown)
+        onAdvance(shown, advance)
       }}
-      advanceLabel={advanceLabelOf(shown, atBat, game)}
+      advanceLabel={advanceLabelOf(advance)}
     />
   )
 }
@@ -208,11 +216,15 @@ function LiveGameScreens({
   }
 
   if (lastAtBat && lastAtBat.sequence > dismissed) {
-    const advance = (shown: ResolvedAtBatView) => {
+    const advance = (shown: ResolvedAtBatView, to: RevealAdvance) => {
       setDismissed(shown.sequence)
       setNotice(null)
-      // No half card after the game's last half: the game-over screen follows.
-      if (shown.endedHalf && game.status === GameStatus.Live) setSummary(halfSummaryOf(shown))
+      // The card announces the half the server has opened, so it needs a live
+      // game; once the game is final, what follows is its final reveal or
+      // game-over, never a half card.
+      if (to === RevealAdvance.EndOfHalf && game.status === GameStatus.Live) {
+        setSummary(halfSummaryOf(shown))
+      }
     }
     return (
       <DuelFrame notice={null}>

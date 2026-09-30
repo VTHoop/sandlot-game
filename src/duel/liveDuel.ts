@@ -192,14 +192,22 @@ export enum RevealAdvance {
 
 /**
  * Where advancing past the reveal of `shown` leads, given the latest resolved
- * at-bat and the game's status.
+ * at-bat and the game's status (SAN-67, ADR-0032).
+ *
+ * The game-ending at-bat is the latest one of a final game. The half flag
+ * cannot say so — a walk-off ends no half by outs — and neither can the status
+ * alone: from a second tab or device the game can go final while an older
+ * reveal is still on screen, and the at-bat that ended it is then revealed next.
  */
 export function revealAdvanceOf(
-  _shown: ResolvedAtBatView,
-  _latest: ResolvedAtBatView,
-  _game: Pick<PlayedGameView, 'status'>,
+  shown: ResolvedAtBatView,
+  latest: ResolvedAtBatView,
+  game: Pick<PlayedGameView, 'status'>,
 ): RevealAdvance {
-  return RevealAdvance.NextBatter
+  if (game.status === GameStatus.Final && shown.sequence === latest.sequence) {
+    return RevealAdvance.FinalScore
+  }
+  return shown.endedHalf ? RevealAdvance.EndOfHalf : RevealAdvance.NextBatter
 }
 
 /** The half now open and the club batting in it. */
