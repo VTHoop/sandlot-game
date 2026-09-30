@@ -140,9 +140,10 @@ keeps nothing the server could tell it.
 - **`GameOver`** (`src/shell/GameOver.tsx`): FINAL (focused on arrival),
   "<winner> win", the score winner-first, the line score table (a column per
   inning played, then R and H; "X" for an unplayed half; clubs as row headers
-  named in full) in its own named scroll region, and `HomeLink`. No tie state —
-  a `final` with no winner refuses to render. No rematch: nothing in the app
-  creates a game yet.
+  named in full) in its own named, keyboard-reachable scroll region
+  (`tabIndex={0}`, under AGENTS.md's WCAG exception), and `HomeLink`. No tie
+  state — a `final` with no winner refuses to render. No rematch: nothing in
+  the app creates a game yet.
 - **Client imports from `convex/`**: types from anywhere; values only from the
   generated API and the server-free leaves `duelContract.ts` and `clubSide.ts`
   (`ClubSide` lives there, re-exported by `gameView`). A value import from a

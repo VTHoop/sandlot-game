@@ -53,13 +53,14 @@ function LineRow({ game, side }: { game: FinalGameView; side: ClubSide }) {
 /**
  * The line score, away over home. It scrolls inside its own named region, not
  * the page: extra innings have no cap, and the page is a phone-width column.
- * Browsers make a scroll container with nothing focusable in it keyboard-
- * focusable themselves, so it takes no tabindex.
+ * The region takes `tabIndex={0}` so a keyboard player can scroll it: Chromium
+ * and Firefox make such a scroller focusable on their own, Safari does not.
  */
 function LineScore({ game }: { game: FinalGameView }) {
   return (
     <Card className="w-full">
-      <section aria-label="Line score" className="overflow-x-auto">
+      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: WCAG 2.1.1 — scrollable content must be keyboard-reachable, and nothing inside this region is focusable (AGENTS.md's WCAG exception) */}
+      <section aria-label="Line score" tabIndex={0} className="overflow-x-auto">
         <table className="w-full font-body text-sm text-chalk">
           <caption className="sr-only">Line score</caption>
           <thead>
