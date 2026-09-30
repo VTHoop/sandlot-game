@@ -330,6 +330,28 @@ describe('/game/:id — waiting, then the reveal', () => {
     expect(screen.queryByRole('button', { name: '↺ REPLAY' })).toBeNull()
   })
 
+  it('finishes the reveal it is showing when another at-bat resolves underneath it', async () => {
+    // One session cannot do this — nothing resolves without the viewer's own
+    // commit — but a second tab or device on the same account can. The reveal on
+    // screen must not turn into a different play part-way through.
+    const { serverReports } = await waitingOnThePitch()
+    serverReports({ game: liveView(), lastAtBat: RESOLVED })
+    expect((await screen.findByRole('status')).textContent).toBe('DOUBLE!')
+
+    serverReports({
+      lastAtBat: { ...RESOLVED, sequence: 1, outcome: 'K', runsScored: 0, outsAfter: 2 },
+    })
+    expect(screen.getByRole('status').textContent).toBe('DOUBLE!')
+
+    // Advancing past the one that was watched reveals the one that arrived.
+    fireEvent.click(screen.getByRole('button', { name: 'NEXT BATTER →' }))
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toBe('STRIKEOUT')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'NEXT BATTER →' }))
+    await screen.findByLabelText(/your number/i)
+  })
+
   it('ends on the half summary after the third out, with nowhere further to go', async () => {
     const { serverReports } = await waitingOnThePitch()
     serverReports({
