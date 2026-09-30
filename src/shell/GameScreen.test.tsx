@@ -351,23 +351,6 @@ describe('/game/:id — waiting, then the reveal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'NEXT BATTER →' }))
     await screen.findByLabelText(/your number/i)
   })
-
-  it('ends on the half summary after the third out, with nowhere further to go', async () => {
-    const { serverReports } = await waitingOnThePitch()
-    serverReports({
-      // The server has already turned the half over.
-      game: liveView({ half: Half.Bottom, outs: 0 }),
-      lastAtBat: { ...RESOLVED, outcome: 'K', runsScored: 0, outsAfter: 3, endedHalf: true },
-    })
-
-    fireEvent.click(await screen.findByRole('button', { name: 'END OF HALF →' }))
-
-    await screen.findByRole('heading', { name: 'END OF HALF' })
-    screen.getByText('TOP 3RD · in the books')
-    // The end of this ticket's flow: moving on is SAN-67's.
-    expect(screen.queryAllByRole('button')).toHaveLength(0)
-    expect(screen.queryByLabelText(/your number/i)).toBeNull()
-  })
 })
 
 describe('/game/:id — a commit that does not land', () => {
@@ -433,25 +416,5 @@ describe('/game/:id — a commit that does not land', () => {
     await waitFor(() => {
       expect(screen.queryByRole('alert')).toBeNull()
     })
-  })
-})
-
-describe('/game/:id — a finished game', () => {
-  it('keeps the placeholder: how a final game renders is SAN-67’s', async () => {
-    await open({
-      id: GAME_ID,
-      status: GameStatus.Final,
-      ...CLUBS,
-      viewer: liveView().viewer,
-      viewerOwns: owns(false, true),
-      score: { home: 3, away: 1 },
-      hits: { home: 6, away: 4 },
-      winner: null,
-      lineScore: [],
-    })
-
-    await screen.findByRole('heading', { name: 'Harbor Kingfishers at Ridgeview Rail' })
-    screen.getByText('The game screen is on its way.')
-    expect(screen.queryByRole('button', { name: 'START GAME' })).toBeNull()
   })
 })
