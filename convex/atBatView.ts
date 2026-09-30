@@ -1,11 +1,12 @@
-import type { GroundBallResult } from '@sandlot/engine/atBat'
+import { type GroundBallResult, OUTS_PER_INNING } from '@sandlot/engine/atBat'
 import { Half } from '@sandlot/engine/game'
 import { isHitBand } from '@sandlot/engine/outcomes'
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import type { ResolvedAtBatView } from './duelContract'
-import { type Ctx, maybeUser, ownsTeam } from './participants'
+import { type ClubOwnership, type ClubTotals, ownershipOf } from './gameView'
+import { type Ctx, maybeUser } from './participants'
 
 /**
  * The resolved at-bat read model (SAN-39): the last at-bat a game resolved,
@@ -26,12 +27,6 @@ import { type Ctx, maybeUser, ownsTeam } from './participants'
  * ABSOLUTE, like the game read model (ADR-0025, ADR-0030): every total is
  * home/away and the answer is the same for both participants.
  */
-
-/** One total per club. */
-interface ClubTotals {
-  home: number
-  away: number
-}
 
 /** The persisted half as the engine's enum; the literal equals the enum's value,
  * so the cast relabels only. */
@@ -90,25 +85,17 @@ async function namedPlayer(
   return { id: player._id, name: player.name }
 }
 
-/** How many outs end a half. */
-const OUTS_PER_HALF = 3
-
 /** Whether the caller owns either of the game's clubs. */
-async function isParticipant(ctx: Ctx, game: Doc<'games'>, user: Doc<'users'>): Promise<boolean> {
-  const [home, away] = await Promise.all([
-    ownsTeam(ctx, game.homeTeam, user),
-    ownsTeam(ctx, game.awayTeam, user),
-  ])
-  return home || away
-}
+const isParticipant = (owns: ClubOwnership): boolean => owns.home || owns.away
 
 /**
  * The most recently resolved at-bat of a game, for a participant — or `null`.
  *
  * `null` covers four cases identically: no at-bat has resolved yet, the caller
  * owns neither club, there is no caller (or no `users` row), and the game does
- * not exist. The last three are `getGame`'s refusal to be an oracle for which
- * games exist (ADR-0025); the first is simply nothing to show.
+ * not exist — or the id names no game at all. Those refusals are `getGame`'s
+ * refusal to be an oracle for which games exist (ADR-0025), made the same way;
+ * the first is simply nothing to show.
  *
  * The whole log is read to fold the board. At a six-inning game's length that is
  * the always-correct option, as it is for `getGame`'s hit totals; if it stops
@@ -117,12 +104,14 @@ async function isParticipant(ctx: Ctx, game: Doc<'games'>, user: Doc<'users'>): 
 export const getLastAtBat = query({
   args: { game: v.string() },
   handler: async (ctx, args): Promise<ResolvedAtBatView | null> => {
-    // Red checkpoint: the argument is widened so the spec compiles, and the id is
-    // not yet normalised — a malformed one still throws.
-    const game = await ctx.db.get(args.game as Id<'games'>)
+    // A plain string, normalised here, so an id that names no game — malformed, or
+    // another table's — is the same null as one that is simply not there.
+    const id = ctx.db.normalizeId('games', args.game)
+    if (!id) return null
+    const game = await ctx.db.get(id)
     if (!game) return null
     const user = await maybeUser(ctx)
-    if (!user || !(await isParticipant(ctx, game, user))) return null
+    if (!user || !isParticipant(await ownershipOf(ctx, game, user))) return null
 
     const log = await ctx.db
       .query('atBats')
@@ -156,7 +145,7 @@ export const getLastAtBat = query({
       basesAfter: last.basesAfter,
       scoreBefore: before.score,
       hitsBefore: before.hits,
-      endedHalf: last.outsAfter >= OUTS_PER_HALF,
+      endedHalf: last.outsAfter >= OUTS_PER_INNING,
       halfTotals: halfTotalsThrough(log, last),
     }
   },

@@ -5,7 +5,7 @@ const DUEL_RANGE = DUEL_MAX - DUEL_MIN + 1
 
 /**
  * The bot's number-selection policy — the one source both the client bot
- * (`src/design/duel/botAgent.ts`, SAN-48) and the server bot (`convex/atBat.ts`
+ * (`src/duel/botAgent.ts`, SAN-48) and the server bot (`convex/atBat.ts`
  * `commitBotSeat`, SAN-58) draw from.
  *
  * Uniform-random is the strategically-sound baseline, not a placeholder: in a

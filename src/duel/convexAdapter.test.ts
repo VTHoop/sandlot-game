@@ -31,7 +31,7 @@ import { DuelSeat, type SeatAgent } from './seatAgent'
  */
 
 // convex-test discovers the function modules; exclude the test files themselves.
-const modules = import.meta.glob(['../../convex/**/*.ts', '!../../../convex/**/*.test.ts'])
+const modules = import.meta.glob(['../../convex/**/*.ts', '!../../convex/**/*.test.ts'])
 
 /** The hotseat manager, holding both clubs. */
 const MANAGER = { subject: 'hotseat-manager' }
