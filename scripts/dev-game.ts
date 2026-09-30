@@ -49,14 +49,13 @@ function parseGameId(stdout: string): string {
   return id
 }
 
-/** Whether a dev server answers at `origin`. */
-async function isServing(origin: string): Promise<boolean> {
-  try {
-    await fetch(origin, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
-    return true
-  } catch {
-    return false
-  }
+/** Whether a dev server answers at `origin`: any response is yes, a refused
+ * connection or a timeout is no. */
+function isServing(origin: string): Promise<boolean> {
+  return fetch(origin, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) }).then(
+    () => true,
+    () => false,
+  )
 }
 
 /** The first origin with a dev server behind it, or null when none is up. */

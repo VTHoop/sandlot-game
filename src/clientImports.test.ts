@@ -22,13 +22,22 @@ const sources = import.meta.glob<string>(
   { query: '?raw', import: 'default', eager: true },
 )
 
-/** A relative path into `convex/`, capturing the module under it. */
-const CONVEX_PATH = /^(?:\.\.?\/)+convex\/(.+)$/
+/** Path segments that only climb or stay put: `.` and `..`. */
+const isRelativeStep = (segment: string): boolean => segment === '.' || segment === '..'
 
-/** The `convex/` module a specifier names, or null for anything else. */
+/**
+ * The `convex/` module a specifier names — a relative path whose first real
+ * segment is `convex` — or null for anything else. Split into segments rather
+ * than matched with a pattern: a repeated relative-prefix group is the
+ * backtracking shape an unsafe-regex check rightly flags.
+ */
 function convexModuleOf(specifier: ts.Expression | undefined): string | null {
   if (!specifier || !ts.isStringLiteral(specifier)) return null
-  return CONVEX_PATH.exec(specifier.text)?.[1] ?? null
+  const segments = specifier.text.split('/')
+  const at = segments.indexOf('convex')
+  if (at < 1 || !segments.slice(0, at).every(isRelativeStep)) return null
+  const module = segments.slice(at + 1).join('/')
+  return module || null
 }
 
 /** An import survives compilation unless it, or every name it binds, is

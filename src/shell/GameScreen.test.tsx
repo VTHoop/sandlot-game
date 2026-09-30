@@ -612,8 +612,14 @@ describe('/game/:id — the game ends (SAN-67)', () => {
 
 describe('/game/:id — the line score (SAN-67)', () => {
   const lineScore = () => within(screen.getByRole('table', { name: 'Line score' }))
+  /** The table row a club's row header sits in. */
+  const rowOf = (club: string) => {
+    const row = lineScore().getByRole('rowheader', { name: club }).closest('tr')
+    if (!row) throw new Error(`no line score row for ${club}`)
+    return row
+  }
   const cellsOf = (club: string) =>
-    within(lineScore().getByRole('rowheader', { name: club }).closest('tr') as HTMLElement)
+    within(rowOf(club))
       .getAllByRole('cell')
       .map((cell) => cell.textContent)
 
