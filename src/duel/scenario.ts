@@ -115,6 +115,18 @@ export type DuelSituation = Pick<
    * here, no number. Base spots only; `Batter`/`Home` never appear.
    */
   runnersOn: readonly FieldSpot[]
+  /**
+   * Who is on each occupied base, when the source can name them (SAN-39): the
+   * field's description reads "T. JULIEN on 2nd" instead of "Runner on 2nd".
+   * Absent on the showcase fixture, which has occupancy only.
+   */
+  runners?: readonly RunnerOnBase[]
+}
+
+/** A named runner and the base they stand on. */
+export interface RunnerOnBase {
+  spot: FieldSpot
+  name: string
 }
 
 /** What the live field shows before the pitch: the batter standing in plus each

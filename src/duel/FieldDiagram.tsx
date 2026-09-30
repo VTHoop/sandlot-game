@@ -1,5 +1,5 @@
 import { BASE_HALF, BASE_SPOTS, DIAMOND_PATH, FIELD_VIEWBOX, spotPoint } from './fieldMovement'
-import { FieldSpot } from './scenario'
+import { FieldSpot, type RunnerOnBase } from './scenario'
 
 interface FieldDiagramProps {
   /**
@@ -8,6 +8,8 @@ interface FieldDiagramProps {
    * diamond the caller overlays (the reveal drives its own animated tokens).
    */
   runnersOn?: readonly FieldSpot[]
+  /** Who is on each occupied base, when known — named in the description. */
+  runners?: readonly RunnerOnBase[]
   /** Size classes; the diagram scales with its box (overlays use the 240 viewBox). */
   className?: string
 }
