@@ -442,7 +442,7 @@ the adapter fills exactly that gap:
   the roster fixture call, so no layer restates it. The engine gains no roster by
   owning it: it is handed one attribute block and still knows nothing about ids
   (ADR-0009).
-- **`resolveDuelAtBat(pitch, swing, state, roster, board)`** — reads the
+- **`resolveDuelAtBat({ pitch, swing }, state, roster, board)`** — reads the
   seated batter/pitcher from the live state, resolves through the authoritative
   engine, and returns both an `AppliedAtBat` (for `advance`) and a
   `RevealScenario` (for the reveal). `board` is what the scoreboard knows and the

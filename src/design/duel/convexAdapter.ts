@@ -21,6 +21,7 @@ import {
   buildMatchup,
   buildReveal,
   type DuelAdapter,
+  type DuelNumbers,
   type DuelResolution,
   type DuelState,
   type ResolvedFacts,
@@ -297,16 +298,6 @@ function requireAtBat(
     batter: { id: batter.id, name: batter.player.name },
     pitcher: seated(players, currentPitcher, SeatedRole.Pitcher).player.name,
   }
-}
-
-/**
- * The pair one at-bat is committed with. They travel together because they are
- * only ever validated and sent together — see {@link assertCommittable} for why
- * splitting them is the failure this type exists to prevent.
- */
-interface DuelNumbers {
-  pitch: number
-  swing: number
 }
 
 /** The seat whose number the ring cannot hold, or null. Reuses the loop's own

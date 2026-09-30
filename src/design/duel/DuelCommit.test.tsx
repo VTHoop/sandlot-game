@@ -9,6 +9,21 @@ afterEach(cleanup)
 const numberInput = () => screen.getByLabelText<HTMLInputElement>(/your number/i)
 const button = (name: string | RegExp) => screen.getByRole<HTMLButtonElement>('button', { name })
 
+/** Render the pitcher's commit screen and hand back the spy its lock reports to. */
+function renderPitcherSeat() {
+  const onLock = vi.fn()
+  render(
+    <DuelCommit
+      seat={DuelSeat.Pitcher}
+      matchup={SHOWCASE_MATCHUP}
+      situation={SHOWCASE_SITUATION}
+      opponentLocked={false}
+      onLock={onLock}
+    />,
+  )
+  return onLock
+}
+
 describe('DuelCommit', () => {
   it("NEVER renders the opponent's number, even once they have locked (secret-state law)", () => {
     const secret = String(SHOWCASE_SCENARIO.pitch)
@@ -30,16 +45,7 @@ describe('DuelCommit', () => {
   })
 
   it('surfaces the committed number to the parent when the seat locks', () => {
-    const onLock = vi.fn()
-    render(
-      <DuelCommit
-        seat={DuelSeat.Pitcher}
-        matchup={SHOWCASE_MATCHUP}
-        situation={SHOWCASE_SITUATION}
-        opponentLocked={false}
-        onLock={onLock}
-      />,
-    )
+    const onLock = renderPitcherSeat()
     fireEvent.change(numberInput(), { target: { value: '472' } })
     fireEvent.click(button('LOCK IT IN'))
     expect(onLock).toHaveBeenCalledExactlyOnceWith(472)
@@ -61,47 +67,20 @@ describe('DuelCommit', () => {
   })
 
   it('pressing Enter with a valid number locks the seat', () => {
-    const onLock = vi.fn()
-    render(
-      <DuelCommit
-        seat={DuelSeat.Pitcher}
-        matchup={SHOWCASE_MATCHUP}
-        situation={SHOWCASE_SITUATION}
-        opponentLocked={false}
-        onLock={onLock}
-      />,
-    )
+    const onLock = renderPitcherSeat()
     fireEvent.change(numberInput(), { target: { value: '472' } })
     fireEvent.keyDown(numberInput(), { key: 'Enter' })
     expect(onLock).toHaveBeenCalledExactlyOnceWith(472)
   })
 
   it('pressing Enter with an invalid entry is a no-op', () => {
-    const onLock = vi.fn()
-    render(
-      <DuelCommit
-        seat={DuelSeat.Pitcher}
-        matchup={SHOWCASE_MATCHUP}
-        situation={SHOWCASE_SITUATION}
-        opponentLocked={false}
-        onLock={onLock}
-      />,
-    )
+    const onLock = renderPitcherSeat()
     fireEvent.keyDown(numberInput(), { key: 'Enter' })
     expect(onLock).not.toHaveBeenCalled()
   })
 
   it('does not surface a number while it is still invalid', () => {
-    const onLock = vi.fn()
-    render(
-      <DuelCommit
-        seat={DuelSeat.Pitcher}
-        matchup={SHOWCASE_MATCHUP}
-        situation={SHOWCASE_SITUATION}
-        opponentLocked={false}
-        onLock={onLock}
-      />,
-    )
+    const onLock = renderPitcherSeat()
     // The lock stays disabled until the entry is a valid duel number, so the
     // parent is never handed a bad commit.
     expect(button('LOCK IT IN').disabled).toBe(true)

@@ -464,6 +464,13 @@ export interface ResolvedFacts {
   basesAfter: BaseState
 }
 
+/** The two numbers one at-bat is resolved from. They travel as a pair: neither
+ * means anything without the other. */
+export interface DuelNumbers {
+  pitch: number
+  swing: number
+}
+
 /**
  * The two players an at-bat is between, by id and display name. The batter's id
  * travels because the base state is keyed by it; the pitcher is only ever named.
@@ -529,12 +536,12 @@ export function buildReveal(params: {
  * before this at-bat (its hits surface as `RevealScenario.hitsBefore`).
  */
 export function resolveDuelAtBat(
-  pitch: number,
-  swing: number,
+  numbers: DuelNumbers,
   state: LiveGameState,
   roster: Roster,
   board: Board,
 ): DuelResolution {
+  const { pitch, swing } = numbers
   const batter = seated(roster, state.currentBatter, SeatedRole.Batter)
   const pitcher = seated(roster, state.currentPitcher, SeatedRole.Pitcher)
   const resolved = resolveAtBat({
@@ -620,7 +627,7 @@ export function createDuelAdapter(
     clubs: () => ({ ...clubs }),
     playAtBat(pitch, swing) {
       const board = { clubs: { ...clubs }, hits: { ...hitTotals } }
-      const resolution = resolveDuelAtBat(pitch, swing, liveState, roster, board)
+      const resolution = resolveDuelAtBat({ pitch, swing }, liveState, roster, board)
       hitTotals = accumulateHits(hitTotals, resolution.reveal.outcome, liveState.half)
       liveState = advance(liveState, resolution.applied, context)
       return resolution

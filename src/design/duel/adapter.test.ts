@@ -416,13 +416,7 @@ describe('accumulateHits', () => {
 
 describe('resolveDuelAtBat', () => {
   it('maps a hit to an AppliedAtBat and a RevealScenario', () => {
-    const { applied, reveal } = resolveDuelAtBat(
-      HIT_AT_BAT.pitch,
-      HIT_AT_BAT.swing,
-      liveState(),
-      ROSTER,
-      board(),
-    )
+    const { applied, reveal } = resolveDuelAtBat(HIT_AT_BAT, liveState(), ROSTER, board())
     expect(applied).toEqual({
       sequence: 0,
       outsBefore: 0,
@@ -450,13 +444,7 @@ describe('resolveDuelAtBat', () => {
   })
 
   it('maps an out: a third strike records an out and no base runner', () => {
-    const { applied, reveal } = resolveDuelAtBat(
-      OUT_AT_BAT.pitch,
-      OUT_AT_BAT.swing,
-      liveState(),
-      ROSTER,
-      board(),
-    )
+    const { applied, reveal } = resolveDuelAtBat(OUT_AT_BAT, liveState(), ROSTER, board())
     expect(reveal.outcome).toBe('K')
     expect(applied.outsAfter).toBe(1)
     expect(applied.basesAfter).toEqual({ first: null, second: null, third: null })
@@ -465,13 +453,7 @@ describe('resolveDuelAtBat', () => {
   })
 
   it('maps a walk: the batter reaches first', () => {
-    const { applied, reveal } = resolveDuelAtBat(
-      WALK_AT_BAT.pitch,
-      WALK_AT_BAT.swing,
-      liveState(),
-      ROSTER,
-      board(),
-    )
+    const { applied, reveal } = resolveDuelAtBat(WALK_AT_BAT, liveState(), ROSTER, board())
     expect(reveal.outcome).toBe('BB')
     expect(applied.basesAfter).toEqual({ first: 'away-1', second: null, third: null })
     expect(reveal.scoreline).toBe('R. VANCE reaches 1st')
@@ -479,8 +461,7 @@ describe('resolveDuelAtBat', () => {
 
   it('threads the running hit totals into hitsBefore, club for club', () => {
     const { reveal } = resolveDuelAtBat(
-      HIT_AT_BAT.pitch,
-      HIT_AT_BAT.swing,
+      HIT_AT_BAT,
       liveState(),
       ROSTER,
       board({ away: 3, home: 2 }),
@@ -494,8 +475,7 @@ describe('resolveDuelAtBat', () => {
     // reveal reads the same to the club batting, the club pitching, and an owner of
     // both (SAN-39).
     const { reveal } = resolveDuelAtBat(
-      HIT_AT_BAT.pitch,
-      HIT_AT_BAT.swing,
+      HIT_AT_BAT,
       liveState({
         half: Half.Bottom,
         currentBatter: 'home-1',
@@ -534,9 +514,7 @@ describe('resolveDuelAtBat', () => {
       error: /pitcher attribute block/,
     },
   ])('$name', ({ state, error }) => {
-    expect(() =>
-      resolveDuelAtBat(HIT_AT_BAT.pitch, HIT_AT_BAT.swing, state, ROSTER, board()),
-    ).toThrow(error)
+    expect(() => resolveDuelAtBat(HIT_AT_BAT, state, ROSTER, board())).toThrow(error)
   })
 })
 
