@@ -108,14 +108,24 @@ function CommitTurn({ game, turn, atBatKey, onNotice }: CommitTurnProps) {
 interface RevealTurnProps {
   atBat: ResolvedAtBatView
   game: LiveGameView
-  onAdvance: () => void
+  /** The viewer is done with this reveal; it is handed the at-bat it showed. */
+  onAdvance: (shown: ResolvedAtBatView) => void
 }
 
-/** The reveal of a resolved at-bat, rendered from the server's record of it. */
+/**
+ * The reveal of a resolved at-bat, rendered from the server's record of it.
+ *
+ * It pins the at-bat it opened on. `getLastAtBat` moves on whenever a newer one
+ * resolves — from another tab or device on the same account, since nothing
+ * resolves without the viewer's own commit — and a reveal must not turn into a
+ * different play part-way through. The caller re-keys this component to reveal
+ * the newer at-bat afterwards.
+ */
 function RevealTurn({ atBat, game, onAdvance }: RevealTurnProps) {
+  const [shown] = useState(atBat)
   const [replayKey, setReplayKey] = useState(0)
   const { home, away } = game
-  const scenario = useMemo(() => revealOf(atBat, { home, away }), [atBat, home, away])
+  const scenario = useMemo(() => revealOf(shown, { home, away }), [shown, home, away])
   return (
     <RevealMotion
       key={replayKey}
@@ -123,8 +133,10 @@ function RevealTurn({ atBat, game, onAdvance }: RevealTurnProps) {
       onReplay={() => {
         setReplayKey((k) => k + 1)
       }}
-      onAdvance={onAdvance}
-      advanceLabel={atBat.endedHalf ? 'END OF HALF →' : 'NEXT BATTER →'}
+      onAdvance={() => {
+        onAdvance(shown)
+      }}
+      advanceLabel={shown.endedHalf ? 'END OF HALF →' : 'NEXT BATTER →'}
     />
   )
 }
@@ -168,14 +180,16 @@ function LiveGameScreens({
   }
 
   if (lastAtBat && lastAtBat.sequence > dismissed) {
-    const advance = () => {
-      setDismissed(lastAtBat.sequence)
+    const advance = (shown: ResolvedAtBatView) => {
+      setDismissed(shown.sequence)
       setNotice(null)
-      if (lastAtBat.endedHalf) setSummary(halfSummaryOf(lastAtBat))
+      if (shown.endedHalf) setSummary(halfSummaryOf(shown))
     }
     return (
       <DuelFrame notice={null}>
-        <RevealTurn atBat={lastAtBat} game={game} onAdvance={advance} />
+        {/* Keyed by what has been dismissed: advancing past one reveal mounts a
+            fresh one for whatever resolved while it played. */}
+        <RevealTurn key={dismissed} atBat={lastAtBat} game={game} onAdvance={advance} />
       </DuelFrame>
     )
   }

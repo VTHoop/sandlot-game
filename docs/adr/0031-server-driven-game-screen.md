@@ -95,6 +95,10 @@ builders (`buildReveal`, `buildMatchup`) with that path, not the loop.
 - A new public query, `atBatView.getLastAtBat`, participant-gated, reading the
   `atBats` log and never `duelCommitments`.
 - A viewer who reloads during a reveal does not see that reveal again.
+- A reveal pins the at-bat it opened on. `getLastAtBat` names only the latest, so
+  if more than one at-bat resolves while a reveal plays — possible only from
+  another tab or device on the same account — the watched one finishes, the
+  latest is revealed next, and any in between are not shown.
 - The final at-bat of a game is not revealed on this screen: the game is `final`
   by the time it would show, and how a final game renders is SAN-67's.
 - The half summary is a dead end until SAN-67; the next half is a reload away.
