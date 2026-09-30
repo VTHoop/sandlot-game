@@ -266,13 +266,42 @@ async function clubView(ctx: Ctx, id: Id<'teams'>): Promise<ClubView> {
  * A game's whole at-bat log, in order. Rebuilding totals from it per read is the
  * always-correct option at a six-inning game's log length. If it ever stops being
  * cheap, the maintained `boxScoreLine` rollup is where the totals belong
- * (ADR-0004) — not a field on the live row.
+ * (ADR-0004) — not a field on the live row. Shared with the resolved at-bat read
+ * model, which folds the same log.
  */
-function atBatLog(ctx: Ctx, game: Id<'games'>): Promise<Doc<'atBats'>[]> {
+export function atBatLog(ctx: Ctx, game: Id<'games'>): Promise<Doc<'atBats'>[]> {
   return ctx.db
     .query('atBats')
     .withIndex('by_game', (q) => q.eq('game', game))
     .collect()
+}
+
+/** A logged at-bat's half as the engine's enum; the persisted literal equals the
+ * enum's value, so the cast relabels only. */
+export const halfOf = (atBat: Doc<'atBats'>): Half => atBat.half as Half
+
+/** A club pair with `amount` added to the club that batted this at-bat — away in
+ * the top half, home in the bottom (SAN-21). */
+export function creditBatting(
+  totals: ClubTotals,
+  atBat: Doc<'atBats'>,
+  amount: number,
+): ClubTotals {
+  return halfOf(atBat) === Half.Top
+    ? { home: totals.home, away: totals.away + amount }
+    : { home: totals.home + amount, away: totals.away }
+}
+
+/** 1 for an at-bat that went for a hit, else 0. */
+export const hitsOf = (atBat: Doc<'atBats'>): number => (isHitBand(atBat.outcome) ? 1 : 0)
+
+/** The logged at-bats of one half. */
+export function rowsInHalf(
+  log: readonly Doc<'atBats'>[],
+  inning: number,
+  half: Half,
+): Doc<'atBats'>[] {
+  return log.filter((atBat) => atBat.inning === inning && halfOf(atBat) === half)
 }
 
 /**
@@ -282,23 +311,17 @@ function atBatLog(ctx: Ctx, game: Id<'games'>): Promise<Doc<'atBats'>[]> {
  * which names the club that was batting (top = away, SAN-21).
  */
 function hitTotalsOf(log: readonly Doc<'atBats'>[]): ClubTotals {
-  return log.reduce<ClubTotals>(
-    (totals, atBat) => {
-      if (!isHitBand(atBat.outcome)) return totals
-      // The persisted literal equals the enum's value; the cast relabels only.
-      return (atBat.half as Half) === Half.Top
-        ? { home: totals.home, away: totals.away + 1 }
-        : { home: totals.home + 1, away: totals.away }
-    },
-    { home: 0, away: 0 },
-  )
+  return log.reduce<ClubTotals>((totals, atBat) => creditBatting(totals, atBat, hitsOf(atBat)), {
+    home: 0,
+    away: 0,
+  })
 }
 
 /** The runs scored in one half, or null when the log has no row for it — the
  * half was never played. A played half always has a row: it takes three outs,
  * or a walk-off's winning run, to end one. */
 function halfRuns(log: readonly Doc<'atBats'>[], inning: number, half: Half): number | null {
-  const rows = log.filter((atBat) => atBat.inning === inning && (atBat.half as Half) === half)
+  const rows = rowsInHalf(log, inning, half)
   if (!rows.length) return null
   return rows.reduce((runs, atBat) => runs + atBat.runsScored, 0)
 }
