@@ -180,6 +180,28 @@ export function revealOf(
   })
 }
 
+/** Where advancing past a reveal leads. */
+export enum RevealAdvance {
+  /** The next at-bat — or the next reveal, if another resolved meanwhile. */
+  NextBatter = 'next-batter',
+  /** The half's summary. */
+  EndOfHalf = 'end-of-half',
+  /** The game-over screen. */
+  FinalScore = 'final-score',
+}
+
+/**
+ * Where advancing past the reveal of `shown` leads, given the latest resolved
+ * at-bat and the game's status.
+ */
+export function revealAdvanceOf(
+  _shown: ResolvedAtBatView,
+  _latest: ResolvedAtBatView,
+  _game: Pick<PlayedGameView, 'status'>,
+): RevealAdvance {
+  return RevealAdvance.NextBatter
+}
+
 /** The half now open and the club batting in it. */
 export interface SideChange {
   inning: number
