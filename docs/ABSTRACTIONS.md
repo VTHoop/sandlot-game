@@ -71,7 +71,7 @@ at a URL.
 |---|---|---|
 | `/design` | anyone, signed out too | the code-split showcase — **outside** the gate, never linked |
 | `/` | signed in + provisioned | `Landing`: wordmark, "open your game's link" hint, Clerk `<UserButton>` (sign-out lives there) |
-| `/game/:id` | signed in + provisioned | `GameScreen` (SAN-39): loading while `getGame` is pending; a redirect to `/` on `null` (missing and not-yours stay indistinguishable, ADR-0025); `StartGame` for a scheduled game; the code-split `LiveGame` — the duel — for a live one; a placeholder for a final one (SAN-67) |
+| `/game/:id` | signed in + provisioned | `GameScreen` (SAN-39): loading while `getGame` is pending; a redirect to `/` on `null` (missing and not-yours stay indistinguishable, ADR-0025); `StartGame` for a scheduled game; the code-split `LiveGame` — the duel, ending on the game-over screen — for a live or final one, rendered as the same element for both so a game that ends on screen keeps its instance (SAN-67) |
 | `*` | signed in + provisioned | `NotFound`, with a link home |
 
 **`AuthGate` is a layout route** — everything but `/design` is its child, so no
@@ -97,10 +97,11 @@ what keeps a 375px phone free of horizontal scroll. `HomeLink` is a router
 `<Link>` wearing `buttonClassName('surface')`, so it looks like a button and
 stays a link.
 
-## The live game (`src/shell/LiveGame.tsx` + `src/duel/liveDuel.ts`, SAN-39, ADR-0031)
+## The live game (`src/shell/LiveGame.tsx` + `src/duel/liveDuel.ts`, SAN-39, SAN-67, ADR-0031, ADR-0032)
 
-`/game/:id` for a live game is **server-driven**: which screen shows is a function
-of two subscriptions, and the client keeps nothing the server could tell it.
+`/game/:id` for a live game is **server-driven** from the first pitch to the
+final: which screen shows is a function of two subscriptions, and the client
+keeps nothing the server could tell it.
 
 - **`getGame`** gives the situation, the locks and `viewerOwns`; **`getLastAtBat`**
   gives the reveal. `getActiveDuel` is not subscribed to — its resolved view does
@@ -110,20 +111,36 @@ of two subscriptions, and the client keeps nothing the server could tell it.
   not locked → `Commit` (pitcher first, for an owner of both); otherwise
   `Waiting` on the seat still out. It takes neither `viewer` nor `viewerSeat`,
   which resolve a two-club owner to one side. `situationOf` / `matchupOf` /
-  `revealOf` / `halfSummaryOf` build the screens' view-models straight off the
-  server's views, through the same `buildReveal` / `buildMatchup` the fixture
-  path uses.
+  `revealOf` / `halfSummaryOf` / `sideChangeOf` build the screens' view-models
+  straight off the server's views, through the same `buildReveal` /
+  `buildMatchup` the fixture path uses.
 - **`LiveGame` owns only what the server cannot know:** which reveal this viewer
   has dismissed (`dismissed`, opened on the at-bat already on the books so a load
   never replays it), whether the half's summary is up, and a notice when a commit
-  did not land. Screen order: summary → an undismissed reveal → the open at-bat.
+  did not land. Screen order: summary (live only) → an undismissed reveal →
+  game-over (final) → the open at-bat. It takes a `PlayedGameView` — live or
+  final — and stays mounted when the game goes final under it (ADR-0032).
 - **A commit is one seat, one mutation** (`commitPitch` / `commitSwing`), and the
   screen then waits for the subscription — it never advances itself. A refused
   commit shows the server's `reason` (ADR-0026); any other failure shows "Couldn't
   send your number. Try again."; either remounts the entry empty, and the turn
   follows whatever the locks say.
-- **The half summary is where it stops.** After the third out's reveal the summary
-  shows with no action; the next half is a reload away until SAN-67.
+- **Between halves** (SAN-67): after the third out's reveal, `HalfSummaryCard`
+  shows the half's runs and hits plus its `next` — the side change
+  (`sideChangeOf`: the half the server has already opened and the club batting
+  in it) and CONTINUE, which takes focus. It stays until tapped. There is no
+  between-halves server state (ADR-0017), so a reload lands on the next half's
+  first at-bat, not the card.
+- **The end** (SAN-67): the game-ending at-bat — the latest one of a `final`
+  game, since a walk-off ends no half by outs — reveals with FINAL SCORE →, then
+  `GameOver`; no half card follows the last half. A reload after the final lands
+  on `GameOver` without replaying.
+- **`GameOver`** (`src/shell/GameOver.tsx`): FINAL (focused on arrival),
+  "<winner> win", the score winner-first, the line score table (a column per
+  inning played, then R and H; "X" for an unplayed half; clubs as row headers
+  named in full) in its own named scroll region, and `HomeLink`. No tie state —
+  a `final` with no winner refuses to render. No rematch: nothing in the app
+  creates a game yet.
 - **Not used here:** `playHalfInning` and `createConvexDuelAdapter`. That loop
   drives both seats from one client holding both numbers; it remains the
   showcase's fixture path (and the hotseat adapter's tests).
@@ -135,7 +152,8 @@ Extracted from the at-bat duel design spike (ADR-0011/0012,
 form controls in screens:
 
 - **`Button`** — variants: `consequence` (the one decisive act per screen),
-  `surface`, `ghost`. Defaults to `type="button"`.
+  `surface`, `ghost`. Defaults to `type="button"`. Forwards its ref, so a screen
+  can hand it focus on arrival.
 - **`ScoreTile`** — scoreboard tile for any committed/displayed number.
 - **`ScoreTileInput`** — the only input for duel numbers (ADR-0014): styled
   `inputMode="numeric"` tile driven by the device keyboard (strips non-digits and
@@ -265,7 +283,7 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
 |---|---|
 | `scheduled` | the matchup — both clubs, and which of them the caller owns (every variant carries this) |
 | `live` | inning · half · outs · runner-aware bases · both scores · both hit totals · the seated batter and pitcher · the next two hitters due up · the caller's seat · the two lock booleans |
-| `final` | both scores · both hit totals · the winning club |
+| `final` | both scores · both hit totals · the winning club · the line score (runs by inning) |
 
 - **There is no perspective.** Every number is absolute (`home`/`away`), so
   the situation itself — score, hits, bases, seats, inning, locks — is the same
@@ -286,6 +304,14 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
   wraps — the ninth hitter is always followed by the leadoff man. It is here
   because `MatchupCard` renders its DUE UP header unconditionally: without it the
   server path would read poorer than the fixture path it replaces.
+- **`lineScore` is runs by inning** (SAN-67), folded from the at-bat log on the
+  same read as the hit totals: one `InningLine` (`{ inning, away, home }`) per
+  inning the log reaches, extras included (no cap, ADR-0017). `home` is `null`
+  when the bottom half has no rows — never played, because the home club already
+  led — and a screen renders it "X". A top half with no rows cannot happen in
+  play, so a log that skips one refuses rather than rendering an inning nobody
+  played. Runs only: the secrecy test asserts no committed number reaches the
+  final view.
 - **No committed number is reachable from here, structurally.** The module never
   queries `duelCommitments`; it calls `atBat.duelLocks` and gets two booleans.
   The locks reset on their own — they are read at the current at-bat ordinal, and
