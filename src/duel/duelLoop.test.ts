@@ -74,7 +74,10 @@ function fakeReveal(outcome: OutcomeKey, runsScored = 0): RevealScenario {
  * fires. It records the committed (pitch, swing) pairs so a test can assert what
  * flowed into resolution.
  */
-function fakeAdapter(reveals: RevealScenario[]): {
+function fakeAdapter(
+  reveals: RevealScenario[],
+  after: Partial<LiveGameState> = {},
+): {
   adapter: DuelAdapter
   commits: Array<{ pitch: number; swing: number }>
 } {
@@ -84,7 +87,7 @@ function fakeAdapter(reveals: RevealScenario[]): {
   // index (which would trip the object-injection sink) or mutating the argument.
   const queue = [...reveals]
   const adapter: DuelAdapter = {
-    state: () => (queue.length === 0 ? { ...liveTop(), half: Half.Bottom } : liveTop()),
+    state: () => (queue.length === 0 ? { ...liveTop(), half: Half.Bottom, ...after } : liveTop()),
     hits: () => ({ ...hits }),
     clubs: () => CLUBS,
     playAtBat: (pitch, swing) => {
@@ -134,7 +137,26 @@ describe('playHalfInning', () => {
 
     const summary = await playHalfInning(adapter, ROSTER, agents, silentGate)
 
-    expect(summary).toEqual({ half: 'TOP', inning: 1, runs: 1, hits: 2 })
+    expect(summary).toEqual({
+      half: 'TOP',
+      inning: 1,
+      runs: 1,
+      hits: 2,
+      clubs: CLUBS,
+      score: { away: 0, home: 0 },
+    })
+  })
+
+  it('reports the game score the half left, from the adapter’s state (SAN-70)', async () => {
+    const agents = flatAgents(400, 300)
+    const { adapter } = fakeAdapter([fakeReveal('HR', 1), fakeReveal('K')], {
+      awayScore: 3,
+      homeScore: 2,
+    })
+
+    const summary = await playHalfInning(adapter, ROSTER, agents, silentGate)
+
+    expect(summary).toMatchObject({ clubs: CLUBS, score: { away: 3, home: 2 } })
   })
 
   it('marks only the at-bat that ends the half as the final of the half', async () => {

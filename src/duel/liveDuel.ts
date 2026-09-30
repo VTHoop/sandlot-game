@@ -5,7 +5,13 @@ import { buildMatchup, buildReveal, halfLabel } from './adapter'
 import { clubLabels, toRosterPlayer } from './convexAdapter'
 import type { HalfSummary } from './duelLoop'
 import type { DuelMatchup } from './MatchupCard'
-import { type DuelSituation, FieldSpot, type RevealScenario, type RunnerOnBase } from './scenario'
+import {
+  type DuelSituation,
+  FieldSpot,
+  type RevealScenario,
+  type RunnerOnBase,
+  scoreAfter,
+} from './scenario'
 import { DuelSeat } from './seatAgent'
 
 /**
@@ -232,12 +238,20 @@ export function sideChangeOf(view: LiveGameView): SideChange {
   }
 }
 
-/** The end-of-half card for the half this at-bat closed, from the server's totals. */
-export function halfSummaryOf(atBat: ResolvedAtBatView): HalfSummary {
+/** The end-of-half card for the half this at-bat closed, from the server's record of it. */
+export function halfSummaryOf(
+  atBat: ResolvedAtBatView,
+  clubs: { away: ClubView; home: ClubView },
+): HalfSummary {
+  const half = halfLabel(atBat.half)
   return {
-    half: halfLabel(atBat.half),
+    half,
     inning: atBat.inning,
     runs: atBat.halfTotals.runs,
     hits: atBat.halfTotals.hits,
+    clubs: clubLabels(clubs),
+    // From the at-bat, not the live score: the card is about the half this
+    // at-bat closed, whatever has resolved since.
+    score: scoreAfter({ half, scoreBefore: atBat.scoreBefore, runsScored: atBat.runsScored }),
   }
 }

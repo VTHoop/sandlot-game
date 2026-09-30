@@ -20,6 +20,9 @@ beforeAll(() => {
 
 afterEach(cleanup)
 
+/** The half card's heading: its inning line (SAN-70 dropped the END OF HALF title). */
+const HALF_CARD = /· in the books$/
+
 // A leadoff-grade hitter versus the H. MARSH arm block: pitch 500 / swing 113 is
 // the exact pair the adapter suite probes to a strikeout (diff 387 → K), so three
 // of them end the half deterministically. One batter per side keeps it wrapping
@@ -102,7 +105,7 @@ describe('DuelPlay', () => {
       await advancePastReveal()
     }
 
-    await screen.findByText('END OF HALF')
+    await screen.findByRole('heading', { name: HALF_CARD })
     // One batter, struck out thrice: no runs, no hits.
     expect(screen.getByText('RUNS')).toBeTruthy()
     expect(screen.getByText('HITS')).toBeTruthy()
@@ -124,7 +127,7 @@ describe('DuelPlay', () => {
     // Back to the top of the half: the pitcher seat is on the clock with a fresh entry.
     const input = await screen.findByLabelText<HTMLInputElement>(/your number/i)
     expect(input.value).toBe('')
-    expect(screen.queryByText('END OF HALF')).toBeNull()
+    expect(screen.queryByRole('heading', { name: HALF_CARD })).toBeNull()
   })
 
   it('sets a seat to bot so the human never fills it (human-vs-bot)', async () => {
@@ -150,7 +153,7 @@ describe('DuelPlay', () => {
     fireEvent.click(screen.getByRole('button', { name: /set pitcher to bot/i }))
     fireEvent.click(screen.getByRole('button', { name: /set batter to bot/i }))
 
-    await screen.findByText('END OF HALF')
+    await screen.findByRole('heading', { name: HALF_CARD })
     // No commit screen was ever shown for the bot-vs-bot half.
     expect(screen.queryByLabelText(/your number/i)).toBeNull()
   })
@@ -175,7 +178,7 @@ describe('DuelPlay', () => {
       if (endsHalf) break
     }
 
-    await screen.findByText('END OF HALF')
+    await screen.findByRole('heading', { name: HALF_CARD })
   })
 
   it('surfaces a loop failure instead of freezing on the last view', async () => {
