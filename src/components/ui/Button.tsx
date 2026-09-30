@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react'
+import { type ButtonHTMLAttributes, forwardRef } from 'react'
 
 export type ButtonVariant = 'consequence' | 'surface' | 'ghost'
 
@@ -26,11 +26,17 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
 }
 
-export function Button({
-  variant = 'surface',
-  className = '',
-  type = 'button',
-  ...rest
-}: ButtonProps) {
-  return <button type={type} className={`${buttonClassName(variant)} ${className}`} {...rest} />
-}
+/** Forwards its ref to the `<button>`, so a screen can hand it focus on arrival. */
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = 'surface', className = '', type = 'button', ...rest },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type}
+      className={`${buttonClassName(variant)} ${className}`}
+      {...rest}
+    />
+  )
+})

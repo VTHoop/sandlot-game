@@ -1,3 +1,4 @@
+import { GameStatus } from '@sandlot/engine/game'
 import { useMutation, useQuery } from 'convex/react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { api } from '../../convex/_generated/api'
@@ -9,7 +10,9 @@ import {
   halfSummaryOf,
   type LiveGameView,
   matchupOf,
+  type PlayedGameView,
   revealOf,
+  sideChangeOf,
   situationOf,
   type Turn,
   TurnKind,
@@ -18,18 +21,22 @@ import {
 import { RevealMotion } from '../duel/RevealMotion'
 import { DuelSeat } from '../duel/seatAgent'
 import { WaitingTurn } from '../duel/WaitingTurn'
+import { GameOver } from './GameOver'
 import { Screen, Waiting } from './Screen'
 import '../duel/duel.css'
 
 /**
- * A live game at `/game/:id` (SAN-39, ADR-0031): the duel's screens, driven by
- * the server.
+ * A game at `/game/:id` from its first pitch to its final (SAN-39, SAN-67,
+ * ADR-0031): the duel's screens, driven by the server, ending on the game-over
+ * screen.
  *
  * Which screen shows is decided from two subscriptions and nothing else —
  * `getGame` for the situation and the locks, `getLastAtBat` for the reveal
  * (`../duel/liveDuel` holds the decisions). This component owns only what the
- * server cannot know: which reveal this viewer has already watched, and what to
- * tell them when a commit did not land. It never resolves an at-bat, never holds
+ * server cannot know: which reveal this viewer has already watched, whether
+ * they have moved past a half's summary, and what to tell them when a commit
+ * did not land. Crossing a half is not one of those — the server has already
+ * opened the next half by the time its summary shows. It never resolves an at-bat, never holds
  * a number that is not the viewer's own, and commits one owned seat at a time
  * through `commitPitch` / `commitSwing`.
  */
@@ -107,9 +114,19 @@ function CommitTurn({ game, turn, atBatKey, onNotice }: CommitTurnProps) {
 
 interface RevealTurnProps {
   atBat: ResolvedAtBatView
-  game: LiveGameView
+  game: PlayedGameView
   /** The viewer is done with this reveal; it is handed the at-bat it showed. */
   onAdvance: (shown: ResolvedAtBatView) => void
+}
+
+/**
+ * Where a reveal's advance goes. The game-ending at-bat is the one that is
+ * latest once the game is final — a walk-off ends no half by outs, so the half
+ * flag alone cannot tell it apart.
+ */
+function advanceLabelOf(shown: ResolvedAtBatView, latest: ResolvedAtBatView, game: PlayedGameView) {
+  if (game.status === GameStatus.Final && shown.sequence === latest.sequence) return 'FINAL SCORE →'
+  return shown.endedHalf ? 'END OF HALF →' : 'NEXT BATTER →'
 }
 
 /**
@@ -136,7 +153,7 @@ function RevealTurn({ atBat, game, onAdvance }: RevealTurnProps) {
       onAdvance={() => {
         onAdvance(shown)
       }}
-      advanceLabel={shown.endedHalf ? 'END OF HALF →' : 'NEXT BATTER →'}
+      advanceLabel={advanceLabelOf(shown, atBat, game)}
     />
   )
 }
@@ -152,14 +169,19 @@ function OpenAtBat({ game, atBatKey, onNotice }: Omit<CommitTurnProps, 'turn'>) 
 }
 
 interface LiveGameProps {
-  game: LiveGameView
+  game: PlayedGameView
 }
 
 /**
  * The screens, once both subscriptions have answered. `dismissed` opens on the
  * at-bat already on the books, so loading the page never replays it: the viewer
  * lands on the at-bat that is open (SAN-39's "whose turn is unambiguous on
- * load"). An at-bat that resolves after that is one they have not seen.
+ * load") — or, for a finished game, on the game-over screen. An at-bat that
+ * resolves after that is one they have not seen.
+ *
+ * The same instance carries on when the game goes final under it, which is how
+ * the game-ending at-bat is revealed before the game-over screen (SAN-67): the
+ * screen does not remount, so that at-bat is still one this viewer has not seen.
  */
 function LiveGameScreens({
   game,
@@ -169,12 +191,18 @@ function LiveGameScreens({
   const [summary, setSummary] = useState<HalfSummary | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  // The half is over and its summary is where this screen stops; carrying on to
-  // the next half is SAN-67's.
-  if (summary) {
+  // A half is over: its summary, and the side change into the half the server
+  // has already opened. It stays until the viewer continues.
+  if (summary && game.status === GameStatus.Live) {
+    const next = {
+      change: sideChangeOf(game),
+      onContinue: () => {
+        setSummary(null)
+      },
+    }
     return (
       <DuelFrame notice={null}>
-        <HalfSummaryCard summary={summary} />
+        <HalfSummaryCard summary={summary} next={next} />
       </DuelFrame>
     )
   }
@@ -183,7 +211,8 @@ function LiveGameScreens({
     const advance = (shown: ResolvedAtBatView) => {
       setDismissed(shown.sequence)
       setNotice(null)
-      if (shown.endedHalf) setSummary(halfSummaryOf(shown))
+      // No half card after the game's last half: the game-over screen follows.
+      if (shown.endedHalf && game.status === GameStatus.Live) setSummary(halfSummaryOf(shown))
     }
     return (
       <DuelFrame notice={null}>
@@ -193,6 +222,8 @@ function LiveGameScreens({
       </DuelFrame>
     )
   }
+
+  if (game.status === GameStatus.Final) return <GameOver game={game} />
 
   return (
     <DuelFrame notice={notice}>

@@ -28,6 +28,13 @@ import { DuelSeat } from './seatAgent'
 /** A live game as the read model returns it. */
 export type LiveGameView = Extract<GameView, { status: GameStatus.Live }>
 
+/** A finished game as the read model returns it. */
+export type FinalGameView = Extract<GameView, { status: GameStatus.Final }>
+
+/** A game that has been played at all: `/game/:id`'s duel screens, from the first
+ * pitch through the game-over screen they end on. */
+export type PlayedGameView = LiveGameView | FinalGameView
+
 /** What this client should be doing about the at-bat now open. */
 export enum TurnKind {
   /** A seat this viewer drives has not locked: ask them for its number. */
@@ -171,6 +178,28 @@ export function revealOf(
       hits: { away: atBat.hitsBefore.away, home: atBat.hitsBefore.home },
     },
   })
+}
+
+/** The half now open and the club batting in it. */
+export interface SideChange {
+  inning: number
+  half: ReturnType<typeof halfLabel>
+  /** The batting club's name. */
+  batting: string
+}
+
+/**
+ * The side change the end-of-half card announces: the half now open and the club
+ * batting in it. Read off the server's live state, which has already turned the
+ * half over by the time the card shows (ADR-0017) — never counted forward from
+ * the half that ended.
+ */
+export function sideChangeOf(view: LiveGameView): SideChange {
+  return {
+    inning: view.inning,
+    half: halfLabel(view.half),
+    batting: view.half === Half.Top ? view.away.name : view.home.name,
+  }
 }
 
 /** The end-of-half card for the half this at-bat closed, from the server's totals. */
