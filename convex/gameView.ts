@@ -28,9 +28,9 @@ import { type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
  * so the situation itself reads the same for both participants. Exactly three
  * fields are resolved per caller: `viewer` (the one side they read as),
  * `viewerOwns` (every club they own — both, for the hotseat) and, while live,
- * `viewerSeat`. The client flips the shared half against those. The prototype
- * adapter keys "you" off the batting side (`src/design/duel/adapter.ts` module
- * header); that is the `viewer` input it was waiting for.
+ * `viewerSeat`. The duel's view-models stay absolute too (ADR-0030): the client
+ * does not translate these totals into "you"/"them", and reads the per-caller
+ * fields only to decide which seats it drives.
  */
 
 /** Which club of the matchup a value belongs to. */
@@ -251,7 +251,7 @@ async function clubView(ctx: Ctx, id: Id<'teams'>): Promise<ClubView> {
 
 /**
  * Each club's hits, folded out of the at-bat log. Nothing on the `games` row
- * tracks them — the prototype kept them in adapter memory (`rollHitTotals`) — and
+ * tracks them — the fixture adapter keeps its own running count in memory — and
  * the log already records both the outcome band and the half it was struck in,
  * which names the club that was batting (top = away, SAN-21).
  *

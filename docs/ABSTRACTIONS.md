@@ -236,13 +236,13 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
 | `live` | inning · half · outs · runner-aware bases · both scores · both hit totals · the seated batter and pitcher · the next two hitters due up · the caller's seat · the two lock booleans |
 | `final` | both scores · both hit totals · the winning club |
 
-- **Perspective is the client's.** Every number is absolute (`home`/`away`), so
+- **There is no perspective.** Every number is absolute (`home`/`away`), so
   the situation itself — score, hits, bases, seats, inning, locks — is the same
-  for both participants. Exactly three fields are resolved per caller: the one
+  for both participants, and the duel's view-models keep it that way (ADR-0030):
+  nothing downstream turns these into "you" and "them". Exactly three fields are resolved per caller: the one
   side they read as (`viewer`), every club they own (`viewerOwns`, two flags)
   and, while live, whether the `viewer` club is batting or pitching
-  (`viewerSeat`). The client flips the shared half against those — this is the
-  `viewer` input the duel adapter's module header was waiting for. A caller who
+  (`viewerSeat`). A caller who
   owns *both* clubs (the one-account hotseat, ADR-0028) reads as the home side,
   so `viewer` alone cannot tell them from a home-side player; `viewerOwns` can,
   and it is what decides which seats a client drives (SAN-39).
@@ -442,33 +442,43 @@ the adapter fills exactly that gap:
   the roster fixture call, so no layer restates it. The engine gains no roster by
   owning it: it is handed one attribute block and still knows nothing about ids
   (ADR-0009).
-- **`resolveDuelAtBat(pitch, swing, state, roster, hitsBefore?)`** — reads the
+- **`resolveDuelAtBat(pitch, swing, state, roster, board)`** — reads the
   seated batter/pitcher from the live state, resolves through the authoritative
   engine, and returns both an `AppliedAtBat` (for `advance`) and a
-  `RevealScenario` (for the reveal).
-- **Perspective (scope, not law).** `RevealScenario` is a view-model: `you` /
-  `them` / `opponent` / `scoreBefore` are relative to *the side the reveal is
-  rendered for*. SAN-45 fixes that side to the **batter** (a single half-inning —
-  the at-bat is the batter's moment), so `you` = the batting team. This is **not**
-  permanent: when two-sided async multiplayer lands, the logged-in user owns a team
-  across both halves and "you" becomes *their* side (the pitching team during the
-  opponent's at-bat). The generalization is local to the adapter — add a `viewer`
-  input and key the three perspective-bearing spots (`you`/`them`, `scoreBefore`,
-  `opponent`) off it instead of off the batting side; the engine stays
-  perspective-free and the `RevealScenario` shape is unchanged. Downstream UI must
-  not assume `you === batter` on its own.
+  `RevealScenario` (for the reveal). `board` is what the scoreboard knows and the
+  live state does not: each club's label and its hits so far.
+- **No perspective (SAN-39, ADR-0030).** `RevealScenario` describes an at-bat by
+  what happened, not by who is looking: `pitch` / `swing`, `pitcher` / `batter`
+  (names), `clubs` (scoreboard labels), and `scoreBefore` / `hitsBefore` keyed
+  `away` / `home`. `half` says which club batted (top = away). The same scenario
+  is therefore correct for the club that batted, the club that pitched, and an
+  owner of both — it was once rendered *for the batter* (`you` / `them` /
+  `opponent`), which held for one hotseat half-inning and for nothing after it.
+  Do not reintroduce a viewer-relative field; a screen that wants to mark "yours"
+  reads `getGame`'s `viewerOwns` on top of these shapes. Helpers in `scenario.ts`
+  keep the screens in step: `clubLabel` (first three letters of a club's name —
+  a stand-in until SAN-68), `scoreboardLines` (the away/home rows),
+  `matchupTitle` ("HAR @ RID"), and `committerOf` / `oppositeSeat` (who sits in a
+  seat, and what they owe: the pitcher's pitch, the batter's swing).
+- **Drama takes the batting club's side, and only that.** `deriveDrama` judges a
+  lead change, tie, or walk-off from the club at bat — the one that can score on
+  the play — and names it by label ("LEAD CHANGE — RID LEADS 5–4"). Its inning
+  thresholds read the engine's `REGULATION_INNINGS`: a walk-off needs the bottom
+  of the last regulation inning or later, and "late" is the last two.
 - **Hit count + scoreline (the engine provides neither).** `accumulateHits`
-  credits the batting team on a hit; `deriveScoreline` composes the reveal's line
-  from the resolved outcome and base movement (runs in + where the batter landed).
-  `createDuelAdapter(roster, context)` threads the live state through `advance`
-  and tracks the running hit count across at-bats.
+  credits the club that was batting on a hit (away in the top half, home in the
+  bottom); `deriveScoreline` composes the reveal's line from the resolved outcome
+  and base movement, naming the batter in the third person ("1 run scores ·
+  R. VANCE stands on 2nd"). `createDuelAdapter(roster, context, clubNames)`
+  threads the live state through `advance` and tracks each club's running hit
+  count across at-bats; the totals are absolute, so a half boundary moves nothing.
 - **`OUTCOME_KEY_BY_BAND` / `toOutcomeKey`** — maps engine `OutcomeBandKey` → UI
   `OutcomeKey`. The two enums are identical today (the ladder is sourced from the
   engine), so it is an explicit identity map, but a `Record` forces all ten keys
   at compile time and a mirror test asserts coverage, so an unmapped outcome fails
   loudly rather than silently mis-displaying.
 - **`DuelAdapter` — what the loop drives, and all it may assume (SAN-57).**
-  `state()` and `hits()` are synchronous; `playAtBat` is sync **or** a promise, so
+  `state()`, `hits()` and `clubs()` are synchronous; `playAtBat` is sync **or** a promise, so
   the loop awaits it and drives either implementation without branching.
   `state()` returns `DuelState`, a subset of the engine's `LiveGameState`: the
   batting-order pointers and the applied-sequence marker are the authoritative
@@ -476,23 +486,21 @@ the adapter fills exactly that gap:
   them would force the Convex adapter to invent two numbers no consumer reads.
   `createDuelAdapter` keeps its own richer `InMemoryDuelAdapter` — the fixture
   path holds the whole envelope and loses nothing.
-- **`buildReveal` / `buildMatchup` / `byBattingSide` / `baseRunningSpeed`.** The
-  perspective-bearing pieces both paths share. `buildReveal` takes `ResolvedFacts`
-  — outcome, ground-ball sub-result, runs, outs, bases — which the engine's
-  `ResolvedAtBat` and the server's resolved duel view both satisfy, so the server
-  path renders through the same builder rather than a parallel copy of it.
-  `byBattingSide` is the single home/away → `you`/`opp` split, used for scores and
-  hit totals alike so a half boundary can never flip one and not the other.
-- **`deriveSituation(state, hits, roster)` / `deriveMatchup(state, roster, context)`
+- **`buildReveal` / `buildMatchup` / `baseRunningSpeed`.** The pieces both paths
+  share. `buildReveal` takes `ResolvedFacts` — outcome, ground-ball sub-result,
+  runs, outs, bases — which the engine's `ResolvedAtBat` and the server's resolved
+  duel view both satisfy, so the server path renders through the same builder
+  rather than a parallel copy of it. It also takes the at-bat's `players` and the
+  `board`, and translates nothing: totals go in away/home and come out away/home.
+- **`deriveSituation(state, board, roster)` / `deriveMatchup(state, roster, context)`
   (SAN-47).** The commit screen's inputs, read from live state rather than
   fixtures. `deriveSituation` returns a `DuelSituation` — the non-secret subset that
   structurally excludes both duel numbers (secret-state law); since SAN-51 it also
   carries `runnersOn`, the live base occupancy (lead order, occupancy only — never
-  runner identity), so the commit/waiting field draws the real diamond. `deriveMatchup` mirrors
-  the live pitcher-vs-batter matchup for both seats (hotseat casts the batting side as
-  "you"; `DuelCommit.orientSeat` flips it per seat) and maps engine attribute blocks
-  to the UI's pip labels. Both live in the adapter because they are perspective-bearing
-  (see above) — the UI never decides `you`.
+  runner identity), so the commit/waiting field draws the real diamond. It is the
+  same for either seat. `deriveMatchup` names the one real pitcher-vs-batter
+  matchup (`{ pitcher, batter, dueUp }`) and maps engine attribute blocks to the
+  UI's pip labels.
 
 ## Hotseat half-inning (SAN-47)
 
@@ -577,9 +585,9 @@ route until SAN-39 — its tests are the acceptance surface.
   live `ReadonlyMap` that the boundary keeps current as the seats change, because
   `playHalfInning` takes the handle once and holds it for the whole half.
 - **Hit totals need no running count.** The server sends both clubs' absolute
-  totals; `byBattingSide` splits them off the cached half, so they flip on their
-  own when the half does — agreeing with the in-memory path's `rollHitTotals`
-  across a half boundary without a second counter to keep in step.
+  totals and the adapter hands them straight through (ADR-0030) — nothing to
+  split, nothing to flip at a half boundary, and no second counter to keep in
+  step with the in-memory path.
 - **A finished game keeps its last live situation.** The final read carries no
   inning, outs, bases or seats, so the last live snapshot stands where it stopped
   with the authoritative score written over it and nobody seated — the shape the

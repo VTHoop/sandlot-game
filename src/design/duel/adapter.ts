@@ -218,11 +218,12 @@ export function toOutcomeKey(band: OutcomeBandKey): OutcomeKey {
 
 // ── Scoreline derivation ────────────────────────────────────────────────────
 
+/** What the batter did when they made an out, in the third person. */
 const OUT_PHRASE: ReadonlyMap<OutcomeKey, string> = new Map([
-  ['FO', 'you fly out'],
-  ['PO', 'you pop out'],
-  ['GB', 'you ground out'],
-  ['K', 'you strike out'],
+  ['FO', 'flies out'],
+  ['PO', 'pops out'],
+  ['GB', 'grounds out'],
+  ['K', 'strikes out'],
 ])
 
 /** Where the batter ended up, read from the post-state bases (null = scored or out). */
@@ -238,16 +239,20 @@ function runsClause(runsScored: number): string | null {
   return runsScored === 1 ? '1 run scores' : `${runsScored} runs score`
 }
 
-function batterClause(outcome: OutcomeKey, landing: string | null): string {
-  if (landing) return outcome === 'BB' ? `you reach ${landing}` : `you stand on ${landing}`
-  if (isHit(outcome)) return 'you go yard'
-  return OUT_PHRASE.get(outcome) ?? 'you are out'
+/** What became of the batter, as a verb phrase for their name to lead. */
+function batterVerb(outcome: OutcomeKey, landing: string | null): string {
+  if (landing) return outcome === 'BB' ? `reaches ${landing}` : `stands on ${landing}`
+  if (isHit(outcome)) return 'goes yard'
+  return OUT_PHRASE.get(outcome) ?? 'is out'
 }
 
 /**
  * Derive the reveal's scoreline from the resolved outcome and base movement (the
- * engine produces neither): the runs that crossed the plate plus where the batter
- * ended up, joined into one line — e.g. "1 run scores · you stand on 2nd".
+ * engine produces neither): the runs that crossed the plate plus what became of
+ * the batter, joined into one line — e.g. "1 run scores · R. VANCE stands on 2nd".
+ *
+ * The batter is named rather than addressed as "you", so the line is true for
+ * whoever reads it (SAN-39, ADR-0030).
  */
 export function deriveScoreline(params: {
   outcome: OutcomeKey
@@ -258,8 +263,8 @@ export function deriveScoreline(params: {
   batterName: string
 }): string {
   const landing = batterLanding(params.basesAfter, params.batter)
-  const clauses = [runsClause(params.runsScored), batterClause(params.outcome, landing)]
-  return clauses.filter((c): c is string => c !== null).join(' · ')
+  const batterClause = `${params.batterName} ${batterVerb(params.outcome, landing)}`
+  return [runsClause(params.runsScored), batterClause].filter((c) => c !== null).join(' · ')
 }
 
 // ── Headline (the reveal's shouted result) ───────────────────────────────────
