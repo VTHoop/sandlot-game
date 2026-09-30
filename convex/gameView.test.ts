@@ -583,3 +583,197 @@ describe('getGame — final', () => {
     expect(await read(t, STRANGER, game)).toBeNull()
   })
 })
+
+/** One half of a line score as the test states it: the batting club's runs, or
+ * null for a bottom half that was never played. */
+type HalfRuns = number | null
+
+/**
+ * Log one at-bat per played half, in batting order, straight into the `atBats`
+ * log, then seal the game. A half's whole run total rides on its one row; the
+ * line score reads runs by (inning, half), so how many rows a half took does not
+ * matter to it. `[away, home]` per inning; a null home half gets no row.
+ */
+async function finishWithLine(seed: Seed & { t: Harness }, line: [number, HalfRuns][]) {
+  const { t, game } = seed
+  await t.run(async (ctx) => {
+    let sequence = 0
+    const logHalf = (inning: number, half: 'top' | 'bottom', runs: number) =>
+      ctx.db.insert('atBats', {
+        game,
+        sequence: sequence++,
+        inning,
+        half,
+        batter: half === 'top' ? seed.awayLeadoff : seed.homeLeadoff,
+        pitcher: half === 'top' ? seed.homePitcher : seed.awayPitcher,
+        outsBefore: 2,
+        basesBefore: EMPTY_BASES,
+        batterNumber: SWING,
+        pitchNumber: PITCH,
+        outcome: runs > 0 ? 'HR' : 'K',
+        groundBallResult: null,
+        swingType: 'normal',
+        buntResult: null,
+        runsScored: runs,
+        rbi: runs,
+        basesAfter: EMPTY_BASES,
+        outsAfter: runs > 0 ? 2 : 3,
+        createdAt: 0,
+      })
+    for (const [index, [away, home]] of line.entries()) {
+      await logHalf(index + 1, 'top', away)
+      if (home !== null) await logHalf(index + 1, 'bottom', home)
+    }
+    const total = (pick: (inning: [number, HalfRuns]) => HalfRuns) =>
+      line.reduce((sum, inning) => sum + (pick(inning) ?? 0), 0)
+    await ctx.db.patch(game, {
+      status: 'final',
+      awayScore: total(([away]) => away),
+      homeScore: total(([, home]) => home),
+      currentBatter: null,
+      currentPitcher: null,
+    })
+  })
+}
+
+/** The line a test states, as the view should report it. */
+const expectedLine = (line: [number, HalfRuns][]) =>
+  line.map(([away, home], index) => ({ inning: index + 1, away, home }))
+
+describe('getGame — the final line score (SAN-67)', () => {
+  it('reports each club’s runs by inning over a six-inning regulation game', async () => {
+    const seed = await seedScheduledGame()
+    const line: [number, HalfRuns][] = [
+      [0, 1],
+      [2, 0],
+      [0, 0],
+      [1, 3],
+      [0, 0],
+      [1, 1],
+    ]
+    await finishWithLine(seed, line)
+
+    const view = final(await read(seed.t, AWAY, seed.game))
+    expect(view.lineScore).toEqual(expectedLine(line))
+    expect(view.score).toEqual({ away: 4, home: 5 })
+  })
+
+  it('marks the bottom of the last inning unplayed when the home club already led', async () => {
+    const seed = await seedScheduledGame()
+    const line: [number, HalfRuns][] = [
+      [0, 2],
+      [0, 0],
+      [1, 0],
+      [0, 0],
+      [0, 1],
+      [0, null],
+    ]
+    await finishWithLine(seed, line)
+
+    const view = final(await read(seed.t, HOME, seed.game))
+    expect(view.lineScore.at(-1)).toEqual({ inning: 6, away: 0, home: null })
+    expect(view.lineScore).toEqual(expectedLine(line))
+  })
+
+  it('reports a scoreless bottom half that was played as 0, not as unplayed', async () => {
+    const seed = await seedScheduledGame()
+    const line: [number, HalfRuns][] = [
+      [1, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ]
+    await finishWithLine(seed, line)
+
+    const view = final(await read(seed.t, AWAY, seed.game))
+    expect(view.lineScore.at(-1)).toEqual({ inning: 6, away: 0, home: 0 })
+  })
+
+  it('reports a walk-off half with the runs actually scored in it', async () => {
+    const seed = await seedScheduledGame()
+    const line: [number, HalfRuns][] = [
+      [1, 0],
+      [0, 0],
+      [1, 0],
+      [0, 0],
+      [0, 1],
+      [0, 2],
+    ]
+    await finishWithLine(seed, line)
+
+    const view = final(await read(seed.t, AWAY, seed.game))
+    expect(view.lineScore.at(-1)).toEqual({ inning: 6, away: 0, home: 2 })
+  })
+
+  it('grows one inning per extra inning played', async () => {
+    const seed = await seedScheduledGame()
+    const line: [number, HalfRuns][] = [
+      [1, 0],
+      [0, 1],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [2, 1],
+    ]
+    await finishWithLine(seed, line)
+
+    const view = final(await read(seed.t, AWAY, seed.game))
+    expect(view.lineScore).toHaveLength(8)
+    expect(view.lineScore).toEqual(expectedLine(line))
+  })
+
+  it('refuses a log that skips an inning, rather than rendering a line that did not happen', async () => {
+    const seed = await seedScheduledGame()
+    await finishWithLine(seed, [[1, 0]])
+    // A row in the 3rd with nothing in the 2nd: every inning's top half is always
+    // played, so a gap is corrupt state (AGENTS.md: refuse rather than guess).
+    await seed.t.run((ctx) =>
+      ctx.db.insert('atBats', {
+        game: seed.game,
+        sequence: 99,
+        inning: 3,
+        half: 'top',
+        batter: seed.awayLeadoff,
+        pitcher: seed.homePitcher,
+        outsBefore: 0,
+        basesBefore: EMPTY_BASES,
+        batterNumber: SWING,
+        pitchNumber: PITCH,
+        outcome: 'K',
+        groundBallResult: null,
+        swingType: 'normal',
+        buntResult: null,
+        runsScored: 0,
+        rbi: 0,
+        basesAfter: EMPTY_BASES,
+        outsAfter: 1,
+        createdAt: 0,
+      }),
+    )
+
+    await expect(read(seed.t, AWAY, seed.game)).rejects.toThrow(/inning 2/)
+  })
+
+  it('carries runs only — no committed duel number reaches the final view', async () => {
+    const seed = await seedScheduledGame()
+    await seed.t.withIdentity(HOME).mutation(api.game.startGame, { game: seed.game })
+    await seed.t.withIdentity(HOME).mutation(api.atBat.commitPitch, {
+      game: seed.game,
+      number: PITCH,
+    })
+    await seed.t.withIdentity(AWAY).mutation(api.atBat.commitSwing, {
+      game: seed.game,
+      number: SWING,
+    })
+    await seed.t.run((ctx) => ctx.db.patch(seed.game, { status: 'final' }))
+
+    const view = final(await read(seed.t, AWAY, seed.game))
+    expect(view.lineScore).toHaveLength(1)
+    expect(numbersIn(view)).not.toContain(PITCH)
+    expect(numbersIn(view)).not.toContain(SWING)
+  })
+})

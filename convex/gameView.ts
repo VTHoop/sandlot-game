@@ -95,6 +95,18 @@ export interface LockView {
 }
 
 /**
+ * One inning of a finished game's line score: the runs each club scored in its
+ * half. `home` is null when the bottom half was never played — the home club
+ * already led after the top of the last inning — which a line score marks "X".
+ * The away club always bats, so its half is never missing.
+ */
+export interface InningLine {
+  inning: number
+  away: number
+  home: number | null
+}
+
+/**
  * Which of the two clubs the caller owns — both, for the one-account hotseat
  * (ADR-0028). Two named flags rather than a list, so a reader asks for the club
  * it means instead of searching.
@@ -149,6 +161,8 @@ export type GameView =
       hits: ClubTotals
       /** The club that won, or null — see {@link winnerOf}. */
       winner: ClubSide | null
+      /** Runs by inning, first to last, including any extra innings. */
+      lineScore: InningLine[]
     })
 
 // ─── Resolving references to renderable data ────────────────────────────────
@@ -357,6 +371,7 @@ async function finalView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): 
     score: { home: game.homeScore, away: game.awayScore },
     hits: await hitTotals(ctx, game._id),
     winner: winnerOf(game),
+    lineScore: [],
   }
 }
 

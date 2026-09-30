@@ -447,6 +447,7 @@ describe('/game/:id — a finished game', () => {
       score: { home: 3, away: 1 },
       hits: { home: 6, away: 4 },
       winner: null,
+      lineScore: [],
     })
 
     await screen.findByRole('heading', { name: 'Harbor Kingfishers at Ridgeview Rail' })
