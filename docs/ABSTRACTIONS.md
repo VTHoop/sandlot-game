@@ -232,17 +232,20 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
 
 | `status` | carries |
 |---|---|
-| `scheduled` | the matchup — both clubs, and which one the caller owns |
+| `scheduled` | the matchup — both clubs, and which of them the caller owns (every variant carries this) |
 | `live` | inning · half · outs · runner-aware bases · both scores · both hit totals · the seated batter and pitcher · the next two hitters due up · the caller's seat · the two lock booleans |
 | `final` | both scores · both hit totals · the winning club |
 
 - **Perspective is the client's.** Every number is absolute (`home`/`away`), so
   the situation itself — score, hits, bases, seats, inning, locks — is the same
-  for both participants. Exactly two fields are resolved per caller: which club
-  they own (`viewer`) and, while live, whether that club is batting or pitching
-  (`viewerSeat`). The client flips the shared half against those two — this is
-  the `viewer` input the duel adapter's module header was waiting for. A caller
-  who owns *both* clubs (the dev seed's hotseat) reads as the home side.
+  for both participants. Exactly three fields are resolved per caller: the one
+  side they read as (`viewer`), every club they own (`viewerOwns`, two flags)
+  and, while live, whether the `viewer` club is batting or pitching
+  (`viewerSeat`). The client flips the shared half against those — this is the
+  `viewer` input the duel adapter's module header was waiting for. A caller who
+  owns *both* clubs (the one-account hotseat, ADR-0028) reads as the home side,
+  so `viewer` alone cannot tell them from a home-side player; `viewerOwns` can,
+  and it is what decides which seats a client drives (SAN-39).
 - **Seats and runners resolve to renderable data** — `{ id, name }` for anyone on
   the field, plus the attribute block on the batter and pitcher. Runner identity
   is in the model whether or not a screen names one today.

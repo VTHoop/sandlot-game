@@ -25,8 +25,9 @@ import { type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
  * `getActiveDuel`'s to reveal, not this query's.
  *
  * PERSPECTIVE — every number here is ABSOLUTE (home/away), never "you"/"them",
- * so the situation itself reads the same for both participants. Exactly two
- * fields are resolved per caller: `viewer` (which club they own) and, while live,
+ * so the situation itself reads the same for both participants. Exactly three
+ * fields are resolved per caller: `viewer` (the one side they read as),
+ * `viewerOwns` (every club they own — both, for the hotseat) and, while live,
  * `viewerSeat`. The client flips the shared half against those. The prototype
  * adapter keys "you" off the batting side (`src/design/duel/adapter.ts` module
  * header); that is the `viewer` input it was waiting for.
@@ -93,12 +94,28 @@ export interface LockView {
   swingCommitted: boolean
 }
 
+/**
+ * Which of the two clubs the caller owns — both, for the one-account hotseat
+ * (ADR-0028). Two named flags rather than a list, so a reader asks for the club
+ * it means instead of searching.
+ */
+export interface ClubOwnership {
+  home: boolean
+  away: boolean
+}
+
 /** The fields every variant carries, whatever the game's status. */
 interface GameViewCommon {
   id: Id<'games'>
   home: ClubView
   away: ClubView
   viewer: ClubSide
+  /**
+   * Every club the caller owns. `viewer` names ONE side — home, for an owner of
+   * both — so it cannot tell a hotseat from a home-side player. This can, and it
+   * is what a client reads to decide which seats it drives.
+   */
+  viewerOwns: ClubOwnership
 }
 
 /**
@@ -273,18 +290,29 @@ function winnerOf(game: Doc<'games'>): ClubSide | null {
 
 // ─── The gate ───────────────────────────────────────────────────────────────
 
-/**
- * Which club the caller owns, or null when they own neither. Home is checked
- * first, so a caller who owns BOTH clubs — the dev seed's single-owner hotseat —
- * reads as the home side and their seat follows the half like anyone else's.
- */
-async function viewerSideOf(
+/** Which of the game's two clubs the caller owns. The two lookups are
+ * independent, so they go out together. */
+async function ownershipOf(
   ctx: Ctx,
   game: Doc<'games'>,
   user: Doc<'users'>,
-): Promise<ClubSide | null> {
-  if (await ownsTeam(ctx, game.homeTeam, user)) return ClubSide.Home
-  if (await ownsTeam(ctx, game.awayTeam, user)) return ClubSide.Away
+): Promise<ClubOwnership> {
+  const [home, away] = await Promise.all([
+    ownsTeam(ctx, game.homeTeam, user),
+    ownsTeam(ctx, game.awayTeam, user),
+  ])
+  return { home, away }
+}
+
+/**
+ * The one side `viewer` names, or null when the caller owns neither club. Home
+ * wins, so a caller who owns BOTH — the one-account hotseat — reads as the home
+ * side and their seat follows the half like anyone else's. `viewerOwns` is what
+ * tells that caller apart.
+ */
+function viewerSideOf(owns: ClubOwnership): ClubSide | null {
+  if (owns.home) return ClubSide.Home
+  if (owns.away) return ClubSide.Away
   return null
 }
 
@@ -358,14 +386,15 @@ export const getGame = query({
 
     const user = await maybeUser(ctx)
     if (!user) return null
-    const viewer = await viewerSideOf(ctx, game, user)
+    const viewerOwns = await ownershipOf(ctx, game, user)
+    const viewer = viewerSideOf(viewerOwns)
     if (!viewer) return null
 
     const [home, away] = await Promise.all([
       clubView(ctx, game.homeTeam),
       clubView(ctx, game.awayTeam),
     ])
-    const common: GameViewCommon = { id: game._id, home, away, viewer }
+    const common: GameViewCommon = { id: game._id, home, away, viewer, viewerOwns }
 
     // Switched on the persisted literal — the schema layer's domain (AGENTS.md
     // "Enums over magic strings"); the variant it builds carries the enum.

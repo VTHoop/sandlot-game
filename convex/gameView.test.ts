@@ -241,6 +241,7 @@ describe('getGame — scheduled', () => {
       home: { id: homeTeam, name: 'Ridgeview Rail' },
       away: { id: awayTeam, name: 'Harbor Kingfishers' },
       viewer: ClubSide.Away,
+      viewerOwns: { home: false, away: true },
     })
   })
 
@@ -278,11 +279,13 @@ describe('getGame — live', () => {
     const {
       viewer: awayViewer,
       viewerSeat: awaySeat,
+      viewerOwns: _awayOwns,
       ...awayRest
     } = live(await read(t, AWAY, game))
     const {
       viewer: homeViewer,
       viewerSeat: homeSeat,
+      viewerOwns: _homeOwns,
       ...homeRest
     } = live(await read(t, HOME, game))
 
@@ -430,6 +433,59 @@ describe('getGame — live', () => {
     // An empty second base is a different situation than a runner in scoring
     // position, and the batter would commit against the wrong one.
     await expect(read(t, AWAY, game)).rejects.toThrow()
+  })
+})
+
+/** Hand the away club to the home owner too — the CLI hotseat (ADR-0028), where
+ * one account owns both clubs. */
+async function giveAwayClubToHome(t: Harness, awayTeam: Id<'teams'>) {
+  await t.run(async (ctx) => {
+    const home = await ctx.db
+      .query('users')
+      .withIndex('by_clerk_subject', (q) => q.eq('clerkSubject', HOME.subject))
+      .unique()
+    if (!home) throw new Error('seed has no home owner')
+    await ctx.db.patch(awayTeam, { owner: home._id })
+  })
+}
+
+/** Seal the row as a finished game — the final variant, without playing six innings. */
+const finish = (t: Harness, game: Id<'games'>) =>
+  t.run((ctx) => ctx.db.patch(game, { status: 'final', homeScore: 3, awayScore: 1 }))
+
+describe('getGame — which clubs the viewer owns (SAN-39)', () => {
+  it('names only the away club for its owner, whatever the status', async () => {
+    const { t, game } = await seedScheduledGame()
+    const owns = { home: false, away: true }
+
+    expect((await read(t, AWAY, game))?.viewerOwns).toEqual(owns)
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    expect(live(await read(t, AWAY, game)).viewerOwns).toEqual(owns)
+    await finish(t, game)
+    expect(final(await read(t, AWAY, game)).viewerOwns).toEqual(owns)
+  })
+
+  it('names only the home club for its owner, whatever the status', async () => {
+    const { t, game } = await seedScheduledGame()
+    const owns = { home: true, away: false }
+
+    expect((await read(t, HOME, game))?.viewerOwns).toEqual(owns)
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    expect(live(await read(t, HOME, game)).viewerOwns).toEqual(owns)
+    await finish(t, game)
+    expect(final(await read(t, HOME, game)).viewerOwns).toEqual(owns)
+  })
+
+  it('names both clubs for an owner of both, which `viewer` alone cannot tell apart', async () => {
+    // `viewer` resolves a two-club owner to home, identical to a home-only owner.
+    // The client needs to know it drives BOTH seats, so this field has to differ.
+    const { t, game, awayTeam } = await seedScheduledGame()
+    await giveAwayClubToHome(t, awayTeam)
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+
+    const view = live(await read(t, HOME, game))
+    expect(view.viewer).toBe(ClubSide.Home)
+    expect(view.viewerOwns).toEqual({ home: true, away: true })
   })
 })
 
