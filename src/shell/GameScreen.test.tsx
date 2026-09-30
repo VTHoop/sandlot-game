@@ -686,11 +686,13 @@ describe('/game/:id — the line score (SAN-67)', () => {
     expect(headers).toEqual(['Club', '1', '2', '3', '4', '5', '6', '7', '8', 'R', 'H'])
   })
 
-  it('sits in its own named region, so wide lines scroll there and not the page', async () => {
+  it('sits in its own named, keyboard-reachable region, so wide lines scroll there and not the page', async () => {
     await open(finalView())
     await screen.findByRole('heading', { name: 'FINAL' })
 
     const region = screen.getByRole('region', { name: 'Line score' })
     expect(region.contains(screen.getByRole('table', { name: 'Line score' }))).toBe(true)
+    // WCAG 2.1.1: Safari does not make a scroller focusable on its own.
+    expect(region.tabIndex).toBe(0)
   })
 })
