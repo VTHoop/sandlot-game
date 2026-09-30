@@ -1,4 +1,4 @@
-import { Button } from '../../components/ui/Button'
+import { Button } from '../components/ui/Button'
 import type { HalfSummary } from './duelLoop'
 import { formatInning } from './scenario'
 

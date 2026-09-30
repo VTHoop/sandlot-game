@@ -1,6 +1,6 @@
 import { REGULATION_INNINGS } from '@sandlot/engine/game'
-import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
-import type { TeamLine } from '../../components/ui/Scoreboard'
+import type { OutcomeKey } from '../components/ui/OutcomeLadder'
+import type { TeamLine } from '../components/ui/Scoreboard'
 import { DuelSeat } from './seatAgent'
 
 /**

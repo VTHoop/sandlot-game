@@ -19,7 +19,7 @@ import {
   type TeamLineup,
 } from '@sandlot/engine/game'
 import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
-import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
+import type { OutcomeKey } from '../components/ui/OutcomeLadder'
 import type { DuelMatchup, MatchupSide } from './MatchupCard'
 import type { Roster, RosterPlayer } from './roster'
 import {

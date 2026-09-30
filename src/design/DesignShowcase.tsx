@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Button } from '../components/ui/Button'
-import { DuelCommit } from './duel/DuelCommit'
-import { DuelPlay } from './duel/DuelPlay'
-import { SHOWCASE_MATCHUP, SHOWCASE_SCENARIO, SHOWCASE_SITUATION } from './duel/fixture'
-import { RevealMotion } from './duel/RevealMotion'
-import { DuelSeat } from './duel/seatAgent'
-import { WaitingTurn } from './duel/WaitingTurn'
-import './duel.css'
+import { DuelCommit } from '../duel/DuelCommit'
+import { DuelPlay } from '../duel/DuelPlay'
+import { SHOWCASE_MATCHUP, SHOWCASE_SCENARIO, SHOWCASE_SITUATION } from '../duel/fixture'
+import { RevealMotion } from '../duel/RevealMotion'
+import { DuelSeat } from '../duel/seatAgent'
+import { WaitingTurn } from '../duel/WaitingTurn'
+import '../duel/duel.css'
 
 export { SHOWCASE_SCENARIO }
 

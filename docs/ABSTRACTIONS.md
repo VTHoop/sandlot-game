@@ -108,7 +108,7 @@ form controls in screens:
 - **`ScoreTile`** — scoreboard tile for any committed/displayed number.
 - **`ScoreTileInput`** — the only input for duel numbers (ADR-0014): styled
   `inputMode="numeric"` tile driven by the device keyboard (strips non-digits and
-  leading zeros, caps at 4; validity lives in `src/design/duel/duelNumber.ts`).
+  leading zeros, caps at 4; validity lives in `src/duel/duelNumber.ts`).
 - **`OutcomeLadder`** — fixed best→worst outcome strip; keys mirror the engine's
   band names (`HR…K`); `highlight` marks a resolved outcome. Commit screen only
   (ADR-0013/0014).
@@ -118,7 +118,7 @@ form controls in screens:
 - **`Card`** — surface panel for grouped content.
 
 Reveal choreography is Motion-driven (`motion` v12, ADR-0013) with situational drama
-pacing derived in `src/design/duel/scenario.ts` (pure, unit-tested).
+pacing derived in `src/duel/scenario.ts` (pure, unit-tested).
 
 Components style themselves exclusively from semantic `@theme` tokens in
 `src/styles/app.css`; raw hues and Tailwind stock colors are forbidden.
@@ -420,7 +420,7 @@ npx convex run seed:mintDevGame '{"homeTeam":"…","awayTeam":"…"}'   # anothe
 npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
 ```
 
-## Duel adapter (`src/design/duel/adapter.ts` + `roster.ts`)
+## Duel adapter (`src/duel/adapter.ts` + `roster.ts`)
 
 The pure, headless boundary (SAN-45) that bridges the roster-free engine to the
 UI's data shapes — no React, no I/O, the same resolve → apply → reveal logic the
@@ -536,7 +536,7 @@ Surfaced as the **PLAY** tab of the `/design` showcase — no new route.
   epoch that remounts a fresh half-inning. `RevealMotion` carries an optional advance
   affordance (`onAdvance` / `advanceLabel`) so the container can drive the sequence.
 
-## Convex-backed duel adapter (`src/design/duel/convexAdapter.ts`, SAN-57)
+## Convex-backed duel adapter (`src/duel/convexAdapter.ts`, SAN-57)
 
 ADR-0026. The second `DuelAdapter`: the same `playHalfInning` loop and the same components,
 with the in-memory state swapped for server round-trips. Nothing consumes it on a

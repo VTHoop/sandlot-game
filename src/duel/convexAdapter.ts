@@ -14,8 +14,8 @@ import {
   DuelStatus,
   type DuelView,
   duelRejectionOf,
-} from '../../../convex/duelContract'
-import type { ClubTotals, ClubView, GameView, PlayerView, SeatView } from '../../../convex/gameView'
+} from '../../convex/duelContract'
+import type { ClubTotals, ClubView, GameView, PlayerView, SeatView } from '../../convex/gameView'
 import {
   type AtBatPlayers,
   buildMatchup,

@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { OUTCOME_LADDER, type OutcomeKey } from '../../components/ui/OutcomeLadder'
+import { OUTCOME_LADDER, type OutcomeKey } from '../components/ui/OutcomeLadder'
 import { spotPoint } from './fieldMovement'
 import { RevealMotion } from './RevealMotion'
 import { frameToViewBox, TIGHT_FRAME } from './revealCamera'

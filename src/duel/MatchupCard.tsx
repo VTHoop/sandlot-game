@@ -1,5 +1,5 @@
-import { AttributePips } from '../../components/ui/AttributePips'
-import { Card } from '../../components/ui/Card'
+import { AttributePips } from '../components/ui/AttributePips'
+import { Card } from '../components/ui/Card'
 
 export interface MatchupSide {
   /** First initial + last name, e.g. "M. SLOANE". */

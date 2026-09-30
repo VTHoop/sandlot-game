@@ -5,7 +5,7 @@ import type { Doc } from './_generated/dataModel'
  *
  * Every value here is invented — **no MLB data, names, or statistics** (IP &
  * data hygiene, AGENTS.md / ADR-0006). This is the server-side sibling of
- * `src/design/duel/roster.ts`: that fixture never leaves the browser, this one
+ * `src/duel/roster.ts`: that fixture never leaves the browser, this one
  * is what `convex/seed.ts` writes into `players` so `game.startGame` finally
  * has something to start. Both are placeholders — the draft, salary cap, and
  * MLB ingest replace this with real roster building.

@@ -1,4 +1,4 @@
-import { Scoreboard } from '../../components/ui/Scoreboard'
+import { Scoreboard } from '../components/ui/Scoreboard'
 import { DuelChrome } from './DuelChrome'
 import { FieldDiagram } from './FieldDiagram'
 import {

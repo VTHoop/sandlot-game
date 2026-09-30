@@ -1,6 +1,6 @@
 import { type MotionProps, motion } from 'motion/react'
 import type { ReactNode } from 'react'
-import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
+import type { OutcomeKey } from '../components/ui/OutcomeLadder'
 import type { LandingZone } from './ballFlight'
 import { BASE_HALF, BASE_SPOTS, DIAMOND_PATH, spotPoint } from './fieldMovement'
 
