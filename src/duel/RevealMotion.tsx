@@ -486,6 +486,46 @@ function tickedBoard(scenario: RevealScenario, tally: Tally): ClubPair<TeamLine>
     : { away: board.away, home: credited(board.home, tally) }
 }
 
+/**
+ * Whether the reveal's clock has reached `at` seconds. Reduced motion has
+ * already re-anchored every beat on the outcome, so it is reached at once.
+ */
+function useBeatReached(at: number, reduceMotion: boolean): boolean {
+  const [reached, setReached] = useState(false)
+  useEffect(() => {
+    if (reduceMotion) {
+      setReached(true)
+      return
+    }
+    const timer = setTimeout(() => {
+      setReached(true)
+    }, at * 1000)
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [at, reduceMotion])
+  return reached
+}
+
+type RevealControlsProps = Pick<RevealMotionProps, 'onReplay' | 'onAdvance' | 'advanceLabel'>
+
+/** The way on and the way back. Mounted only once the outcome has landed, so
+ * neither can be used to see past, or around, a result not yet shown (SAN-70). */
+function RevealControls({ onReplay, onAdvance, advanceLabel }: RevealControlsProps) {
+  return (
+    <>
+      {onAdvance && (
+        <Button variant="consequence" className="px-4 py-2 text-sm" onClick={onAdvance}>
+          {advanceLabel}
+        </Button>
+      )}
+      <Button variant="ghost" className="px-4 py-1.5 text-xs" onClick={onReplay}>
+        ↺ REPLAY
+      </Button>
+    </>
+  )
+}
+
 interface RevealMotionProps {
   scenario: RevealScenario
   onReplay?: () => void
@@ -523,26 +563,9 @@ export function RevealMotion({
     scorelineAt,
   } = beats
 
-  const [hitCounted, setHitCounted] = useState(false)
-  const [runsCounted, setRunsCounted] = useState(false)
-
-  useEffect(() => {
-    if (reduceMotion) {
-      setHitCounted(true)
-      setRunsCounted(true)
-      return
-    }
-    const hitTimer = setTimeout(() => {
-      setHitCounted(true)
-    }, hitTickAt * 1000)
-    const runTimer = setTimeout(() => {
-      setRunsCounted(true)
-    }, runTickAt * 1000)
-    return () => {
-      clearTimeout(hitTimer)
-      clearTimeout(runTimer)
-    }
-  }, [reduceMotion, hitTickAt, runTickAt])
+  const outcomeLanded = useBeatReached(outcomeAt, reduceMotion)
+  const hitCounted = useBeatReached(hitTickAt, reduceMotion)
+  const runsCounted = useBeatReached(runTickAt, reduceMotion)
 
   const board = tickedBoard(scenario, {
     runs: runsCounted ? scenario.runsScored : 0,
@@ -584,19 +607,15 @@ export function RevealMotion({
           {scenario.scoreline}
         </motion.p>
         <div className="mt-auto flex w-full flex-col gap-2">
-          {onAdvance && (
-            <Button variant="consequence" className="px-4 py-2 text-sm" onClick={onAdvance}>
-              {advanceLabel}
-            </Button>
+          {outcomeLanded && (
+            <RevealControls onAdvance={onAdvance} advanceLabel={advanceLabel} onReplay={onReplay} />
           )}
-          <Button variant="ghost" className="px-4 py-1.5 text-xs" onClick={onReplay}>
-            ↺ REPLAY
-          </Button>
           <Scoreboard
             away={board.away}
             home={board.home}
             inning={formatInning(scenario)}
-            outs={scenario.outs}
+            // The out is counted when the hit would be: the outcome has landed.
+            outs={hitCounted ? scenario.outs : scenario.outsBefore}
           />
         </div>
       </div>

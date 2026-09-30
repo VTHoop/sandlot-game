@@ -66,8 +66,8 @@ or resolution, the screen is wrong. One amber action per screen, maximum.
 - The outcome ladder lives at the bottom of the **commit screen only** (it's the
   menu being bet against), always in full (all 10 rungs: HR 3B 2B 1B IF BB FO PO GB
   K), always in engine order. The **reveal carries the `Scoreboard` instead** —
-  consequence echoes there (hit ticks at the outcome, run ticks as the runner
-  crosses home).
+  consequence echoes there (hit and out tick at the outcome, run ticks as the
+  runner crosses home; ADR-0033).
 - **The commit screen is one screen for both seats** (ADR-0014): scoreboard
   (runs/hits/inning/outs) → compact field diagram + player matchup (pips, due-up)
   → opponent lock-status chip → number tile → lock. No situation sentence — the
@@ -109,8 +109,10 @@ Eye-catching, not busy. Every animated surface obeys:
 5. **Baseball richness in diagram language only.** Hit locations are a dashed chalk
    tracer + scorekeeper's ✕ (jittered per play). A full illustrated field is
    permanently rejected (ADR-0012/0013) — that is the "too far" line.
-6. **Production sequences must be tap-skippable.** Drama is offered, never imposed
-   (applies when the duel is wired to real games; the showcase replays instead).
+6. **Nothing after the outcome is imposed.** The build-up to the outcome plays out,
+   because it is the drama. Once the outcome lands, the advance control and REPLAY
+   appear and the rest can be skipped (ADR-0033, superseding ADR-0013's "must be
+   tap-skippable").
 
 ## 6. The two laws
 
