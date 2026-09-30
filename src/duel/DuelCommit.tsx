@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ClubSide } from '../../convex/clubSide'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { OutcomeLadder } from '../components/ui/OutcomeLadder'
@@ -9,6 +10,7 @@ import { isValidDuelNumber } from './duelNumber'
 import { FieldDiagram } from './FieldDiagram'
 import { type DuelMatchup, MatchupCard } from './MatchupCard'
 import {
+  clubOfSeat,
   committerOf,
   type DuelSituation,
   formatInning,
@@ -118,6 +120,8 @@ export function DuelCommit({
   // The other seat's player: who the lock chip is about, and who this seat waits on.
   const other = committerOf(oppositeSeat(seat), situation)
   const board = scoreboardLines(situation)
+  // The side this number is entered for wears amber (SAN-70).
+  const yours = clubOfSeat(seat, situation.half)
 
   const handleLock = () => {
     onLock?.(Number(number))
@@ -128,8 +132,8 @@ export function DuelCommit({
     <DuelChrome clubs={situation.clubs}>
       <div className="flex flex-1 flex-col gap-3 px-5 pb-4">
         <Scoreboard
-          away={board.away}
-          home={board.home}
+          away={{ ...board.away, yours: yours === ClubSide.Away }}
+          home={{ ...board.home, yours: yours === ClubSide.Home }}
           inning={formatInning(situation)}
           outs={situation.outs}
         />
@@ -139,7 +143,7 @@ export function DuelCommit({
             runners={situation.runners}
             className="h-36 w-36 shrink-0 self-center"
           />
-          <MatchupCard {...matchup} />
+          <MatchupCard {...matchup} marked={seat} />
         </div>
         <OtherSeatChip other={other} locked={opponentLocked} />
         <div className="text-center">

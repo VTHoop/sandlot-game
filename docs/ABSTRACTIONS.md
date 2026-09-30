@@ -170,7 +170,10 @@ form controls in screens:
   band names (`HR…K`); `highlight` marks a resolved outcome. Commit screen only
   (ADR-0013/0014).
 - **`Scoreboard`** — runs/hits/inning/outs strip; values split-flap tick
-  (amber→chalk) on change. Commit, reveal, and waiting screens.
+  (amber→chalk) on change. Commit, reveal, and waiting screens. A `TeamLine`
+  marked `yours` wears amber and carries a screen-reader "your club". The commit
+  screen marks the club of the seat being entered (`clubOfSeat`), and
+  `MatchupCard`'s `marked` seat does the same for its player (SAN-70).
 - **`AttributePips`** — 1–5 attribute rating rendered as chalk pips.
 - **`Card`** — surface panel for grouped content.
 

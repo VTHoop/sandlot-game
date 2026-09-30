@@ -1,4 +1,5 @@
 import { REGULATION_INNINGS } from '@sandlot/engine/game'
+import { ClubSide } from '../../convex/clubSide'
 import type { OutcomeKey } from '../components/ui/OutcomeLadder'
 import type { TeamLine } from '../components/ui/Scoreboard'
 import { DuelSeat } from './seatAgent'
@@ -317,6 +318,16 @@ export function committerOf(
   return seat === DuelSeat.Pitcher
     ? { player: situation.pitcher, act: 'pitch' }
     : { player: situation.batter, act: 'swing' }
+}
+
+/**
+ * The club a seat plays for in a half. The batter's club is batting: away in
+ * the top, home in the bottom (SAN-21). The pitcher's club is fielding.
+ */
+export function clubOfSeat(seat: DuelSeat, half: 'TOP' | 'BOTTOM'): ClubSide {
+  const batting = half === 'TOP' ? ClubSide.Away : ClubSide.Home
+  const fielding = half === 'TOP' ? ClubSide.Home : ClubSide.Away
+  return seat === DuelSeat.Batter ? batting : fielding
 }
 
 /** The seat across the duel from this one. */
