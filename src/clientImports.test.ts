@@ -1,3 +1,4 @@
+import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -21,24 +22,69 @@ const sources = import.meta.glob<string>(
   { query: '?raw', import: 'default', eager: true },
 )
 
-/** Every `import … from '…/convex/<module>'` that keeps a value at runtime. */
-function runtimeConvexImports(source: string): string[] {
-  const imports = source.matchAll(/^import\s+([\s\S]*?)\s+from\s+'(?:\.\.\/)+convex\/([^']+)'/gm)
-  return [...imports]
-    .filter(([, clause = '']) => !isTypeOnly(clause))
-    .map(([, , module = '']) => module)
+/** A relative path into `convex/`, capturing the module under it. */
+const CONVEX_PATH = /^(?:\.\.?\/)+convex\/(.+)$/
+
+/** The `convex/` module a specifier names, or null for anything else. */
+function convexModuleOf(specifier: ts.Expression | undefined): string | null {
+  if (!specifier || !ts.isStringLiteral(specifier)) return null
+  return CONVEX_PATH.exec(specifier.text)?.[1] ?? null
 }
 
-/** `import type { … }`, or braces whose every specifier is `type X`. */
-function isTypeOnly(clause: string): boolean {
-  if (clause.startsWith('type ')) return true
-  const braced = clause.match(/^\{([\s\S]*)\}$/)?.[1]
-  if (braced === undefined) return false
-  const specifiers = braced
-    .split(',')
-    .map((specifier) => specifier.trim())
-    .filter(Boolean)
-  return specifiers.every((specifier) => specifier.startsWith('type '))
+/** An import survives compilation unless it, or every name it binds, is
+ * type-only. A bare `import '…'` has no clause and always runs. */
+function importKeepsValue({ importClause: clause }: ts.ImportDeclaration): boolean {
+  if (!clause) return true
+  if (clause.isTypeOnly) return false
+  if (clause.name) return true
+  const bindings = clause.namedBindings
+  if (!bindings || ts.isNamespaceImport(bindings)) return true
+  return bindings.elements.some((element) => !element.isTypeOnly)
+}
+
+/** Likewise for a re-export; `export *` always carries values. */
+function exportKeepsValue({ isTypeOnly, exportClause: clause }: ts.ExportDeclaration): boolean {
+  if (isTypeOnly) return false
+  if (!clause || ts.isNamespaceExport(clause)) return true
+  return clause.elements.some((element) => !element.isTypeOnly)
+}
+
+/** The `convex/` module a node loads at runtime, or null if it loads none. */
+function runtimeTargetOf(node: ts.Node): string | null {
+  if (ts.isImportDeclaration(node)) {
+    return importKeepsValue(node) ? convexModuleOf(node.moduleSpecifier) : null
+  }
+  if (ts.isExportDeclaration(node)) {
+    return exportKeepsValue(node) ? convexModuleOf(node.moduleSpecifier) : null
+  }
+  if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+    return convexModuleOf(node.arguments[0])
+  }
+  return null
+}
+
+/**
+ * Every `convex/` module a source loads at runtime: imports, re-exports and
+ * dynamic `import()` that keep a value. Read off the TypeScript AST, one
+ * statement at a time — a pattern over the raw text cannot tell where one
+ * import ends and the next begins.
+ */
+function runtimeConvexImports(source: string): string[] {
+  const file = ts.createSourceFile(
+    'client.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TSX,
+  )
+  const found: string[] = []
+  const visit = (node: ts.Node): void => {
+    const module = runtimeTargetOf(node)
+    if (module) found.push(module)
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  return found
 }
 
 describe('the runtime-import scanner', () => {
