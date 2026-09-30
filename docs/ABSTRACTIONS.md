@@ -132,7 +132,9 @@ keeps nothing the server could tell it.
   between-halves server state (ADR-0017), so a reload lands on the next half's
   first at-bat, not the card.
 - **The end** (SAN-67): the game-ending at-bat — the latest one of a `final`
-  game, since a walk-off ends no half by outs — reveals with FINAL SCORE →, then
+  game, since a walk-off ends no half by outs (`liveDuel.revealAdvanceOf` →
+  `RevealAdvance`, which also decides whether a half card follows) — reveals
+  with FINAL SCORE →, then
   `GameOver`; no half card follows the last half. A reload after the final lands
   on `GameOver` without replaying.
 - **`GameOver`** (`src/shell/GameOver.tsx`): FINAL (focused on arrival),
