@@ -209,7 +209,9 @@ describe('the Convex-backed adapter — opening on a game', () => {
       currentBatter: awayLeadoff,
       currentPitcher: homePitcher,
     })
-    expect(adapter.hits()).toEqual({ you: 0, opp: 0 })
+    expect(adapter.hits()).toEqual({ away: 0, home: 0 })
+    // Labelled off the clubs' own names, as the server names them.
+    expect(adapter.clubs()).toEqual({ away: 'HAR', home: 'RID' })
   })
 
   it('refuses a game it cannot read rather than opening on an empty snapshot', async () => {
@@ -243,13 +245,13 @@ describe('the Convex-backed adapter — opening on a game', () => {
 
     const matchup = (await adapterFor(t, game)).matchup()
 
-    expect(matchup.you.pitcher).toEqual({ name: 'H. MARSH', attrs: { VEL: 3, MOV: 3, CMD: 3 } })
-    expect(matchup.you.batter).toEqual({
+    expect(matchup.pitcher).toEqual({ name: 'H. MARSH', attrs: { VEL: 3, MOV: 3, CMD: 3 } })
+    expect(matchup.batter).toEqual({
       name: 'R. VANCE',
       attrs: { PWR: 3, CON: 3, SPD: 3, EYE: 3 },
     })
     // The order is two deep and the leadoff man is up, so it wraps back to him.
-    expect(matchup.you.dueUp).toEqual(['T. JULIEN', 'R. VANCE'])
+    expect(matchup.dueUp).toEqual(['T. JULIEN', 'R. VANCE'])
   })
 })
 
@@ -263,15 +265,18 @@ describe('the Convex-backed adapter — one at-bat', () => {
     expect(reveal).toMatchObject({
       outcome: 'HR',
       headline: 'HOME RUN!',
-      you: HOME_RUN.swing,
-      them: HOME_RUN.pitch,
-      opponent: 'H. MARSH',
+      pitch: HOME_RUN.pitch,
+      swing: HOME_RUN.swing,
+      pitcher: 'H. MARSH',
+      batter: 'R. VANCE',
+      clubs: { away: 'HAR', home: 'RID' },
       inning: 1,
       half: 'TOP',
       outs: 0,
       runsScored: 1,
-      scoreBefore: { you: 0, opp: 0 },
-      hitsBefore: { you: 0, opp: 0 },
+      scoreBefore: { away: 0, home: 0 },
+      hitsBefore: { away: 0, home: 0 },
+      scoreline: '1 run scores · R. VANCE goes yard',
     })
     expect(applied).toMatchObject({ sequence: 0, outsBefore: 0, outsAfter: 0, runsScored: 1 })
   })
@@ -308,8 +313,8 @@ describe('the Convex-backed adapter — one at-bat', () => {
     // batter and commit the at-bat a second time.
     expect(adapter.state().currentBatter).toBe(awaySecond)
     expect(adapter.state().awayScore).toBe(1)
-    expect(adapter.hits()).toEqual({ you: 1, opp: 0 })
-    expect(adapter.matchup().you.batter.name).toBe('T. JULIEN')
+    expect(adapter.hits()).toEqual({ away: 1, home: 0 })
+    expect(adapter.matchup().batter.name).toBe('T. JULIEN')
   })
 
   it('renders the ground-ball sub-result, not just the band', async () => {
@@ -575,7 +580,8 @@ describe('the Convex-backed adapter — a game that ends', () => {
       currentBatter: null,
       currentPitcher: null,
     })
-    expect(adapter.hits()).toEqual({ you: 1, opp: 0 })
+    // The home club hit the walk-off, so the hit is the home club's.
+    expect(adapter.hits()).toEqual({ away: 0, home: 1 })
   })
 
   it('refuses a further at-bat without reaching the server for one', async () => {
@@ -626,13 +632,13 @@ describe('the Convex-backed adapter — driving the real loop', () => {
     expect(adapter.state().half).toBe(Half.Bottom)
   })
 
-  it('flips the hit totals to the incoming batting side when the half turns', async () => {
+  it('keeps each club’s hits its own when the half turns — nothing flips', async () => {
     const { t, game } = await seedLiveGame()
     const adapter = await adapterFor(t, game)
 
     // One away hit, then three outs to end the top half.
     await adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing)
-    expect(adapter.hits()).toEqual({ you: 1, opp: 0 })
+    expect(adapter.hits()).toEqual({ away: 1, home: 0 })
     await playHalfInning(
       adapter,
       adapter.roster(),
@@ -640,15 +646,18 @@ describe('the Convex-backed adapter — driving the real loop', () => {
       openGate,
     )
 
-    // The home club bats the bottom, so its own total is "you" and the away
-    // club's hit carries as "opp" — the same flip `rollHitTotals` keeps.
+    // The home club bats the bottom. The totals are the server's absolute pair,
+    // handed straight through, so the away club's hit is still the away club's.
     expect(adapter.state().half).toBe(Half.Bottom)
-    expect(adapter.hits()).toEqual({ you: 0, opp: 1 })
+    expect(adapter.hits()).toEqual({ away: 1, home: 0 })
 
     const { reveal } = await adapter.playAtBat(HOME_RUN.pitch, HOME_RUN.swing)
-    expect(reveal.hitsBefore).toEqual({ you: 0, opp: 1 })
+    expect(reveal.hitsBefore).toEqual({ away: 1, home: 0 })
+    expect(reveal.scoreBefore).toEqual({ away: 1, home: 0 })
     expect(reveal.half).toBe('BOTTOM')
-    expect(reveal.opponent).toBe('G. PIKE') // the away club now takes the mound
+    expect(reveal.pitcher).toBe('G. PIKE') // the away club now takes the mound
+    expect(reveal.batter).toBe('J. WHITLOCK')
+    expect(adapter.hits()).toEqual({ away: 1, home: 1 })
   })
 
   it('keeps the roster current as the seats change', async () => {

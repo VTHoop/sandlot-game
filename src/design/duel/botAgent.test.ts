@@ -7,12 +7,14 @@ import { DuelSeat, type SeatCommitRequest } from './seatAgent'
 // A non-secret situation: the exact shape the seam hands a seat agent — it
 // structurally excludes both duel numbers, so a bot can carry no secret.
 const SITUATION: DuelSituation = {
-  opponent: 'ARM',
+  pitcher: 'ARM',
+  batter: 'BAT',
+  clubs: { away: 'AWY', home: 'HOM' },
   inning: 1,
   half: 'TOP',
   outs: 0,
-  scoreBefore: { you: 0, opp: 0 },
-  hitsBefore: { you: 0, opp: 0 },
+  scoreBefore: { away: 0, home: 0 },
+  hitsBefore: { away: 0, home: 0 },
   runnersOn: [],
 }
 const request = (seat: DuelSeat): SeatCommitRequest => ({ seat, situation: SITUATION })

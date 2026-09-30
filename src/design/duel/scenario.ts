@@ -34,19 +34,45 @@ export interface RunnerMovement {
   retired: boolean
 }
 
-/** A resolved at-bat from the viewer's (batter's) perspective. */
+/** One value per club, in absolute terms — never "you" and "them". */
+export interface ClubPair<T> {
+  away: T
+  home: T
+}
+
+/**
+ * The scoreboard label for a club. Stubbed: SAN-39's red checkpoint declares it
+ * and leaves the behaviour for the green commit.
+ */
+export function clubLabel(name: string): string {
+  return name
+}
+
+/**
+ * A resolved at-bat, described by what happened rather than by who is looking
+ * (SAN-39, ADR-0030): the two numbers are the pitch and the swing, the two
+ * players are named, and every total is away/home. The same scenario therefore
+ * reads correctly to the club that batted, the club that pitched, and an owner of
+ * both — there is no perspective to get wrong. `half` says which club batted
+ * (top = away, SAN-21).
+ */
 export interface RevealScenario {
-  you: number
-  them: number
-  opponent: string
+  pitch: number
+  swing: number
+  /** The pitcher's display name. */
+  pitcher: string
+  /** The batter's display name. */
+  batter: string
+  /** Each club's scoreboard label. */
+  clubs: ClubPair<string>
   outcome: OutcomeKey
   inning: number
   half: 'TOP' | 'BOTTOM'
   outs: number
   /** Runs the batting team scored on this play. */
   runsScored: number
-  scoreBefore: { you: number; opp: number }
-  hitsBefore: { you: number; opp: number }
+  scoreBefore: ClubPair<number>
+  hitsBefore: ClubPair<number>
   scoreline: string
   /** The headline word(s) the reveal shouts — the specific result, not just the
    * band. A groundball resolves into a fielder's choice / double play / etc., each
@@ -60,14 +86,14 @@ export interface RevealScenario {
 
 /**
  * The non-secret situation shown on the commit and waiting screens: a deliberate
- * subset of `RevealScenario` that EXCLUDES `you`/`them` (and the resolved
+ * subset of `RevealScenario` that EXCLUDES `pitch`/`swing` (and the resolved
  * `outcome`/`scoreline`). The commit screen must be structurally incapable of
  * carrying either duel number — the pitch is the vault's secret (ADR-0014,
  * AGENTS.md game integrity).
  */
 export type DuelSituation = Pick<
   RevealScenario,
-  'opponent' | 'inning' | 'half' | 'outs' | 'scoreBefore' | 'hitsBefore'
+  'pitcher' | 'batter' | 'clubs' | 'inning' | 'half' | 'outs' | 'scoreBefore' | 'hitsBefore'
 > & {
   /**
    * Which bases are occupied right now, in lead order (third → first), so the
@@ -156,10 +182,10 @@ function computeTags(scenario: RevealScenario, after: number): DramaTags {
   const { outcome, runsScored, scoreBefore, inning, half } = scenario
   return {
     rbi: runsScored > 0 && isHit(outcome),
-    leadChange: scoreBefore.you <= scoreBefore.opp && after > scoreBefore.opp,
-    newTie: runsScored > 0 && after === scoreBefore.opp,
-    walkOff: half === 'BOTTOM' && inning >= 9 && after > scoreBefore.opp,
-    lateAndClose: inning >= 7 && Math.abs(scoreBefore.you - scoreBefore.opp) <= 1,
+    leadChange: scoreBefore.home <= scoreBefore.away && after > scoreBefore.away,
+    newTie: runsScored > 0 && after === scoreBefore.away,
+    walkOff: half === 'BOTTOM' && inning >= 9 && after > scoreBefore.away,
+    lateAndClose: inning >= 7 && Math.abs(scoreBefore.home - scoreBefore.away) <= 1,
   }
 }
 
@@ -191,11 +217,11 @@ function computeBoost(tags: DramaTags): number {
  * headline. Priority: walk-off > lead change > new tie > RBI.
  */
 export function deriveDrama(scenario: RevealScenario): Drama {
-  const after = scenario.scoreBefore.you + scenario.runsScored
+  const after = scenario.scoreBefore.home + scenario.runsScored
   const tags = computeTags(scenario, after)
   return {
     tags,
-    callout: computeCallout(tags, after, scenario.scoreBefore.opp, scenario.runsScored),
+    callout: computeCallout(tags, after, scenario.scoreBefore.away, scenario.runsScored),
     hold:
       (OUTCOME_HOLD.get(scenario.outcome) ?? 0) + Math.min(computeBoost(tags), MAX_SITUATION_BOOST),
   }

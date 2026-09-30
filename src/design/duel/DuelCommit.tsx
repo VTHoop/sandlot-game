@@ -9,11 +9,12 @@ import { isValidDuelNumber } from './duelNumber'
 import { FieldDiagram } from './FieldDiagram'
 import { type DuelMatchup, MatchupCard } from './MatchupCard'
 import { type DuelSituation, formatInning, liveFieldSpots } from './scenario'
+import { DuelSeat } from './seatAgent'
 
 interface DuelCommitProps {
   /** Which seat the viewer holds; the screen is otherwise identical. */
-  seat: 'pitcher' | 'batter'
-  /** Both managers' players; the screen orients them for this seat. */
+  seat: DuelSeat
+  /** The at-bat's one matchup — the same two players for either seat. */
   matchup: DuelMatchup
   /**
    * The non-secret situation (scoreboard + inning + outs). Typed as
@@ -27,7 +28,6 @@ interface DuelCommitProps {
    * chip is static text either way. Commits are order-independent (ADR-0014).
    */
   opponentLocked: boolean
-  opponentOnline: boolean
   /** Surfaces this seat's committed number to the parent when it locks. */
   onLock?: (committed: number) => void
   onReveal?: () => void
@@ -41,25 +41,9 @@ interface DuelCommitProps {
  * is cast as the home team: they bat in the bottom half and pitch in the top, so
  * the two seats depict different half-innings and flip who throws vs. swings.
  */
-function orientSeat(seat: DuelCommitProps['seat'], players: DuelMatchup, situation: DuelSituation) {
-  if (seat === 'batter') {
-    return {
-      half: situation.half,
-      matchup: {
-        pitcher: players.opponent.pitcher,
-        batter: players.you.batter,
-        dueUp: players.you.dueUp,
-      },
-    }
-  }
-  return {
-    half: 'TOP' as const,
-    matchup: {
-      pitcher: players.you.pitcher,
-      batter: players.opponent.batter,
-      dueUp: players.opponent.dueUp,
-    },
-  }
+function orientSeat(seat: DuelSeat, situation: DuelSituation) {
+  if (seat === DuelSeat.Batter) return { half: situation.half, opponent: situation.pitcher }
+  return { half: 'TOP' as const, opponent: situation.batter }
 }
 
 /** The persistent status chip: THAT the opponent has locked, never the number. */
@@ -119,10 +103,9 @@ function CommitAction({
 /** The single commit screen: situation, matchup, and the blind number. */
 export function DuelCommit({
   seat,
-  matchup: players,
+  matchup,
   situation,
   opponentLocked,
-  opponentOnline,
   onLock,
   onReveal,
   focusOnMount = false,
@@ -130,8 +113,7 @@ export function DuelCommit({
   const [number, setNumber] = useState('')
   const [locked, setLocked] = useState(false)
 
-  const opponent = situation.opponent
-  const { half, matchup } = orientSeat(seat, players, situation)
+  const { half, opponent } = orientSeat(seat, situation)
 
   const handleLock = () => {
     onLock?.(Number(number))
@@ -139,15 +121,15 @@ export function DuelCommit({
   }
 
   return (
-    <DuelChrome opponent={opponent} opponentOnline={opponentOnline}>
+    <DuelChrome opponent={opponent} opponentOnline={false}>
       <div className="flex flex-1 flex-col gap-3 px-5 pb-4">
         <Scoreboard
           away={{
             label: opponent.slice(0, 3).toUpperCase(),
-            runs: situation.scoreBefore.opp,
-            hits: situation.hitsBefore.opp,
+            runs: situation.scoreBefore.away,
+            hits: situation.hitsBefore.away,
           }}
-          home={{ label: 'YOU', runs: situation.scoreBefore.you, hits: situation.hitsBefore.you }}
+          home={{ label: 'YOU', runs: situation.scoreBefore.home, hits: situation.hitsBefore.home }}
           inning={formatInning({ inning: situation.inning, half })}
           outs={situation.outs}
         />

@@ -26,17 +26,19 @@ function scenario(
   overrides: Partial<RevealScenario> & { movements: RunnerMovement[] },
 ): RevealScenario {
   return {
-    you: 400,
-    them: 500,
-    opponent: 'ARM',
+    pitch: 500,
+    swing: 400,
+    pitcher: 'H. MARSH',
+    batter: 'R. VANCE',
+    clubs: { away: 'HAR', home: 'RID' },
     outcome: 'K',
     inning: 1,
     half: 'TOP',
     outs: 1,
     runsScored: 0,
-    scoreBefore: { you: 0, opp: 0 },
-    hitsBefore: { you: 0, opp: 0 },
-    scoreline: 'you strike out',
+    scoreBefore: { away: 0, home: 0 },
+    hitsBefore: { away: 0, home: 0 },
+    scoreline: 'R. VANCE strikes out',
     headline: 'STRIKEOUT',
     ...overrides,
   }
@@ -169,7 +171,7 @@ describe('RevealMotion field', () => {
         scenario={scenario({
           outcome: 'GB',
           outs: 3,
-          scoreline: 'you ground out',
+          scoreline: 'R. VANCE grounds out',
           headline: 'DOUBLE PLAY',
           movements: [
             { from: FieldSpot.First, to: FieldSpot.Second, retired: true },
@@ -191,7 +193,7 @@ describe('RevealMotion field', () => {
         scenario={scenario({
           outcome: 'HR',
           runsScored: 4,
-          scoreline: '4 runs score · you go yard',
+          scoreline: '4 runs score · R. VANCE goes yard',
           movements: [
             { from: FieldSpot.Third, to: FieldSpot.Home, retired: false },
             { from: FieldSpot.Second, to: FieldSpot.Home, retired: false },
@@ -202,5 +204,49 @@ describe('RevealMotion field', () => {
       />,
     )
     expect(screen.getAllByTestId('runner-token')).toHaveLength(4)
+  })
+})
+
+describe('RevealMotion, read the same from either seat (SAN-39)', () => {
+  /** One club's scoreboard cell as text: label, hits line, run total. */
+  const clubCell = (label: string) =>
+    screen.getByText(label).parentElement?.parentElement?.textContent ?? ''
+
+  const homer = (half: 'TOP' | 'BOTTOM') =>
+    scenario({
+      outcome: 'HR',
+      headline: 'HOME RUN!',
+      half,
+      runsScored: 1,
+      scoreBefore: { away: 2, home: 5 },
+      hitsBefore: { away: 3, home: 8 },
+      movements: [{ from: FieldSpot.Batter, to: FieldSpot.Home, retired: false }],
+    })
+
+  it('labels the two numbers by what they are and who threw them, never "you"', () => {
+    render(<RevealMotion scenario={scenario({ movements: [] })} />)
+    screen.getByText('pitch · H. MARSH')
+    screen.getByText('swing · R. VANCE')
+    expect(screen.queryByText(/^you$/i)).toBeNull()
+  })
+
+  it('shows the away club first and the home club second, by their labels', () => {
+    render(<RevealMotion scenario={scenario({ movements: [] })} />)
+    const away = screen.getByText('HAR')
+    const home = screen.getByText('RID')
+    expect(away.compareDocumentPosition(home) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByText('YOU')).toBeNull()
+  })
+
+  it('credits a top-half run and hit to the away club, which was batting', () => {
+    render(<RevealMotion scenario={homer('TOP')} />)
+    expect(clubCell('HAR')).toBe('HAR4 HITS3runs')
+    expect(clubCell('RID')).toBe('RID8 HITS5runs')
+  })
+
+  it('credits a bottom-half run and hit to the home club, which was batting', () => {
+    render(<RevealMotion scenario={homer('BOTTOM')} />)
+    expect(clubCell('HAR')).toBe('HAR3 HITS2runs')
+    expect(clubCell('RID')).toBe('RID9 HITS6runs')
   })
 })

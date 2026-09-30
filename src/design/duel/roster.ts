@@ -4,6 +4,7 @@ import {
   type PitcherAttributes,
 } from '@sandlot/engine/atBat'
 import type { GameContext, TeamLineup } from '@sandlot/engine/game'
+import type { ClubPair } from './scenario'
 
 /**
  * Synthetic roster + lineups for the headless duel adapter (SAN-45).
@@ -121,3 +122,10 @@ const HOME_LINEUP: TeamLineup = {
  * of the 1st — the matchup the adapter tests resolve.
  */
 export const GAME_CONTEXT: GameContext = { home: HOME_LINEUP, away: AWAY_LINEUP }
+
+/**
+ * The two fixture clubs' names — invented, like every player above. The engine's
+ * `GameContext` carries lineups and nothing a scoreboard could label a club with
+ * (ADR-0009), so the names travel beside it.
+ */
+export const CLUB_NAMES: ClubPair<string> = { away: 'Harbor Kingfishers', home: 'Ridgeview Rail' }

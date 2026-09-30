@@ -4,6 +4,7 @@ import { DuelCommit } from './duel/DuelCommit'
 import { DuelPlay } from './duel/DuelPlay'
 import { SHOWCASE_MATCHUP, SHOWCASE_SCENARIO, SHOWCASE_SITUATION } from './duel/fixture'
 import { RevealMotion } from './duel/RevealMotion'
+import { DuelSeat } from './duel/seatAgent'
 import { WaitingTurn } from './duel/WaitingTurn'
 import './duel.css'
 
@@ -49,20 +50,18 @@ export default function DesignShowcase() {
       <div className="mx-auto flex h-[680px] w-85 flex-col overflow-hidden rounded-3xl border-4 border-black/60 bg-linear-to-b from-canvas-high to-canvas shadow-2xl">
         {tab === 'pitcher' && (
           <DuelCommit
-            seat="pitcher"
+            seat={DuelSeat.Pitcher}
             matchup={SHOWCASE_MATCHUP}
             situation={SHOWCASE_SITUATION}
             opponentLocked={false}
-            opponentOnline={false}
           />
         )}
         {tab === 'batter' && (
           <DuelCommit
-            seat="batter"
+            seat={DuelSeat.Batter}
             matchup={SHOWCASE_MATCHUP}
             situation={SHOWCASE_SITUATION}
             opponentLocked
-            opponentOnline
             onReveal={() => {
               setTab('reveal')
             }}
@@ -77,7 +76,9 @@ export default function DesignShowcase() {
             }}
           />
         )}
-        {tab === 'waiting' && <WaitingTurn situation={SHOWCASE_SITUATION} />}
+        {tab === 'waiting' && (
+          <WaitingTurn situation={SHOWCASE_SITUATION} waitingOn={DuelSeat.Pitcher} />
+        )}
         {tab === 'play' && <DuelPlay />}
       </div>
     </main>

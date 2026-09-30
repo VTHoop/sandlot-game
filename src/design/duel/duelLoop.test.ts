@@ -3,20 +3,23 @@ import type { AppliedAtBat } from '@sandlot/engine/game'
 import { GameStatus, Half, type LiveGameState } from '@sandlot/engine/game'
 import { describe, expect, it } from 'vitest'
 import type { OutcomeKey } from '../../components/ui/OutcomeLadder'
-import type { DuelAdapter, HitTotals } from './adapter'
+import type { DuelAdapter } from './adapter'
 import { createBotAgent } from './botAgent'
 import { playHalfInning, type RevealGate, type SeatAgents } from './duelLoop'
 import type { Roster } from './roster'
-import { outcomeName, type RevealScenario } from './scenario'
+import { type ClubPair, outcomeName, type RevealScenario } from './scenario'
 import { DuelSeat, type SeatAgent, type SeatCommitRequest } from './seatAgent'
 
-// A one-pitcher roster is all `deriveSituation` needs to name the opponent.
+// The two seated players are all `deriveSituation` needs: it names both.
 const ROSTER: Roster = new Map([
   [
     'P',
     { name: 'ARM', attributes: { velocity: 3, movement: 3, awareness: 3, command: 3 }, speed: 1 },
   ],
+  ['away-1', { name: 'BAT', attributes: { power: 3, contact: 3, speed: 3, eye: 3 }, speed: 3 }],
 ])
+
+const CLUBS: ClubPair<string> = { away: 'AWY', home: 'HOM' }
 
 function liveTop(): LiveGameState {
   return {
@@ -45,16 +48,18 @@ const APPLIED: AppliedAtBat = {
 
 function fakeReveal(outcome: OutcomeKey, runsScored = 0): RevealScenario {
   return {
-    you: 0,
-    them: 0,
-    opponent: 'ARM',
+    pitch: 0,
+    swing: 0,
+    pitcher: 'ARM',
+    batter: 'BAT',
+    clubs: CLUBS,
     outcome,
     inning: 1,
     half: 'TOP',
     outs: 0,
     runsScored,
-    scoreBefore: { you: 0, opp: 0 },
-    hitsBefore: { you: 0, opp: 0 },
+    scoreBefore: { away: 0, home: 0 },
+    hitsBefore: { away: 0, home: 0 },
     scoreline: '',
     headline: outcomeName(outcome),
     // The loop never renders the field; movements only matter to the reveal UI.
@@ -73,13 +78,14 @@ function fakeAdapter(reveals: RevealScenario[]): {
   commits: Array<{ pitch: number; swing: number }>
 } {
   const commits: Array<{ pitch: number; swing: number }> = []
-  const hits: HitTotals = { you: 0, opp: 0 }
+  const hits: ClubPair<number> = { away: 0, home: 0 }
   // Consume from a copy so the loop drains reveals in order without a computed
   // index (which would trip the object-injection sink) or mutating the argument.
   const queue = [...reveals]
   const adapter: DuelAdapter = {
     state: () => (queue.length === 0 ? { ...liveTop(), half: Half.Bottom } : liveTop()),
     hits: () => ({ ...hits }),
+    clubs: () => CLUBS,
     playAtBat: (pitch, swing) => {
       const reveal = queue.shift() ?? fakeReveal('K')
       commits.push({ pitch, swing })
@@ -180,7 +186,8 @@ describe('playHalfInning', () => {
     let played = 0
     const stuck: DuelAdapter = {
       state: () => liveTop(),
-      hits: () => ({ you: 0, opp: 0 }),
+      hits: () => ({ away: 0, home: 0 }),
+      clubs: () => CLUBS,
       playAtBat: () => {
         played += 1
         return { applied: APPLIED, reveal: fakeReveal('K') }

@@ -5,7 +5,7 @@ import { createBotAgent } from './botAgent'
 import { type HalfSummary, playHalfInning, type RevealGate, type SeatAgents } from './duelLoop'
 import type { DuelMatchup } from './MatchupCard'
 import type { Roster } from './roster'
-import type { DuelSituation, RevealScenario } from './scenario'
+import type { ClubPair, DuelSituation, RevealScenario } from './scenario'
 import { DuelSeat, type SeatAgent, SeatKind, type SeatKinds } from './seatAgent'
 
 /** The kind of screen the container is currently showing — the discriminant of
@@ -32,6 +32,14 @@ export type PlayView =
   | { kind: PlayViewKind.Summary; summary: HalfSummary }
   | { kind: PlayViewKind.Error; message: string }
 
+/** The fixture a half-inning is played on: who is on each club, in what order,
+ * and what the two clubs are called. */
+export interface DuelFixture {
+  roster: Roster
+  context: GameContext
+  clubs: ClubPair<string>
+}
+
 interface DuelPlayController {
   view: PlayView | null
   /** The human seat hands its committed number to the waiting loop. */
@@ -55,6 +63,8 @@ type MutableRef<T> = { current: T }
 interface HalfInningDeps {
   roster: Roster
   context: GameContext
+  /** The two clubs' names, for the scoreboard labels. */
+  clubs: ClubPair<string>
   seats: SeatKinds
   setView: Dispatch<SetStateAction<PlayView | null>>
   numberResolver: MutableRef<((n: number) => void) | null>
@@ -79,6 +89,7 @@ interface HalfInningDeps {
 function startHalfInning({
   roster,
   context,
+  clubs,
   seats,
   setView,
   numberResolver,
@@ -91,7 +102,7 @@ function startHalfInning({
   const show = (next: PlayView) => {
     if (active) setView(next)
   }
-  const adapter = createDuelAdapter(roster, context)
+  const adapter = createDuelAdapter(roster, context, clubs)
 
   const humanSeat: SeatAgent = {
     requestNumber: ({ seat, situation }) =>
@@ -165,12 +176,11 @@ function startHalfInning({
 /**
  * Drive one half-inning from live game state (SAN-47, SAN-48): a thin React wrapper
  * over {@link startHalfInning}, which owns the seams and the loop. Each `roster` /
- * `context` / `seats` change re-seeds a fresh run; a lock or an advance resolves the
+ * `context` / `clubs` / `seats` change re-seeds a fresh run; a lock or an advance resolves the
  * parked promise so the loop steps forward.
  */
 export function useDuelPlay(
-  roster: Roster,
-  context: GameContext,
+  { roster, context, clubs }: DuelFixture,
   seats: SeatKinds,
 ): DuelPlayController {
   const [view, setView] = useState<PlayView | null>(null)
@@ -185,13 +195,14 @@ export function useDuelPlay(
       startHalfInning({
         roster,
         context,
+        clubs,
         seats,
         setView,
         numberResolver,
         revealResolver,
         cancelParked,
       }),
-    [roster, context, seats],
+    [roster, context, clubs, seats],
   )
 
   const submitNumber = useCallback((n: number) => {

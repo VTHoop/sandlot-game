@@ -59,7 +59,7 @@ function ScoreFlaps({ scenario, firstFlapAt, secondFlapAt }: ScoreFlapsProps) {
         transition={{ ...FLAP_SPRING, delay: firstFlapAt }}
         style={{ transformOrigin: 'top' }}
       >
-        <ScoreTile label="you" value={String(scenario.you)} size="md" />
+        <ScoreTile label="you" value={String(scenario.swing)} size="md" />
       </motion.div>
       <motion.div
         initial={{ rotateX: -92, opacity: 0 }}
@@ -67,7 +67,7 @@ function ScoreFlaps({ scenario, firstFlapAt, secondFlapAt }: ScoreFlapsProps) {
         transition={{ ...FLAP_SPRING, delay: secondFlapAt }}
         style={{ transformOrigin: 'top' }}
       >
-        <ScoreTile label={scenario.opponent} value={String(scenario.them)} size="md" />
+        <ScoreTile label={scenario.pitcher} value={String(scenario.pitch)} size="md" />
       </motion.div>
     </div>
   )
@@ -504,8 +504,8 @@ export function RevealMotion({
   }, [reduceMotion, hitTickAt, runTickAt])
 
   const zone = useMemo(
-    () => sprayedZone(scenario.outcome, scenario.you * 10000 + scenario.them),
-    [scenario.outcome, scenario.you, scenario.them],
+    () => sprayedZone(scenario.outcome, scenario.swing * 10000 + scenario.pitch),
+    [scenario.outcome, scenario.swing, scenario.pitch],
   )
 
   return (
@@ -548,14 +548,14 @@ export function RevealMotion({
           </Button>
           <Scoreboard
             away={{
-              label: scenario.opponent.slice(0, 3).toUpperCase(),
-              runs: scenario.scoreBefore.opp,
-              hits: scenario.hitsBefore.opp,
+              label: scenario.pitcher.slice(0, 3).toUpperCase(),
+              runs: scenario.scoreBefore.away,
+              hits: scenario.hitsBefore.away,
             }}
             home={{
               label: 'YOU',
-              runs: scenario.scoreBefore.you + (runsCounted ? scenario.runsScored : 0),
-              hits: scenario.hitsBefore.you + (hitCounted && isHit(scenario.outcome) ? 1 : 0),
+              runs: scenario.scoreBefore.home + (runsCounted ? scenario.runsScored : 0),
+              hits: scenario.hitsBefore.home + (hitCounted && isHit(scenario.outcome) ? 1 : 0),
             }}
             inning={formatInning(scenario)}
             outs={scenario.outs}
