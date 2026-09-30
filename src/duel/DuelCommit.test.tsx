@@ -148,4 +148,50 @@ describe('DuelCommit', () => {
       expect(screen.getByRole('status').textContent).toContain('waiting on T. JULIEN')
     })
   })
+  describe('marks the entering side in amber (SAN-70)', () => {
+    // The showcase at-bat is the BOTTOM of the 5th: RID (home) bats, HAR (away)
+    // pitches. M. SLOANE throws, T. JULIEN swings.
+    const commitScreen = (seat: DuelSeat) =>
+      render(
+        <DuelCommit
+          seat={seat}
+          matchup={SHOWCASE_MATCHUP}
+          situation={SHOWCASE_SITUATION}
+          opponentLocked={false}
+        />,
+      )
+    const amber = (text: string) => screen.getByText(text).closest('.text-consequence') !== null
+    /** The scoreboard cell holding a club's label. */
+    const clubCell = (label: string) => screen.getByText(label).closest('[data-club]')
+    /** The matchup-card block holding a player's name. */
+    const playerBlock = (name: string) => screen.getByText(name).closest('[data-player]')
+
+    it('marks the batting club and the batter on the batter’s screen', () => {
+      commitScreen(DuelSeat.Batter)
+      expect({ RID: amber('RID'), HAR: amber('HAR') }).toEqual({ RID: true, HAR: false })
+      expect({ batter: amber('T. JULIEN'), pitcher: amber('M. SLOANE') }).toEqual({
+        batter: true,
+        pitcher: false,
+      })
+    })
+
+    it('marks the fielding club and the pitcher on the pitcher’s screen', () => {
+      commitScreen(DuelSeat.Pitcher)
+      expect({ HAR: amber('HAR'), RID: amber('RID') }).toEqual({ HAR: true, RID: false })
+      expect({ pitcher: amber('M. SLOANE'), batter: amber('T. JULIEN') }).toEqual({
+        pitcher: true,
+        batter: false,
+      })
+    })
+
+    it('tells a screen reader which club and player are the entering side', () => {
+      commitScreen(DuelSeat.Batter)
+      expect(clubCell('RID')?.textContent).toContain('your club')
+      expect(clubCell('HAR')?.textContent).not.toContain('your club')
+      expect(playerBlock('T. JULIEN')?.textContent).toContain('your player')
+      expect(playerBlock('M. SLOANE')?.textContent).not.toContain('your player')
+      expect(screen.getAllByText('your club')).toHaveLength(1)
+      expect(screen.getAllByText('your player')).toHaveLength(1)
+    })
+  })
 })
