@@ -225,8 +225,13 @@ describe('RevealMotion, read the same from either seat (SAN-39)', () => {
 
   it('labels the two numbers by what they are and who threw them, never "you"', () => {
     render(<RevealMotion scenario={scenario({ movements: [] })} />)
-    screen.getByText('pitch · H. MARSH')
-    screen.getByText('swing · R. VANCE')
+    // Each number's group reads label, number, player — the name sits under the
+    // tile rather than beside the label, because "SWING · J. WHITLOCK" twice over
+    // does not fit a phone's width on one line.
+    const numberGroup = (label: string) =>
+      screen.getByText(label).closest('[data-testid="duel-number"]')?.textContent
+    expect(numberGroup('pitch')).toBe('pitch500H. MARSH')
+    expect(numberGroup('swing')).toBe('swing400R. VANCE')
     expect(screen.queryByText(/^you$/i)).toBeNull()
   })
 
