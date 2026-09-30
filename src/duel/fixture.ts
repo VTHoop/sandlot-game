@@ -26,6 +26,7 @@ export const SHOWCASE_SCENARIO: RevealScenario = {
   outcome: '2B',
   inning: 5,
   half: 'BOTTOM',
+  outsBefore: 2,
   outs: 2,
   runsScored: 1,
   scoreBefore: { away: 4, home: 4 },
@@ -49,7 +50,7 @@ export const SHOWCASE_SITUATION = {
   clubs: SHOWCASE_SCENARIO.clubs,
   inning: SHOWCASE_SCENARIO.inning,
   half: SHOWCASE_SCENARIO.half,
-  outs: SHOWCASE_SCENARIO.outs,
+  outs: SHOWCASE_SCENARIO.outsBefore,
   scoreBefore: SHOWCASE_SCENARIO.scoreBefore,
   hitsBefore: SHOWCASE_SCENARIO.hitsBefore,
   // Mirrors the scenario's movements: the runner the double scores starts on 2nd.

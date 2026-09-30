@@ -34,6 +34,7 @@ function scenario(
     outcome: 'K',
     inning: 1,
     half: 'TOP',
+    outsBefore: 0,
     outs: 1,
     runsScored: 0,
     scoreBefore: { away: 0, home: 0 },
@@ -140,6 +141,20 @@ describe('RevealMotion under reduced motion', () => {
     ])
   })
 
+  it('lands on the outcome at once: the out recorded and both controls up (SAN-70)', () => {
+    render(
+      <RevealMotion
+        scenario={scenario({ outsBefore: 0, outs: 1, movements: [] })}
+        onReplay={() => {}}
+        onAdvance={() => {}}
+        advanceLabel="NEXT BATTER →"
+      />,
+    )
+    expect(screen.getByRole('img', { name: '1 out' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'NEXT BATTER →' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: '↺ REPLAY' })).not.toBeNull()
+  })
+
   it('never puts a ball in flight', () => {
     render(
       <RevealMotion scenario={scenario({ outcome: '2B', headline: 'DOUBLE', movements: [] })} />,
@@ -170,6 +185,7 @@ describe('RevealMotion field', () => {
       <RevealMotion
         scenario={scenario({
           outcome: 'GB',
+          outsBefore: 1,
           outs: 3,
           scoreline: 'R. VANCE grounds out',
           headline: 'DOUBLE PLAY',

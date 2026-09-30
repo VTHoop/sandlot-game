@@ -56,6 +56,7 @@ function fakeReveal(outcome: OutcomeKey, runsScored = 0): RevealScenario {
     outcome,
     inning: 1,
     half: 'TOP',
+    outsBefore: 0,
     outs: 0,
     runsScored,
     scoreBefore: { away: 0, home: 0 },

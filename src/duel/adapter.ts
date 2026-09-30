@@ -512,6 +512,7 @@ export function buildReveal(params: {
     outcome,
     inning: state.inning,
     half: halfLabel(state.half),
+    outsBefore: state.outs,
     outs: resolved.outsAfter,
     runsScored: resolved.runsScored,
     scoreBefore: scoreBefore(state),

@@ -165,6 +165,7 @@ describe('revealOf — the reveal, built from the server’s resolved at-bat', (
       outcome: '2B',
       inning: 3,
       half: 'BOTTOM',
+      outsBefore: 1,
       outs: 1,
       runsScored: 1,
       scoreBefore: { away: 3, home: 2 },

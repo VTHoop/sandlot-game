@@ -81,6 +81,10 @@ export interface RevealScenario {
   outcome: OutcomeKey
   inning: number
   half: 'TOP' | 'BOTTOM'
+  /** The outs on the board when the play began — what the scoreboard shows until
+   * the outcome lands. */
+  outsBefore: number
+  /** The outs once the play is over. */
   outs: number
   /** Runs the batting team scored on this play. */
   runsScored: number

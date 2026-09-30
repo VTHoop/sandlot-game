@@ -12,6 +12,7 @@ const scenario = (overrides: Partial<RevealScenario> = {}): RevealScenario => ({
   // Mid-game, so the drama is the play's own: a lead change, not a walk-off.
   inning: 4,
   half: 'BOTTOM',
+  outsBefore: 1,
   outs: 1,
   runsScored: 4,
   scoreBefore: { away: 5, home: 2 },
