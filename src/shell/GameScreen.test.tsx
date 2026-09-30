@@ -445,7 +445,12 @@ describe('/game/:id — between halves (SAN-67)', () => {
 
   async function thirdOutRevealed(viewerOwns = owns(false, true)) {
     const opened = await open(liveView({ viewerOwns, locks: locks(false, true) }))
-    await screen.findByText('WAITING ON H. MARSH’S PITCH')
+    // The duel is on screen once it has subscribed to the reveal. Waiting on a
+    // screen's text would not do: an owner of both clubs drives the open seat,
+    // so what they see is a commit entry, not a wait.
+    await waitFor(() => {
+      expect(sdk.getLastAtBat).toHaveBeenCalled()
+    })
     opened.serverReports({ game: liveView({ ...NEXT_HALF, viewerOwns }), lastAtBat: THIRD_OUT })
     fireEvent.click(await screen.findByRole('button', { name: 'END OF HALF →' }))
     await screen.findByRole('heading', { name: 'END OF HALF' })
