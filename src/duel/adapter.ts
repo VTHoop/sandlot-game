@@ -430,7 +430,7 @@ export function accumulateHits(hits: HitTotals, outcome: OutcomeKey, half: Half)
 // ── Resolve → apply → reveal ────────────────────────────────────────────────
 
 /** The reveal's half label, total over the two-valued `Half` enum. */
-function halfLabel(half: Half): 'TOP' | 'BOTTOM' {
+export function halfLabel(half: Half): 'TOP' | 'BOTTOM' {
   return half === Half.Top ? 'TOP' : 'BOTTOM'
 }
 

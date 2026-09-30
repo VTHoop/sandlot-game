@@ -36,7 +36,7 @@ export function WaitingTurn({ situation, waitingOn }: WaitingTurnProps) {
           inning={formatInning(situation)}
           outs={situation.outs}
         />
-        <FieldDiagram runnersOn={liveFieldSpots(situation)} />
+        <FieldDiagram runnersOn={liveFieldSpots(situation)} runners={situation.runners} />
         <p className="text-center font-display text-xl tracking-wider text-chalk">
           {`WAITING ON ${awaited.player.toUpperCase()}’S ${awaited.act.toUpperCase()}`}
         </p>

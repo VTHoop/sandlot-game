@@ -138,7 +138,7 @@ type LiveGameView = Extract<GameView, { status: GameStatus.Live }>
  * This is the roster resolution the AC places at the Convex boundary: the engine
  * is handed attributes and speeds, never a roster handle (ADR-0009).
  */
-function toRosterPlayer(seat: SeatView): RosterPlayer {
+export function toRosterPlayer(seat: SeatView): RosterPlayer {
   const attributes: HitterAttributes | PitcherAttributes = seat.attributes
   return { name: seat.name, attributes, speed: baseRunningSpeed(attributes) }
 }
@@ -173,7 +173,7 @@ interface Snapshot {
 }
 
 /** Both clubs' scoreboard labels, off the names the server gives them. */
-function clubLabels(view: { away: ClubView; home: ClubView }): ClubPair<string> {
+export function clubLabels(view: { away: ClubView; home: ClubView }): ClubPair<string> {
   return { away: clubLabel(view.away.name), home: clubLabel(view.home.name) }
 }
 
