@@ -2,7 +2,7 @@ import { GameStatus, Half } from '@sandlot/engine/game'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type { ResolvedAtBatView } from '../../../convex/duelContract'
 import { ClubSide, type GameView, SeatRole } from '../../../convex/gameView'
-import type { LiveGameView } from '../liveDuel'
+import type { FinalGameView, LiveGameView } from '../liveDuel'
 
 /**
  * Server views for tests: what `getGame` and `getLastAtBat` would hand a client,
@@ -55,8 +55,6 @@ export function liveView(overrides: Partial<LiveGameView> = {}): LiveGameView {
     ...overrides,
   }
 }
-
-export type FinalGameView = Extract<GameView, { status: GameStatus.Final }>
 
 /**
  * A finished six-inning game, read by the AWAY owner: Ridgeview (home) won 3–1
