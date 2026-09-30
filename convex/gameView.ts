@@ -264,20 +264,25 @@ async function clubView(ctx: Ctx, id: Id<'teams'>): Promise<ClubView> {
 // ─── Derived totals ─────────────────────────────────────────────────────────
 
 /**
+ * A game's whole at-bat log, in order. Rebuilding totals from it per read is the
+ * always-correct option at a six-inning game's log length. If it ever stops being
+ * cheap, the maintained `boxScoreLine` rollup is where the totals belong
+ * (ADR-0004) — not a field on the live row.
+ */
+function atBatLog(ctx: Ctx, game: Id<'games'>): Promise<Doc<'atBats'>[]> {
+  return ctx.db
+    .query('atBats')
+    .withIndex('by_game', (q) => q.eq('game', game))
+    .collect()
+}
+
+/**
  * Each club's hits, folded out of the at-bat log. Nothing on the `games` row
  * tracks them — the fixture adapter keeps its own running count in memory — and
  * the log already records both the outcome band and the half it was struck in,
  * which names the club that was batting (top = away, SAN-21).
- *
- * Rebuilding the pair per read is the always-correct option at a six-inning
- * game's log length. If it ever stops being cheap, the maintained `boxScoreLine`
- * rollup is where the totals belong (ADR-0004) — not a field on the live row.
  */
-async function hitTotals(ctx: Ctx, game: Id<'games'>): Promise<ClubTotals> {
-  const log = await ctx.db
-    .query('atBats')
-    .withIndex('by_game', (q) => q.eq('game', game))
-    .collect()
+function hitTotalsOf(log: readonly Doc<'atBats'>[]): ClubTotals {
   return log.reduce<ClubTotals>(
     (totals, atBat) => {
       if (!isHitBand(atBat.outcome)) return totals
@@ -288,6 +293,36 @@ async function hitTotals(ctx: Ctx, game: Id<'games'>): Promise<ClubTotals> {
     },
     { home: 0, away: 0 },
   )
+}
+
+/** The runs scored in one half, or null when the log has no row for it — the
+ * half was never played. A played half always has a row: it takes three outs,
+ * or a walk-off's winning run, to end one. */
+function halfRuns(log: readonly Doc<'atBats'>[], inning: number, half: Half): number | null {
+  const rows = log.filter((atBat) => atBat.inning === inning && (atBat.half as Half) === half)
+  if (!rows.length) return null
+  return rows.reduce((runs, atBat) => runs + atBat.runsScored, 0)
+}
+
+/**
+ * A finished game's runs by inning, from the first inning to the last one the log
+ * reaches — extra innings included, since nothing caps them (ADR-0017).
+ *
+ * Only a bottom half can be missing: the engine skips it when the home club
+ * already leads after the top of the last inning. Every inning's top half is
+ * always played, so a gap there is corrupt state, and this refuses rather than
+ * rendering an inning nobody played.
+ */
+function lineScoreOf(log: readonly Doc<'atBats'>[]): InningLine[] {
+  const lastInning = log.reduce((last, atBat) => Math.max(last, atBat.inning), 0)
+  return Array.from({ length: lastInning }, (_, index) => {
+    const inning = index + 1
+    const away = halfRuns(log, inning, Half.Top)
+    if (away === null) {
+      throw new Error(`A final game's at-bat log skips the top of inning ${inning}`)
+    }
+    return { inning, away, home: halfRuns(log, inning, Half.Bottom) }
+  })
 }
 
 /**
@@ -335,12 +370,12 @@ function viewerSideOf(owns: ClubOwnership): ClubSide | null {
 
 async function liveView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): Promise<GameView> {
   const viewerTeam = common.viewer === ClubSide.Home ? game.homeTeam : game.awayTeam
-  const [bases, batter, pitcher, dueUp, hits, locks] = await Promise.all([
+  const [bases, batter, pitcher, dueUp, log, locks] = await Promise.all([
     basesView(ctx, game.bases),
     seatView(ctx, game.currentBatter, SeatRole.Batting),
     seatView(ctx, game.currentPitcher, SeatRole.Pitching),
     dueUpView(ctx, game),
-    hitTotals(ctx, game._id),
+    atBatLog(ctx, game._id),
     duelLocks(ctx, game._id),
   ])
   return {
@@ -352,7 +387,7 @@ async function liveView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): P
     outs: game.outs,
     bases,
     score: { home: game.homeScore, away: game.awayScore },
-    hits,
+    hits: hitTotalsOf(log),
     batter,
     pitcher,
     dueUp,
@@ -365,13 +400,14 @@ async function liveView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): P
 }
 
 async function finalView(ctx: Ctx, game: Doc<'games'>, common: GameViewCommon): Promise<GameView> {
+  const log = await atBatLog(ctx, game._id)
   return {
     ...common,
     status: GameStatus.Final,
     score: { home: game.homeScore, away: game.awayScore },
-    hits: await hitTotals(ctx, game._id),
+    hits: hitTotalsOf(log),
     winner: winnerOf(game),
-    lineScore: [],
+    lineScore: lineScoreOf(log),
   }
 }
 
