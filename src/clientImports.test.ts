@@ -41,6 +41,41 @@ function isTypeOnly(clause: string): boolean {
   return specifiers.every((specifier) => specifier.startsWith('type '))
 }
 
+describe('the runtime-import scanner', () => {
+  const VALUE = "import { ClubSide } from '../../convex/gameView'"
+
+  it.each([
+    ['a plain value import', VALUE],
+    ['a value import below a type-only one', `import type { ReactNode } from 'react'\n${VALUE}`],
+    [
+      'a value import below one with inline type specifiers',
+      `import { type ReactNode } from 'react'\n${VALUE}`,
+    ],
+    ['a default import', "import gameView from '../../convex/gameView'"],
+    ['a namespace import', "import * as gameView from '../../convex/gameView'"],
+    ['a side-effect import', "import '../../convex/gameView'"],
+    ['a value re-export', "export { ClubSide } from '../../convex/gameView'"],
+    ['a star re-export', "export * from '../../convex/gameView'"],
+    ['a dynamic import', "const view = () => import('../../convex/gameView')"],
+    ['a double-quoted specifier', 'import { ClubSide } from "../../convex/gameView"'],
+    [
+      'a mixed type and value import',
+      "import { type GameView, ClubSide } from '../../convex/gameView'",
+    ],
+  ])('catches %s', (_, source) => {
+    expect(runtimeConvexImports(source)).toEqual(['gameView'])
+  })
+
+  it.each([
+    ['import type', "import type { GameView } from '../../convex/gameView'"],
+    ['inline type specifiers only', "import { type GameView } from '../../convex/gameView'"],
+    ['export type', "export type { GameView } from '../../convex/gameView'"],
+    ['a non-convex value import', "import { useState } from 'react'"],
+  ])('lets through %s', (_, source) => {
+    expect(runtimeConvexImports(source)).toEqual([])
+  })
+})
+
 describe('the client bundle', () => {
   it('finds the client modules it guards', () => {
     expect(Object.keys(sources)).toContain('./shell/LiveGame.tsx')
