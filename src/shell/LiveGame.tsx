@@ -223,7 +223,7 @@ function LiveGameScreens({
       // game; once the game is final, what follows is its final reveal or
       // game-over, never a half card.
       if (to === RevealAdvance.EndOfHalf && game.status === GameStatus.Live) {
-        setSummary(halfSummaryOf(shown))
+        setSummary(halfSummaryOf(shown, game))
       }
     }
     return (

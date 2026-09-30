@@ -198,8 +198,20 @@ describe('revealOf — the reveal, built from the server’s resolved at-bat', (
 describe('halfSummaryOf', () => {
   it('reports the half the at-bat ended, with the batting club’s totals', () => {
     expect(
-      halfSummaryOf(resolvedAtBat({ endedHalf: true, halfTotals: { runs: 2, hits: 3 } })),
-    ).toEqual({ half: 'BOTTOM', inning: 3, runs: 2, hits: 3 })
+      halfSummaryOf(resolvedAtBat({ endedHalf: true, halfTotals: { runs: 2, hits: 3 } }), CLUBS),
+    ).toMatchObject({ half: 'BOTTOM', inning: 3, runs: 2, hits: 3 })
+  })
+
+  it('carries the game score once the at-bat is in, by club label (SAN-70)', () => {
+    // The bottom of the 3rd: RID had 2 and this play scored 1 more.
+    const summary = halfSummaryOf(
+      resolvedAtBat({ endedHalf: true, scoreBefore: { away: 3, home: 2 }, runsScored: 1 }),
+      CLUBS,
+    )
+    expect(summary).toMatchObject({
+      clubs: { away: 'HAR', home: 'RID' },
+      score: { away: 3, home: 3 },
+    })
   })
 })
 

@@ -1,7 +1,7 @@
 import { GameStatus } from '@sandlot/engine/game'
 import { type DuelAdapter, type DuelState, deriveSituation } from './adapter'
 import type { Roster } from './roster'
-import { isHit, type RevealScenario } from './scenario'
+import { type ClubPair, isHit, type RevealScenario } from './scenario'
 import { DuelSeat, type SeatAgent } from './seatAgent'
 
 /** A completed half-inning, reduced to the two numbers the summary shows. */
@@ -12,6 +12,10 @@ export interface HalfSummary {
   runs: number
   /** Hits the batting side collected this half. */
   hits: number
+  /** Each club's scoreboard label. */
+  clubs: ClubPair<string>
+  /** The game score once the half is over — what the card leads with. */
+  score: ClubPair<number>
 }
 
 /**
@@ -28,11 +32,20 @@ export interface RevealGate {
  * or a bot (SAN-48) — the loop drives whatever `SeatAgent` each slot holds. */
 export type SeatAgents = Record<DuelSeat, SeatAgent>
 
-const emptyHalfSummary = (): HalfSummary => ({ half: 'TOP', inning: 1, runs: 0, hits: 0 })
+const emptyHalfSummary = (): HalfSummary => ({
+  half: 'TOP',
+  inning: 1,
+  runs: 0,
+  hits: 0,
+  // Stubbed for the red checkpoint (SAN-70).
+  clubs: { away: '', home: '' },
+  score: { away: 0, home: 0 },
+})
 
 /** Fold one reveal into the running half summary (batting side runs + hits). */
 function accrueHalf(summary: HalfSummary, reveal: RevealScenario): HalfSummary {
   return {
+    ...summary,
     half: reveal.half,
     inning: reveal.inning,
     runs: summary.runs + reveal.runsScored,

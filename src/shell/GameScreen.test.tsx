@@ -465,6 +465,15 @@ describe('/game/:id — between halves (SAN-67)', () => {
     expect(screen.queryByLabelText(/your number/i)).toBeNull()
   })
 
+  it('leads with the game score as the half left it, away then home (SAN-70)', async () => {
+    await thirdOutRevealed()
+
+    // HAR 3, RID 2 before the third out, which scored nothing.
+    expect(screen.getByRole('region', { name: 'Score' }).textContent).toBe('HAR3RID2')
+    const half = screen.getByRole('region', { name: 'This half' })
+    expect(within(half).getByText('HITS').nextElementSibling?.textContent).toBe('1')
+  })
+
   it('hands focus to the continue control when the card appears', async () => {
     await thirdOutRevealed()
 

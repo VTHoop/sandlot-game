@@ -233,11 +233,17 @@ export function sideChangeOf(view: LiveGameView): SideChange {
 }
 
 /** The end-of-half card for the half this at-bat closed, from the server's totals. */
-export function halfSummaryOf(atBat: ResolvedAtBatView): HalfSummary {
+export function halfSummaryOf(
+  atBat: ResolvedAtBatView,
+  _clubs: { away: ClubView; home: ClubView },
+): HalfSummary {
   return {
     half: halfLabel(atBat.half),
     inning: atBat.inning,
     runs: atBat.halfTotals.runs,
     hits: atBat.halfTotals.hits,
+    // Stubbed for the red checkpoint (SAN-70).
+    clubs: { away: '', home: '' },
+    score: { away: 0, home: 0 },
   }
 }
