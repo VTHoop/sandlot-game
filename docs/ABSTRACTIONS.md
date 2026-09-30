@@ -141,6 +141,11 @@ keeps nothing the server could tell it.
   named in full) in its own named scroll region, and `HomeLink`. No tie state —
   a `final` with no winner refuses to render. No rematch: nothing in the app
   creates a game yet.
+- **Client imports from `convex/`**: types from anywhere; values only from the
+  generated API and the server-free leaves `duelContract.ts` and `clubSide.ts`
+  (`ClubSide` lives there, re-exported by `gameView`). A value import from a
+  server module drags `_generated/server` into the bundle and throws on load;
+  `src/clientImports.test.ts` enforces the rule (ADR-0032).
 - **Not used here:** `playHalfInning` and `createConvexDuelAdapter`. That loop
   drives both seats from one client holding both numbers; it remains the
   showcase's fixture path (and the hotseat adapter's tests).

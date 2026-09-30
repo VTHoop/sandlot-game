@@ -77,5 +77,12 @@ happen in play, so the read refuses the log instead of drawing it.
   the whole time.
 - A final fixture must carry a coherent log: one that skips an inning makes
   `getGame` throw. The adapter's walk-off fixture was fixed to match.
+- The game-over screen is the first client code that branches on `ClubSide`
+  at runtime. `ClubSide` therefore moves into `convex/clubSide.ts`, a leaf with
+  no imports, and `gameView` re-exports it. A value import from `gameView`
+  itself pulls `_generated/server` into the browser bundle and throws on load.
+  Node-run tests cannot catch that, so `src/clientImports.test.ts` now fails
+  any client module that value-imports a `convex/` module other than the
+  generated API, `duelContract`, or `clubSide`.
 - ADR-0031's two "until SAN-67" consequences are resolved here. Its other
   consequences stand.
