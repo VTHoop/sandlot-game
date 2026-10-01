@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
-import { mutation, query } from './_generated/server'
+import { type MutationCtx, mutation, query } from './_generated/server'
 import { authedUser, type Ctx, isParticipant, maybeUser, ownershipOf } from './participants'
 
 /**
@@ -69,6 +69,29 @@ export const getRevealsDismissedThrough = query({
   },
 })
 
+/** Whether `sequence` names an at-bat this game has resolved: a whole,
+ * non-negative ordinal no later than the last one folded in. */
+function isResolvedIn(game: Doc<'games'>, sequence: number): boolean {
+  const isOrdinal = Number.isInteger(sequence) && sequence >= 0
+  return isOrdinal && sequence <= game.lastResolvedSequence
+}
+
+/** Raise the user's mark for a game to `sequence`, creating it if this is their
+ * first dismissal. Never lowers it. */
+async function raiseDismissal(
+  ctx: MutationCtx,
+  game: Id<'games'>,
+  user: Id<'users'>,
+  sequence: number,
+): Promise<void> {
+  const dismissal = await dismissalOf(ctx, game, user)
+  if (!dismissal) {
+    await ctx.db.insert('revealDismissals', { game, user, dismissedThrough: sequence })
+  } else if (sequence > dismissal.dismissedThrough) {
+    await ctx.db.patch(dismissal._id, { dismissedThrough: sequence })
+  }
+}
+
 /**
  * Record that the caller has dismissed the reveal of at-bat `sequence`.
  *
@@ -90,21 +113,10 @@ export const dismissReveal = mutation({
     const user = await authedUser(ctx)
     const game = await participantGame(ctx, args.game, user)
     if (!game) throw new Error(NOT_A_PARTICIPANT)
-    const { sequence } = args
-    if (!Number.isInteger(sequence) || sequence < 0 || sequence > game.lastResolvedSequence) {
-      throw new Error(`No resolved at-bat ${sequence} in this game`)
+    if (!isResolvedIn(game, args.sequence)) {
+      throw new Error(`No resolved at-bat ${args.sequence} in this game`)
     }
-
-    const dismissal = await dismissalOf(ctx, game._id, user._id)
-    if (!dismissal) {
-      await ctx.db.insert('revealDismissals', {
-        game: game._id,
-        user: user._id,
-        dismissedThrough: sequence,
-      })
-    } else if (sequence > dismissal.dismissedThrough) {
-      await ctx.db.patch(dismissal._id, { dismissedThrough: sequence })
-    }
+    await raiseDismissal(ctx, game._id, user._id, args.sequence)
     return null
   },
 })
