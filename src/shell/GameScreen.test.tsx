@@ -388,6 +388,103 @@ describe('/game/:id — waiting, then the reveal', () => {
   })
 })
 
+describe('/game/:id — returning to a game (SAN-22)', () => {
+  /** An at-bat that resolved after the viewer committed and left. */
+  const MISSED = resolvedAtBat({ sequence: 4, inning: 3, half: Half.Top })
+
+  it('reveals an at-bat the viewer has not dismissed, then goes on to the open at-bat', async () => {
+    await open(liveView(), MISSED)
+
+    expect((await screen.findByRole('status')).textContent).toBe('DOUBLE!')
+    fireEvent.click(button('NEXT BATTER →'))
+    await screen.findByLabelText(/your number/i)
+  })
+
+  it('records the dismissal on the server when the reveal is advanced, once', async () => {
+    await open(liveView(), MISSED)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'NEXT BATTER →' }))
+    await screen.findByLabelText(/your number/i)
+
+    expect(sdk.dismissReveal).toHaveBeenCalledTimes(1)
+    expect(sdk.dismissReveal).toHaveBeenCalledWith({ game: GAME_ID, sequence: MISSED.sequence })
+  })
+
+  it('records the at-bat it showed, not a newer one that resolved underneath it', async () => {
+    const { serverReports } = await open(liveView(), MISSED)
+    await screen.findByRole('status')
+    const newer = { ...MISSED, sequence: 5, outcome: 'K' as const, runsScored: 0, outsAfter: 2 }
+    serverReports({ lastAtBat: newer })
+
+    fireEvent.click(button('NEXT BATTER →'))
+    expect(sdk.dismissReveal).toHaveBeenLastCalledWith({ game: GAME_ID, sequence: 4 })
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toBe('STRIKEOUT')
+    })
+
+    fireEvent.click(button('NEXT BATTER →'))
+    expect(sdk.dismissReveal).toHaveBeenLastCalledWith({ game: GAME_ID, sequence: 5 })
+  })
+
+  it('shows a reveal again when the page is closed partway through it', async () => {
+    await open(liveView(), MISSED)
+    await screen.findByRole('status')
+    cleanup()
+
+    await open(liveView(), MISSED)
+    expect((await screen.findByRole('status')).textContent).toBe('DOUBLE!')
+    expect(sdk.dismissReveal).not.toHaveBeenCalled()
+  })
+
+  it('moves on when the reveal on screen is dismissed on another device', async () => {
+    const { serverReports } = await open(liveView(), MISSED)
+    await screen.findByRole('status')
+
+    serverReports({ dismissedThrough: MISSED.sequence })
+
+    await screen.findByLabelText(/your number/i)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('waits for what was dismissed before choosing a screen', async () => {
+    // Opened by hand: `open()` always has the dismissal read answer.
+    sdk.getGame.mockReturnValue(liveView())
+    sdk.getLastAtBat.mockReturnValue(MISSED)
+    sdk.getRevealsDismissedThrough.mockReturnValue(undefined)
+    window.history.pushState({}, '', PATH)
+    const view = render(<App />)
+
+    // Once the duel has asked for the last at-bat, it is the one deciding — and
+    // without the dismissal read it cannot know whether to reveal it.
+    await waitFor(() => {
+      expect(sdk.getLastAtBat).toHaveBeenCalled()
+    })
+    screen.getByText('Loading the game…')
+    // The loading line is itself a status; the reveal is known by its outcome.
+    expect(screen.queryByText('DOUBLE!')).toBeNull()
+    expect(screen.queryByLabelText(/your number/i)).toBeNull()
+
+    sdk.getRevealsDismissedThrough.mockReturnValue(MISSED.sequence)
+    view.rerender(<App />)
+    await screen.findByLabelText(/your number/i)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('stays on the open at-bat when the dismissal does not reach the server', async () => {
+    sdk.dismissReveal.mockRejectedValue(new Error('offline'))
+    await open(liveView(), MISSED)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'NEXT BATTER →' }))
+
+    await screen.findByLabelText(/your number/i)
+    await waitFor(() => {
+      expect(sdk.dismissReveal).toHaveBeenCalled()
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+})
+
 describe('/game/:id — a commit that does not land', () => {
   it('shows the server’s reason for a refusal and follows server state, without committing again', async () => {
     sdk.commitSwing.mockRejectedValueOnce(
@@ -540,6 +637,14 @@ describe('/game/:id — between halves (SAN-67)', () => {
     await screen.findByLabelText(/your number/i)
   })
 
+  it('reveals a third out the viewer missed, then shows the half card', async () => {
+    await open(liveView(NEXT_HALF), THIRD_OUT)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'END OF HALF →' }))
+    await screen.findByRole('heading', { name: HALF_CARD })
+    expect(sdk.dismissReveal).toHaveBeenCalledWith({ game: GAME_ID, sequence: THIRD_OUT.sequence })
+  })
+
   it('lands on the next half’s first at-bat on a reload between halves, once the third out is dismissed', async () => {
     await open(liveView(NEXT_HALF), THIRD_OUT, THIRD_OUT.sequence)
 
@@ -613,6 +718,16 @@ describe('/game/:id — the game ends (SAN-67)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'FINAL SCORE →' }))
     await screen.findByRole('heading', { name: 'FINAL' })
     expect(screen.queryByRole('heading', { name: HALF_CARD })).toBeNull()
+  })
+
+  it('reveals a deciding play the viewer missed before the game-over screen', async () => {
+    await open(WALK_OFF_FINAL, WALK_OFF)
+
+    await screen.findByRole('status')
+    expect(screen.queryByRole('heading', { name: 'FINAL' })).toBeNull()
+    fireEvent.click(button('FINAL SCORE →'))
+    await screen.findByRole('heading', { name: 'FINAL' })
+    expect(sdk.dismissReveal).toHaveBeenCalledWith({ game: GAME_ID, sequence: WALK_OFF.sequence })
   })
 
   it('lands on the game-over screen on a reload after the final, once the last play is dismissed', async () => {

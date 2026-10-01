@@ -127,6 +127,18 @@ export default defineSchema({
     createdAt: v.float64(),
   }).index('by_game', ['game', 'sequence', 'role']),
 
+  // PER-VIEWER PRESENTATION STATE (SAN-22, ADR-0034). The last at-bat whose
+  // reveal this user has dismissed in this game — a high-water mark, so one row
+  // per (game, user), read with `.unique()`. Keyed by user, not seat: an owner of
+  // both clubs dismisses once. Not game state: resolution never reads it, and it
+  // holds a sequence, never a duel number. Written only by
+  // `revealDismissals.dismissReveal`.
+  revealDismissals: defineTable({
+    game: v.id('games'),
+    user: v.id('users'),
+    dismissedThrough: v.float64(),
+  }).index('by_game_user', ['game', 'user']),
+
   // APPEND-ONLY LOG (ADR-0004). Each entry carries complete pre- and post-state
   // so rows are never mutated — append-only is enforced by the insert-only
   // access functions added in later tickets. `outcome` mirrors the engine's

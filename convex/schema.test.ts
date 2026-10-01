@@ -34,6 +34,7 @@ const EXPECTED_INDEXES: Record<string, Record<string, string[]>> = {
   lineups: { by_game: ['game'], by_team: ['team'] },
   duelCommitments: { by_game: ['game', 'sequence', 'role'] },
   atBats: { by_game: ['game', 'sequence'] },
+  revealDismissals: { by_game_user: ['game', 'user'] },
   standings: { by_team: ['team'] },
   playerStatLine: { by_player: ['player'] },
   boxScoreLine: { by_game: ['game'] },
