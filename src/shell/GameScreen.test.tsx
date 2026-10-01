@@ -16,8 +16,8 @@ import {
 } from '../duel/testing/liveViews'
 
 /**
- * `/game/:id` tested through `<App />` at a real URL (SAN-39). The two Convex
- * subscriptions the screen reads and the three mutations it sends are replaced
+ * `/game/:id` tested through `<App />` at a real URL (SAN-39). The three Convex
+ * subscriptions the screen reads and the four mutations it sends are replaced
  * by controllable fakes, keyed by function name — so a test plays the SERVER: it
  * sets what the subscriptions report, re-renders, and watches the screen follow.
  * That is the whole claim of a server-driven screen.
@@ -25,10 +25,12 @@ import {
 const sdk = vi.hoisted(() => ({
   getGame: vi.fn<(args: unknown) => GameView | null | undefined>(),
   getLastAtBat: vi.fn<(args: unknown) => ResolvedAtBatView | null | undefined>(),
+  getRevealsDismissedThrough: vi.fn<(args: unknown) => number | null | undefined>(),
   provision: vi.fn<() => Promise<string>>(),
   startGame: vi.fn<(args: unknown) => Promise<null>>(),
   commitPitch: vi.fn<(args: unknown) => Promise<unknown>>(),
   commitSwing: vi.fn<(args: unknown) => Promise<unknown>>(),
+  dismissReveal: vi.fn<(args: unknown) => Promise<unknown>>(),
   /** Every query the app subscribed to, by name — what crossed the wire. */
   subscribed: new Set<string>(),
 }))
@@ -45,12 +47,14 @@ vi.mock('convex/react', async () => {
   const queries = new Map<string, (args: unknown) => unknown>([
     ['gameView:getGame', (args) => sdk.getGame(args)],
     ['atBatView:getLastAtBat', (args) => sdk.getLastAtBat(args)],
+    ['revealDismissals:getRevealsDismissedThrough', (args) => sdk.getRevealsDismissedThrough(args)],
   ])
   const mutations = new Map<string, (args: unknown) => Promise<unknown>>([
     ['users:provision', () => sdk.provision()],
     ['game:startGame', (args) => sdk.startGame(args)],
     ['atBat:commitPitch', (args) => sdk.commitPitch(args)],
     ['atBat:commitSwing', (args) => sdk.commitSwing(args)],
+    ['revealDismissals:dismissReveal', (args) => sdk.dismissReveal(args)],
   ])
   const named = <T,>(table: Map<string, T>, ref: Ref): T => {
     const name = getFunctionName(ref)
@@ -86,10 +90,12 @@ beforeAll(() => {
 beforeEach(() => {
   sdk.getGame.mockReset().mockReturnValue(undefined)
   sdk.getLastAtBat.mockReset().mockReturnValue(null)
+  sdk.getRevealsDismissedThrough.mockReset().mockReturnValue(null)
   sdk.provision.mockReset().mockResolvedValue('users-row-id')
   sdk.startGame.mockReset().mockResolvedValue(null)
   sdk.commitPitch.mockReset().mockResolvedValue(null)
   sdk.commitSwing.mockReset().mockResolvedValue(null)
+  sdk.dismissReveal.mockReset().mockResolvedValue(null)
   sdk.subscribed.clear()
 })
 
@@ -100,10 +106,18 @@ afterEach(() => {
 
 const PATH = `/game/${GAME_ID}`
 
-/** Open the game route with the server reporting `game` (and `lastAtBat`). */
-async function open(game: GameView | null, lastAtBat: ResolvedAtBatView | null = null) {
+/**
+ * Open the game route with the server reporting `game`, `lastAtBat`, and the
+ * last at-bat this viewer has dismissed (`null`: none).
+ */
+async function open(
+  game: GameView | null,
+  lastAtBat: ResolvedAtBatView | null = null,
+  dismissedThrough: number | null = null,
+) {
   sdk.getGame.mockReturnValue(game)
   sdk.getLastAtBat.mockReturnValue(lastAtBat)
+  sdk.getRevealsDismissedThrough.mockReturnValue(dismissedThrough)
   window.history.pushState({}, '', PATH)
   const view = render(<App />)
   // The provisioning gate resolves on a microtask; let the route mount.
@@ -111,9 +125,16 @@ async function open(game: GameView | null, lastAtBat: ResolvedAtBatView | null =
     expect(sdk.getGame).toHaveBeenCalled()
   })
   /** The server pushes new state down the subscriptions. */
-  const serverReports = (next: { game?: GameView; lastAtBat?: ResolvedAtBatView | null }) => {
+  const serverReports = (next: {
+    game?: GameView
+    lastAtBat?: ResolvedAtBatView | null
+    dismissedThrough?: number | null
+  }) => {
     if (next.game) sdk.getGame.mockReturnValue(next.game)
     if (next.lastAtBat !== undefined) sdk.getLastAtBat.mockReturnValue(next.lastAtBat)
+    if (next.dismissedThrough !== undefined) {
+      sdk.getRevealsDismissedThrough.mockReturnValue(next.dismissedThrough)
+    }
     view.rerender(<App />)
   }
   return { serverReports }
@@ -214,8 +235,9 @@ describe('/game/:id — a live game, on load', () => {
     expect(screen.queryByLabelText(/your number/i)).toBeNull()
   })
 
-  it('does not replay an at-bat that resolved before the page was opened', async () => {
-    await open(liveView(), resolvedAtBat())
+  it('does not replay an at-bat the viewer has already dismissed', async () => {
+    const dismissed = resolvedAtBat()
+    await open(liveView(), dismissed, dismissed.sequence)
 
     await screen.findByLabelText(/your number/i)
     expect(screen.queryByRole('button', { name: '↺ REPLAY' })).toBeNull()
@@ -236,13 +258,18 @@ describe('/game/:id — a live game, on load', () => {
     expect(cell('RID')).toBe('RID5 HITS2runs')
   })
 
-  it('asks the server for the game and the last at-bat, and nothing that could carry a live number', async () => {
+  it('asks the server for the game, the last at-bat and what was dismissed, and nothing that could carry a live number', async () => {
     await open(liveView({ locks: locks(true, false) }))
     await screen.findByText('🔒 LOCKED')
 
     // The screen cannot show a number it never fetched: `getActiveDuel` is not
-    // subscribed to, and neither view it does read can hold an unresolved number.
-    expect([...sdk.subscribed].sort()).toEqual(['atBatView:getLastAtBat', 'gameView:getGame'])
+    // subscribed to, neither view of the game can hold an unresolved number, and
+    // the dismissal read is a sequence, not a duel (SAN-22).
+    expect([...sdk.subscribed].sort()).toEqual([
+      'atBatView:getLastAtBat',
+      'gameView:getGame',
+      'revealDismissals:getRevealsDismissedThrough',
+    ])
   })
 })
 
@@ -513,8 +540,8 @@ describe('/game/:id — between halves (SAN-67)', () => {
     await screen.findByLabelText(/your number/i)
   })
 
-  it('lands on the next half’s first at-bat on a reload between halves, not on the card', async () => {
-    await open(liveView(NEXT_HALF), THIRD_OUT)
+  it('lands on the next half’s first at-bat on a reload between halves, once the third out is dismissed', async () => {
+    await open(liveView(NEXT_HALF), THIRD_OUT, THIRD_OUT.sequence)
 
     await screen.findByLabelText(/your number/i)
     screen.getByText('BOT 3RD')
@@ -588,8 +615,8 @@ describe('/game/:id — the game ends (SAN-67)', () => {
     expect(screen.queryByRole('heading', { name: HALF_CARD })).toBeNull()
   })
 
-  it('lands on the game-over screen on a reload after the final, without replaying the last play', async () => {
-    await open(finalView(), LAST_OUT)
+  it('lands on the game-over screen on a reload after the final, once the last play is dismissed', async () => {
+    await open(finalView(), LAST_OUT, LAST_OUT.sequence)
 
     await screen.findByRole('heading', { name: 'FINAL' })
     expect(screen.queryByRole('status')).toBeNull()
