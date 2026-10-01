@@ -75,6 +75,34 @@ export async function assertOwns(ctx: Ctx, team: Id<'teams'>, user: Doc<'users'>
 }
 
 /**
+ * Which of the two clubs the caller owns — both, for the one-account hotseat
+ * (ADR-0028). Two named flags rather than a list, so a reader asks for the club
+ * it means instead of searching.
+ */
+export interface ClubOwnership {
+  home: boolean
+  away: boolean
+}
+
+/** Which of the game's two clubs `user` owns. The two lookups are independent,
+ * so they go out together. */
+export async function ownershipOf(
+  ctx: Ctx,
+  game: Doc<'games'>,
+  user: Doc<'users'>,
+): Promise<ClubOwnership> {
+  const [home, away] = await Promise.all([
+    ownsTeam(ctx, game.homeTeam, user),
+    ownsTeam(ctx, game.awayTeam, user),
+  ])
+  return { home, away }
+}
+
+/** Whether the owner of `owns` is a participant — owns either club. The one
+ * definition every participant gate reads, read model and mutation alike. */
+export const isParticipant = (owns: ClubOwnership): boolean => owns.home || owns.away
+
+/**
  * In the top half the away team bats and the home team pitches; the bottom half
  * is the mirror. (Fielding/pitching side is the team NOT at bat.)
  */

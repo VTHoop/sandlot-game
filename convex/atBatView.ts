@@ -3,17 +3,8 @@ import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import type { ResolvedAtBatView } from './duelContract'
-import {
-  atBatLog,
-  type ClubOwnership,
-  type ClubTotals,
-  creditBatting,
-  halfOf,
-  hitsOf,
-  ownershipOf,
-  rowsInHalf,
-} from './gameView'
-import { type Ctx, maybeUser } from './participants'
+import { atBatLog, type ClubTotals, creditBatting, halfOf, hitsOf, rowsInHalf } from './gameView'
+import { type Ctx, isParticipant, maybeUser, ownershipOf } from './participants'
 
 /**
  * The resolved at-bat read model (SAN-39): the last at-bat a game resolved,
@@ -75,9 +66,6 @@ async function namedPlayer(
   if (!player) throw new Error(`At-bat log references a player that no longer exists: ${id}`)
   return { id: player._id, name: player.name }
 }
-
-/** Whether the caller owns either of the game's clubs. */
-const isParticipant = (owns: ClubOwnership): boolean => owns.home || owns.away
 
 /**
  * The most recently resolved at-bat of a game, for a participant — or `null`.

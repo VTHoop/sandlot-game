@@ -1,8 +1,7 @@
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { mutation, query } from './_generated/server'
-import { ownershipOf } from './gameView'
-import { authedUser, type Ctx, maybeUser } from './participants'
+import { authedUser, type Ctx, isParticipant, maybeUser, ownershipOf } from './participants'
 
 /**
  * Which reveal each participant has dismissed (SAN-22, ADR-0034).
@@ -32,8 +31,7 @@ async function participantGame(
 ): Promise<Doc<'games'> | null> {
   const game = await ctx.db.get(id)
   if (!game) return null
-  const owns = await ownershipOf(ctx, game, user)
-  return owns.home || owns.away ? game : null
+  return isParticipant(await ownershipOf(ctx, game, user)) ? game : null
 }
 
 /** The user's dismissal row for a game. `.unique()` throws on a duplicate rather

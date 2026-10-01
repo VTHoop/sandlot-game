@@ -18,8 +18,10 @@ import { DuelSeat } from './seatAgent'
  * The server-driven duel's pure half (SAN-39, ADR-0031): everything `/game/:id`
  * decides, as functions of what the server reports. No React, no I/O, no state.
  *
- * The screen reads two subscriptions — `getGame` (the situation and the locks)
- * and `getLastAtBat` (the reveal) — and these functions turn them into whose
+ * The screen reads three subscriptions — `getGame` (the situation and the
+ * locks), `getLastAtBat` (the reveal) and `getRevealsDismissedThrough` (which
+ * reveal this viewer has dismissed; ADR-0034) — and these functions turn the
+ * first two into whose
  * turn it is and the view-models the duel's screens render. Nothing here
  * remembers anything: whose turn it is comes from the locks the server holds, so
  * a reload, a bot that commits first, and a second device all land on the right
