@@ -32,13 +32,14 @@ import '../duel/duel.css'
  * duel's screens, driven by the server (ADR-0031), carried across half
  * boundaries and on to the game-over screen (ADR-0032).
  *
- * Which screen shows is decided from two subscriptions and nothing else —
- * `getGame` for the situation and the locks, `getLastAtBat` for the reveal
- * (`../duel/liveDuel` holds the decisions). This component owns only what the
- * server cannot know: which reveal this viewer has already watched, whether
- * they have moved past a half's summary, and what to tell them when a commit
- * did not land. Crossing a half is not one of those — the server has already
- * opened the next half by the time its summary shows.
+ * Which screen shows is decided from three subscriptions and nothing else —
+ * `getGame` for the situation and the locks, `getLastAtBat` for the reveal,
+ * `getRevealsDismissedThrough` for which reveal this viewer has already
+ * dismissed (SAN-22, ADR-0034; `../duel/liveDuel` holds the decisions). This
+ * component owns only what the server cannot know: whether the viewer has moved
+ * past a half's summary, and what to tell them when a commit did not land.
+ * Crossing a half is not one of those — the server has already opened the next
+ * half by the time its summary shows.
  *
  * It never resolves an at-bat, never holds a number that is not the viewer's
  * own, and commits one owned seat at a time through `commitPitch` /
@@ -47,6 +48,16 @@ import '../duel/duel.css'
 
 /** A `dismissed` sequence below every real one: no at-bat has been watched. */
 const NOTHING_RESOLVED = -1
+
+/**
+ * A dismissal that did not reach the server is let go. The screen has already
+ * moved on, and the cost is one replay of that reveal on the next load — which
+ * errs toward the reveal not being lost. Convex retries a mutation across
+ * reconnects itself, so a rejection here is a refusal, which only a bug causes.
+ */
+function letDismissalGo(): void {
+  // Deliberately nothing: see above.
+}
 
 const SEND_FAILED = 'Couldn’t send your number. Try again.'
 
@@ -180,22 +191,29 @@ interface LiveGameProps {
   game: PlayedGameView
 }
 
+interface LiveGameScreensProps extends LiveGameProps {
+  lastAtBat: ResolvedAtBatView | null
+  /** The last at-bat this viewer has dismissed, on any device; null for none. */
+  dismissedThrough: number | null
+}
+
 /**
- * The screens, once both subscriptions have answered. `dismissed` opens on the
- * at-bat already on the books, so loading the page never replays it: the viewer
- * lands on the at-bat that is open (SAN-39's "whose turn is unambiguous on
- * load") — or, for a finished game, on the game-over screen. An at-bat that
- * resolves after that is one they have not seen.
+ * The screens, once all three subscriptions have answered.
+ *
+ * `dismissed` is the later of what the server has on file and what this screen
+ * has just dismissed, worked out on every render. The server's half means a
+ * reveal the viewer left partway through is waiting when they return, and one
+ * they dismissed on another device is gone here too, even on a screen that was
+ * already open. The local half moves the screen on at once, without waiting for
+ * the round trip. Both only rise, so the screen never goes back to a reveal.
  *
  * The same instance carries on when the game goes final under it, which is how
- * the game-ending at-bat is revealed before the game-over screen (SAN-67): the
- * screen does not remount, so that at-bat is still one this viewer has not seen.
+ * the game-ending at-bat is revealed before the game-over screen (SAN-67).
  */
-function LiveGameScreens({
-  game,
-  lastAtBat,
-}: LiveGameProps & { lastAtBat: ResolvedAtBatView | null }) {
-  const [dismissed, setDismissed] = useState(lastAtBat?.sequence ?? NOTHING_RESOLVED)
+function LiveGameScreens({ game, lastAtBat, dismissedThrough }: LiveGameScreensProps) {
+  const dismissReveal = useMutation(api.revealDismissals.dismissReveal)
+  const [watched, setWatched] = useState(NOTHING_RESOLVED)
+  const dismissed = Math.max(dismissedThrough ?? NOTHING_RESOLVED, watched)
   const [summary, setSummary] = useState<HalfSummary | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -217,7 +235,10 @@ function LiveGameScreens({
 
   if (lastAtBat && lastAtBat.sequence > dismissed) {
     const advance = (shown: ResolvedAtBatView, to: RevealAdvance) => {
-      setDismissed(shown.sequence)
+      setWatched((prev) => Math.max(prev, shown.sequence))
+      // The at-bat this reveal showed, not the latest: one that resolved while it
+      // played is still to be revealed.
+      dismissReveal({ game: game.id, sequence: shown.sequence }).catch(letDismissalGo)
       setNotice(null)
       // The card announces the half the server has opened, so it needs a live
       // game; once the game is final, what follows is its final reveal or
@@ -228,8 +249,9 @@ function LiveGameScreens({
     }
     return (
       <DuelFrame notice={null}>
-        {/* Keyed by what has been dismissed: advancing past one reveal mounts a
-            fresh one for whatever resolved while it played. */}
+        {/* Keyed by what has been dismissed: advancing past one reveal — here or
+            on another device — mounts a fresh one for whatever resolved while it
+            played. */}
         <RevealTurn key={dismissed} atBat={lastAtBat} game={game} onAdvance={advance} />
       </DuelFrame>
     )
@@ -246,12 +268,16 @@ function LiveGameScreens({
 
 export default function LiveGame({ game }: LiveGameProps) {
   const lastAtBat = useQuery(api.atBatView.getLastAtBat, { game: game.id })
-  if (lastAtBat === undefined) {
+  const dismissedThrough = useQuery(api.revealDismissals.getRevealsDismissedThrough, {
+    game: game.id,
+  })
+  // Neither answer alone says whether there is a reveal to show.
+  if (lastAtBat === undefined || dismissedThrough === undefined) {
     return (
       <Screen>
         <Waiting>Loading the game…</Waiting>
       </Screen>
     )
   }
-  return <LiveGameScreens game={game} lastAtBat={lastAtBat} />
+  return <LiveGameScreens game={game} lastAtBat={lastAtBat} dismissedThrough={dismissedThrough} />
 }

@@ -5,7 +5,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import { duelLocks } from './atBat'
 import { ClubSide } from './clubSide'
-import { type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
+import { type ClubOwnership, type Ctx, maybeUser, ownershipOf, teamsForHalf } from './participants'
 
 /**
  * The secret-safe live game read model (SAN-56) — the one query a client
@@ -103,16 +103,6 @@ export interface InningLine {
   inning: number
   away: number
   home: number | null
-}
-
-/**
- * Which of the two clubs the caller owns — both, for the one-account hotseat
- * (ADR-0028). Two named flags rather than a list, so a reader asks for the club
- * it means instead of searching.
- */
-export interface ClubOwnership {
-  home: boolean
-  away: boolean
 }
 
 /** The fields every variant carries, whatever the game's status. */
@@ -360,21 +350,6 @@ function winnerOf(game: Doc<'games'>): ClubSide | null {
 }
 
 // ─── The gate ───────────────────────────────────────────────────────────────
-
-/** Which of the game's two clubs the caller owns. The two lookups are
- * independent, so they go out together. Exported for the resolved at-bat read
- * model, which gates on the same question. */
-export async function ownershipOf(
-  ctx: Ctx,
-  game: Doc<'games'>,
-  user: Doc<'users'>,
-): Promise<ClubOwnership> {
-  const [home, away] = await Promise.all([
-    ownsTeam(ctx, game.homeTeam, user),
-    ownsTeam(ctx, game.awayTeam, user),
-  ])
-  return { home, away }
-}
 
 /**
  * The one side `viewer` names, or null when the caller owns neither club. Home

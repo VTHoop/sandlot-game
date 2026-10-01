@@ -9,7 +9,8 @@ import { HomeLink, Screen } from './Screen'
 /**
  * A finished game at `/game/:id` (SAN-67): who won, the final score, the line
  * score, and the way home. Rendered from `getGame`'s final variant alone, so a
- * reload after the final lands here with nothing to replay.
+ * reload after the final lands here once the deciding play has been dismissed
+ * (ADR-0034).
  *
  * There is no tie state: the engine seals a game only on a decided inning, with
  * no inning cap (ADR-0017).

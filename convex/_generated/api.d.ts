@@ -16,6 +16,7 @@ import type * as duelContract from "../duelContract.js";
 import type * as game from "../game.js";
 import type * as gameView from "../gameView.js";
 import type * as participants from "../participants.js";
+import type * as revealDismissals from "../revealDismissals.js";
 import type * as seed from "../seed.js";
 import type * as seedRoster from "../seedRoster.js";
 import type * as users from "../users.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   game: typeof game;
   gameView: typeof gameView;
   participants: typeof participants;
+  revealDismissals: typeof revealDismissals;
   seed: typeof seed;
   seedRoster: typeof seedRoster;
   users: typeof users;

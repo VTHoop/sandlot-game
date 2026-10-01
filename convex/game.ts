@@ -12,7 +12,7 @@ import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { type MutationCtx, mutation } from './_generated/server'
 import { scheduleBotSeats } from './bot'
-import { authedUser, ownsTeam } from './participants'
+import { authedUser, isParticipant, ownershipOf } from './participants'
 
 /**
  * Authoritative game-state mutations (SAN-21). The live `games` row — inning,
@@ -102,9 +102,9 @@ export const startGame = mutation({
     if (game.status !== 'scheduled') throw new Error('Game is not scheduled')
 
     const user = await authedUser(ctx)
-    const isParticipant =
-      (await ownsTeam(ctx, game.homeTeam, user)) || (await ownsTeam(ctx, game.awayTeam, user))
-    if (!isParticipant) throw new Error('Not authorized for this game')
+    if (!isParticipant(await ownershipOf(ctx, game, user))) {
+      throw new Error('Not authorized for this game')
+    }
 
     const context = await loadContext(ctx, game)
     await ctx.db.patch(game._id, toGamePatch(initGameState(context)))

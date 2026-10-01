@@ -97,14 +97,16 @@ what keeps a 375px phone free of horizontal scroll. `HomeLink` is a router
 `<Link>` wearing `buttonClassName('surface')`, so it looks like a button and
 stays a link.
 
-## The live game (`src/shell/LiveGame.tsx` + `src/duel/liveDuel.ts`, SAN-39, SAN-67, ADR-0031, ADR-0032)
+## The live game (`src/shell/LiveGame.tsx` + `src/duel/liveDuel.ts`, SAN-39, SAN-67, SAN-22, ADR-0031, ADR-0032, ADR-0034)
 
 `/game/:id` for a live game is **server-driven** from the first pitch to the
-final: which screen shows is a function of two subscriptions, and the client
+final: which screen shows is a function of three subscriptions, and the client
 keeps nothing the server could tell it.
 
 - **`getGame`** gives the situation, the locks and `viewerOwns`; **`getLastAtBat`**
-  gives the reveal. `getActiveDuel` is not subscribed to — its resolved view does
+  gives the reveal; **`getRevealsDismissedThrough`** gives the last at-bat this
+  viewer has dismissed (ADR-0034). The screen waits for all three.
+  `getActiveDuel` is not subscribed to — its resolved view does
   not survive the next commit (see the resolved at-bat read model).
 - **`liveDuel.ts` is the pure half.** `turnFor(view)` answers whose turn it is for
   this viewer from `viewerOwns`, the half and the locks: a seat they own that has
@@ -114,10 +116,14 @@ keeps nothing the server could tell it.
   `revealOf` / `halfSummaryOf` / `sideChangeOf` build the screens' view-models
   straight off the server's views, through the same `buildReveal` /
   `buildMatchup` the fixture path uses.
-- **`LiveGame` owns only what the server cannot know:** which reveal this viewer
-  has dismissed (`dismissed`, opened on the at-bat already on the books so a load
-  never replays it), whether the half's summary is up, and a notice when a commit
-  did not land. Screen order: summary (live only) → an undismissed reveal →
+- **A reveal is seen once dismissed, and the server keeps that** (SAN-22,
+  ADR-0034). `dismissed` is the larger of the server's mark and what this screen
+  has just dismissed, worked out on every render — so a reveal left partway
+  through, or one that resolved while the player was away, is waiting on return,
+  and a dismissal on another device moves an open screen on. Advancing a reveal
+  calls `dismissReveal` with the at-bat it showed; a failure is let go silently.
+- **`LiveGame` owns only what the server cannot know:** whether the half's
+  summary is up, and a notice when a commit did not land. Screen order: summary (live only) → an undismissed reveal →
   game-over (final) → the open at-bat. It takes a `PlayedGameView` — live or
   final — and stays mounted when the game goes final under it (ADR-0032).
 - **A commit is one seat, one mutation** (`commitPitch` / `commitSwing`), and the
@@ -132,14 +138,16 @@ keeps nothing the server could tell it.
   half's runs and hits sit beneath, smaller and never amber. Then its `next` — the side change
   (`sideChangeOf`: the half the server has already opened and the club batting
   in it) and CONTINUE, which takes focus. It stays until tapped. There is no
-  between-halves server state (ADR-0017), so a reload lands on the next half's
-  first at-bat, not the card.
+  between-halves server state (ADR-0017), so a reload once the third out is
+  dismissed lands on the next half's first at-bat, not the card. An undismissed
+  third out reveals first, then the card.
 - **The end** (SAN-67): the game-ending at-bat — the latest one of a `final`
   game, since a walk-off ends no half by outs (`liveDuel.revealAdvanceOf` →
   `RevealAdvance`, which also decides whether a half card follows) — reveals
   with FINAL SCORE →, then
   `GameOver`; no half card follows the last half. A reload after the final lands
-  on `GameOver` without replaying.
+  on `GameOver` once the deciding play is dismissed; until then it reveals that
+  play first.
 - **`GameOver`** (`src/shell/GameOver.tsx`): FINAL (focused on arrival),
   "<winner> win", the score winner-first, the line score table (a column per
   inning played, then R and H; "X" for an unplayed half; clubs as row headers
@@ -366,6 +374,25 @@ unknown game (ADR-0025's refusal to be an existence oracle).
   searches the whole payload for it.
 - **Absolute**, like `getGame`: totals are home/away and both participants read
   the same view (ADR-0030).
+
+## Reveal dismissals (`convex/revealDismissals.ts`, SAN-22, ADR-0034)
+
+One row per (game, user) in `revealDismissals`: `dismissedThrough`, the last
+at-bat whose reveal that user dismissed. Keyed by user, so an owner of both
+clubs has one mark and every device of one account shares it.
+
+- **`dismissReveal({ game, sequence })`** — auth, then participant, then
+  `sequence ≤ lastResolvedSequence` (a non-integer or negative one is refused
+  too). A missing game and a non-participant get one refusal. Raises the mark,
+  never lowers it; a repeat is a no-op. No status check: a final game's deciding
+  play is dismissed after the game goes final. Safe under a race by OCC — both
+  writers read the `by_game_user` range they write into.
+- **`getRevealsDismissedThrough({ game })`** — the mark or `null`; a stranger, no
+  caller, a missing game and a malformed id are the same `null` (ADR-0025).
+- **Per viewer, unlike the read models beside it.** `getGame` and `getLastAtBat`
+  answer both participants alike, which is why this is its own module.
+- **Presentation state, not game state.** Resolution never reads it, and it
+  holds a sequence, never a number.
 
 ## Duel wire vocabulary (`convex/duelContract.ts`)
 
