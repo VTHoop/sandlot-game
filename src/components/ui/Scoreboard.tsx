@@ -5,6 +5,9 @@ export interface TeamLine {
   label: string
   runs: number
   hits: number
+  /** This is the side of whoever is at the screen: it wears amber, and says so
+   * to a screen reader, since color alone must not carry it (SAN-70). */
+  yours?: boolean
 }
 
 interface ScoreboardProps {
@@ -43,9 +46,13 @@ function TickValue({ value, className }: { value: number; className: string }) {
  */
 function TeamCell({ team, mirrored = false }: { team: TeamLine; mirrored?: boolean }) {
   return (
-    <span className={`flex items-center gap-2.5 text-chalk ${mirrored ? 'flex-row-reverse' : ''}`}>
+    <span
+      data-club={team.label}
+      className={`flex items-center gap-2.5 ${team.yours ? 'text-consequence' : 'text-chalk'} ${mirrored ? 'flex-row-reverse' : ''}`}
+    >
       <span className={`flex flex-col ${mirrored ? 'items-end' : 'items-start'}`}>
         <span className="font-display text-sm tracking-wider">{team.label}</span>
+        {team.yours && <span className="sr-only">your club</span>}
         <span className="font-body text-[10px] tracking-[0.14em] text-muted">
           <TickValue value={team.hits} className="" /> HITS
         </span>

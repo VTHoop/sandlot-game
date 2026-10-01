@@ -252,9 +252,9 @@ describe('/game/:id — a live game, on load', () => {
     await open(liveView())
     await screen.findByLabelText(/your number/i)
 
-    const cell = (label: string) =>
-      screen.getByText(label).parentElement?.parentElement?.textContent
-    expect(cell('HAR')).toBe('HAR4 HITS1runs')
+    const cell = (label: string) => screen.getByText(label).closest('[data-club]')?.textContent
+    // The viewer bats for HAR, so its cell also names it as theirs (SAN-70).
+    expect(cell('HAR')).toBe('HARyour club4 HITS1runs')
     expect(cell('RID')).toBe('RID5 HITS2runs')
   })
 
@@ -309,6 +309,33 @@ describe('/game/:id — committing', () => {
     lockNumber(472)
     expect(sdk.commitSwing).toHaveBeenCalledExactlyOnceWith({ game: GAME_ID, number: 472 })
     expect(sdk.commitPitch).toHaveBeenCalledTimes(1)
+  })
+
+  it('moves the amber to whichever side an owner of both clubs is entering for (SAN-70)', async () => {
+    const hotseat = { viewerOwns: owns(true, true) }
+    const amber = (text: string) => screen.getByText(text).closest('.text-consequence') !== null
+    const { serverReports } = await open(liveView(hotseat))
+
+    // The top half: RID's H. MARSH pitches first.
+    await screen.findByText('R. VANCE’s swing')
+    expect([amber('RID'), amber('H. MARSH'), amber('HAR'), amber('R. VANCE')]).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ])
+    lockNumber(519)
+
+    serverReports({ game: liveView({ ...hotseat, locks: locks(true, false) }) })
+
+    // Then HAR's R. VANCE swings.
+    await screen.findByText('H. MARSH’s pitch')
+    expect([amber('HAR'), amber('R. VANCE'), amber('RID'), amber('H. MARSH')]).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ])
   })
 })
 

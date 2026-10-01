@@ -71,7 +71,11 @@ or resolution, the screen is wrong. One amber action per screen, maximum.
 - **The commit screen is one screen for both seats** (ADR-0014): scoreboard
   (runs/hits/inning/outs) → compact field diagram + player matchup (pips, due-up)
   → opponent lock-status chip → number tile → lock. No situation sentence — the
-  screen is the situation. Opponent presence (name + green/red dot) lives in the
+  screen is the situation. The side the number is entered for — its club's
+  scoreboard row and its player in the matchup card — wears amber, with a
+  screen-reader "your club" / "your player" (SAN-70). It is a "your turn" signal,
+  the one sanctioned amber beside the lock, and it follows the seat, so a
+  hotseat owner sees it switch sides each turn. Opponent presence (name + green/red dot) lives in the
   chrome's top-right on every duel screen.
 
 ## 5. Motion principles
