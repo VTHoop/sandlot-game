@@ -59,7 +59,7 @@ Located at `packages/engine/`. A pure, framework-free TypeScript package — no 
 | `src/components/ui/` | Foundation components extracted from the duel (Button, ScoreTile, NumberPad, OutcomeLadder, Card) — see `docs/design/design-principles.md` |
 | `src/duel/` | The duel: the commit, waiting and reveal screens, the ballpark and field, `duel.css` (the reveal choreography), the view-models (`scenario.ts`) and both adapters. `liveDuel.ts` is the server-driven path's pure half (whose turn it is, and the view-models, from the server's views). Product code — `/game/:id` renders it (SAN-39) — and also what the showcase below exercises with fixtures |
 | `src/design/` | Design showcase (`/design`, public, unlinked): the duel's screens in all four states plus the fixture-driven PLAY tab, imported from `src/duel/` |
-| `convex/schema.ts` | Convex data model (SAN-19): `users`, `teams`, `players`, `games`, `lineups`, `duelCommitments` (symmetric secret vault, keyed by `(game, sequence, role)` — SAN-20/ADR-0016), `atBats` (append-only log), `revealDismissals` (per-viewer reveal high-water mark — SAN-22/ADR-0034), and the `standings`/`playerStatLine`/`boxScoreLine` rollups — per ADR-0004. `games` carries the live envelope plus each team's persisted batting-order pointer (`homeBattingIndex`/`awayBattingIndex`) and the applied-at-bat marker (`lastResolvedSequence`) for SAN-21 |
+| `convex/schema.ts` | Convex data model (SAN-19): `users`, `teams`, `players`, `games`, `lineups`, `duelCommitments` (symmetric secret vault, keyed by `(game, sequence, role)` — SAN-20/ADR-0016), `atBats` (append-only log), `revealDismissals` (per-viewer reveal high-water mark — SAN-22/ADR-0034), and the `standings`/`playerStatLine`/`boxScoreLine` rollups — per ADR-0004. `games` carries the live envelope plus each team's persisted batting-order pointer (`homeBattingIndex`/`awayBattingIndex`) and the applied-at-bat marker (`lastResolvedSequence`) for SAN-21, and `startedAt`/`completedAt` for game duration (SAN-73, see below) |
 | `convex/atBat.ts` | The authoritative secret at-bat round-trip (SAN-20): `commitPitch` / `commitSwing` (order-independent vault — either side may lock first, ADR-0014 — resolving via `@sandlot/engine` + appending the complete `atBats` row once both land, then folding it into the live `games` row via `game.applyResolvedAtBat` in the same transaction — SAN-21), `commitBotSeat` (the server-side bot's internal commit, SAN-58 — shares the range / one-per-role / resolve rules via `seal`; a stale trigger is a no-op), and `getActiveDuel` (gated reveal — no number leaves the vault until both sides lock; non-participants get `null`) |
 | `convex/game.ts` | Authoritative game-state mutations (SAN-21): `startGame` (scheduled → live, participant-gated, seeded from lineups) and `applyResolvedAtBat` (folds each resolved at-bat into the `games` row via the pure engine transition). The live games-state fields are written only here — never by a client (ADR-0017) |
 | `convex/clubSide.ts` | `ClubSide`, the read models' home/away vocabulary, in a leaf with no imports so the browser can branch on it without bundling Convex's server runtime (SAN-67/ADR-0032); re-exported by `gameView` |
@@ -79,6 +79,18 @@ Located at `packages/engine/`. A pure, framework-free TypeScript package — no 
 | `public/manifest.webmanifest` | PWA manifest (served as-is; `vite-plugin-pwa` handles SW) |
 | `pnpm-workspace.yaml` | pnpm 11 build-script approvals (`allowBuilds`) |
 | `.env.example` | Required env var names with no real values |
+
+## Game durations
+
+`games.startedAt` and `games.completedAt` (ms since epoch, like `_creationTime`) are stamped by `convex/game.ts`: `startedAt` when `startGame` takes the game live, `completedAt` in the at-bat that makes it final. Each is written once. They exist to answer whether async play finishes in a reasonable real time, and no client read model returns them.
+
+A game's real-time length is `completedAt - startedAt`, defined only on a final game (a scheduled game has neither, a live game only `startedAt`). Read it from the dashboard's `games` table, or from the CLI:
+
+```bash
+npx convex data games --limit 1000 --format jsonLines | jq 'select(.startedAt and .completedAt) | {_id, minutes: ((.completedAt - .startedAt) / 60000)}'
+```
+
+Pacing *within* a game needs no field: each `atBats` row's `_creationTime` gives the time between at-bats, and the log says which side was batting.
 
 ## Environment variables
 
