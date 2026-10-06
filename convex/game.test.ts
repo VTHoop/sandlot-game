@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 /// <reference types="vite/client" />
 import { convexTest } from 'convex-test'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from './_generated/api'
 import type { Id } from './_generated/dataModel'
 import schema from './schema'
@@ -192,5 +192,117 @@ describe('client-write invariant — live state advances only through resolution
     expect(row?.outs).toBe(1)
     expect(row?.awayScore).toBe(0)
     expect(row?.lastResolvedSequence).toBe(0)
+  })
+})
+
+describe('game timestamps — startedAt / completedAt (SAN-73)', () => {
+  const STARTED = Date.UTC(2026, 9, 5, 18, 0)
+  const COMPLETED = Date.UTC(2026, 9, 9, 21, 30)
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(STARTED)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Start the game, then put it one out from the end: two outs in the top of the
+   * last regulation inning with home ahead, so the next out makes it final. */
+  async function oneOutFromFinal() {
+    const seeded = await seedScheduledGame()
+    const { t, game } = seeded
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    await t.run((ctx) => ctx.db.patch(game, { inning: 6, outs: 2, homeScore: 1, awayScore: 0 }))
+    return seeded
+  }
+
+  /** A strikeout-band duel: maximally far apart on the ring. */
+  async function strikeOut(
+    t: Awaited<ReturnType<typeof seedScheduledGame>>['t'],
+    game: Id<'games'>,
+  ) {
+    await t.withIdentity(HOME).mutation(api.atBat.commitPitch, { game, number: 1 })
+    await t.withIdentity(AWAY).mutation(api.atBat.commitSwing, { game, number: 500 })
+  }
+
+  it('a scheduled game has neither', async () => {
+    const { t, game } = await seedScheduledGame()
+    const row = await gameRow(t, game)
+    expect(row?.startedAt).toBeUndefined()
+    expect(row?.completedAt).toBeUndefined()
+  })
+
+  it('startGame stamps startedAt with the time the game went live, and nothing else', async () => {
+    const { t, game } = await seedScheduledGame()
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+
+    const row = await gameRow(t, game)
+    expect(row?.startedAt).toBe(STARTED)
+    expect(row?.completedAt).toBeUndefined()
+  })
+
+  it('a repeated startGame does not move startedAt', async () => {
+    const { t, game } = await seedScheduledGame()
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    vi.setSystemTime(STARTED + 60_000)
+
+    await expect(t.withIdentity(AWAY).mutation(api.game.startGame, { game })).rejects.toThrow()
+    expect((await gameRow(t, game))?.startedAt).toBe(STARTED)
+  })
+
+  it('an at-bat that leaves the game live writes neither', async () => {
+    const { t, game } = await seedScheduledGame()
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    vi.setSystemTime(STARTED + 60_000)
+
+    await strikeOut(t, game)
+
+    const row = await gameRow(t, game)
+    expect(row?.status).toBe('live')
+    expect(row?.startedAt).toBe(STARTED)
+    expect(row?.completedAt).toBeUndefined()
+  })
+
+  it('the at-bat that ends the game stamps completedAt, leaving startedAt alone', async () => {
+    const { t, game } = await oneOutFromFinal()
+    vi.setSystemTime(COMPLETED)
+
+    await strikeOut(t, game)
+
+    const row = await gameRow(t, game)
+    expect(row?.status).toBe('final')
+    expect(row?.startedAt).toBe(STARTED)
+    expect(row?.completedAt).toBe(COMPLETED)
+  })
+
+  it('a commit arriving after the final does not move completedAt', async () => {
+    const { t, game } = await oneOutFromFinal()
+    vi.setSystemTime(COMPLETED)
+    await strikeOut(t, game)
+    vi.setSystemTime(COMPLETED + 60_000)
+
+    await expect(
+      t.withIdentity(HOME).mutation(api.atBat.commitPitch, { game, number: 1 }),
+    ).rejects.toThrow()
+    expect((await gameRow(t, game))?.completedAt).toBe(COMPLETED)
+  })
+
+  it('getGame sends neither field to the client, live or final', async () => {
+    const { t, game } = await seedScheduledGame()
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    const live = await t.withIdentity(HOME).query(api.gameView.getGame, { game })
+    expect(live?.status).toBe('live')
+    expect(live).not.toHaveProperty('startedAt')
+
+    // Seal it without playing six innings, as gameView.test.ts does.
+    await t.run((ctx) =>
+      ctx.db.patch(game, { status: 'final', homeScore: 3, awayScore: 1, completedAt: COMPLETED }),
+    )
+    const final = await t.withIdentity(HOME).query(api.gameView.getGame, { game })
+    expect(final?.status).toBe('final')
+    expect(final).not.toHaveProperty('startedAt')
+    expect(final).not.toHaveProperty('completedAt')
   })
 })

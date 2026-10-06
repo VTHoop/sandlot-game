@@ -2,7 +2,7 @@ import {
   type AppliedAtBat,
   advance,
   type GameContext,
-  type GameStatus,
+  GameStatus,
   type Half,
   startGame as initGameState,
   type LiveGameState,
@@ -107,7 +107,8 @@ export const startGame = mutation({
     }
 
     const context = await loadContext(ctx, game)
-    await ctx.db.patch(game._id, toGamePatch(initGameState(context)))
+    // Written once: the status guard above refuses any later call (SAN-73).
+    await ctx.db.patch(game._id, { ...toGamePatch(initGameState(context)), startedAt: Date.now() })
     // The first at-bat is open: the bot commits for its seat now (SAN-58).
     await scheduleBotSeats(ctx, game._id)
   },
@@ -118,6 +119,9 @@ export const startGame = mutation({
  * secret round-trip's resolution within the same transaction as the `atBats`
  * append (ADR-0004). Not a client-callable mutation — the engine transition is
  * idempotent per at-bat and rejects a non-live or out-of-order at-bat.
+ *
+ * The at-bat that ends the game stamps `completedAt` (SAN-73). Written once: the
+ * engine only reaches final from live, and refuses to advance a final game.
  */
 export async function applyResolvedAtBat(
   ctx: MutationCtx,
@@ -126,5 +130,9 @@ export async function applyResolvedAtBat(
 ): Promise<void> {
   const context = await loadContext(ctx, game)
   const next = advance(toLiveState(game), atBat, context)
-  await ctx.db.patch(game._id, toGamePatch(next))
+  const patch = toGamePatch(next)
+  await ctx.db.patch(
+    game._id,
+    next.status === GameStatus.Final ? { ...patch, completedAt: Date.now() } : patch,
+  )
 }

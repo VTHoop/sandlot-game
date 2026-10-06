@@ -69,6 +69,10 @@ export default defineSchema({
   // pointer; they persist across half-innings so a team resumes where it left off.
   // `lastResolvedSequence` is the `atBats.sequence` of the last at-bat folded into
   // this row (-1 before any), which makes per-at-bat advancement idempotent.
+  // `startedAt` / `completedAt` (ms since epoch, like `_creationTime`) record when
+  // play began (scheduled → live) and when the game went final, each written once
+  // by that transition (SAN-73). Optional because a game that hasn't reached the
+  // transition has no value yet. Analysis only: no client read model returns them.
   games: defineTable({
     homeTeam: v.id('teams'),
     awayTeam: v.id('teams'),
@@ -84,6 +88,8 @@ export default defineSchema({
     homeBattingIndex: v.float64(),
     awayBattingIndex: v.float64(),
     lastResolvedSequence: v.float64(),
+    startedAt: v.optional(v.float64()),
+    completedAt: v.optional(v.float64()),
   })
     .index('by_status', ['status'])
     .index('by_home_team', ['homeTeam'])
