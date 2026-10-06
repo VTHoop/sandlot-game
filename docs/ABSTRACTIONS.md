@@ -70,7 +70,7 @@ at a URL.
 | path | who | renders |
 |---|---|---|
 | `/design` | anyone, signed out too | the code-split showcase — **outside** the gate, never linked |
-| `/` | signed in + provisioned | `Landing`: wordmark, "open your game's link" hint, Clerk `<UserButton>` (sign-out lives there) |
+| `/` | signed in + provisioned | `Landing`: wordmark, the viewer's games (`MyGames`, SAN-72 — loading, empty state with no claim UI, an error boundary rather than an empty list on a failed read; each row one link to `/game/<id>`, led by the viewer's club, then "vs." (home) or "@" (away) the opponent's club with its manager's display name in parentheses; amber only on "Your move", per ADR-0012), Clerk `<UserButton>` (sign-out lives there) |
 | `/game/:id` | signed in + provisioned | `GameScreen` (SAN-39): loading while `getGame` is pending; a redirect to `/` on `null` (missing and not-yours stay indistinguishable, ADR-0025); `StartGame` for a scheduled game; the code-split `LiveGame` — the duel, ending on the game-over screen — for a live or final one, rendered as the same element for both so a game that ends on screen keeps its instance (SAN-67) |
 | `*` | signed in + provisioned | `NotFound`, with a link home |
 
@@ -354,6 +354,29 @@ screen cannot read a batter off a finished game or bases off a scheduled one:
 - **It refuses rather than guesses.** A live row with an empty seat, or a base
   holding a player that no longer exists, throws — corrupt authoritative state,
   and an empty base would show the batter a situation that is not the real one.
+
+## Game list read model (`convex/myGames.ts`, SAN-72)
+
+`listMyGames({})` — the landing screen's list: one row per game in which the
+caller holds a club, found through `teams.by_owner` → `games.by_home_team` /
+`by_away_team` (a game an owner of both clubs finds twice is listed once).
+
+- **Shape:** `GameListEntry`, a discriminated union on status like `getGame`.
+  Every row: `id`, `home`, `away` (each a named club plus `manager`, its holder's `users.displayName` — no email is stored), `viewerOwns`. Live adds
+  `inning`, `half`, absolute `score` and `yourMove`; final adds `score`;
+  scheduled adds nothing.
+- **`yourMove`** — a seat the viewer drives has not locked for the current
+  at-bat. Read from `atBat.duelLocks` (two booleans), the same rule as the game
+  screen's `turnFor`: both participants owe a number at the start of an at-bat
+  (ADR-0014), and an owner of both clubs is always owed one while the game is
+  live. A final reads `Final` whether or not its deciding play was dismissed —
+  the list never reads `revealDismissals` (ADR-0034).
+- **Order is the server's**, so the times it is judged by never cross the wire:
+  live games owing the viewer a number → other live → scheduled → finals, each
+  group most recent activity first (the latest `atBats.createdAt`, else
+  `startedAt`, else `_creationTime`). Only the `FINALS_SHOWN` (10) most recent
+  finals are listed.
+- **Refusals:** no identity, no `users` row and no club all read `[]`.
 
 ## Resolved at-bat read model (`convex/atBatView.ts`, SAN-39)
 

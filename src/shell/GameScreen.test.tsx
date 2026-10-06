@@ -4,6 +4,7 @@ import { ConvexError } from 'convex/values'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DuelRejection, type ResolvedAtBatView } from '../../convex/duelContract'
 import type { GameView } from '../../convex/gameView'
+import type { GameListEntry } from '../../convex/myGames'
 import App from '../App'
 import {
   CLUBS,
@@ -24,6 +25,7 @@ import {
  */
 const sdk = vi.hoisted(() => ({
   getGame: vi.fn<(args: unknown) => GameView | null | undefined>(),
+  listMyGames: vi.fn<(args: unknown) => GameListEntry[] | undefined>(),
   getLastAtBat: vi.fn<(args: unknown) => ResolvedAtBatView | null | undefined>(),
   getRevealsDismissedThrough: vi.fn<(args: unknown) => number | null | undefined>(),
   provision: vi.fn<() => Promise<string>>(),
@@ -46,6 +48,7 @@ vi.mock('convex/react', async () => {
   type Ref = Parameters<typeof getFunctionName>[0]
   const queries = new Map<string, (args: unknown) => unknown>([
     ['gameView:getGame', (args) => sdk.getGame(args)],
+    ['myGames:listMyGames', (args) => sdk.listMyGames(args)],
     ['atBatView:getLastAtBat', (args) => sdk.getLastAtBat(args)],
     ['revealDismissals:getRevealsDismissedThrough', (args) => sdk.getRevealsDismissedThrough(args)],
   ])
@@ -89,6 +92,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   sdk.getGame.mockReset().mockReturnValue(undefined)
+  sdk.listMyGames.mockReset().mockReturnValue([])
   sdk.getLastAtBat.mockReset().mockReturnValue(null)
   sdk.getRevealsDismissedThrough.mockReset().mockReturnValue(null)
   sdk.provision.mockReset().mockResolvedValue('users-row-id')
@@ -163,7 +167,7 @@ describe('/game/:id — a game the viewer cannot read', () => {
   it('goes home without an error when getGame is null', async () => {
     await open(null)
 
-    await screen.findByText(/open your game’s link/i)
+    await screen.findByRole('heading', { name: 'Sandlot' })
     expect(window.location.pathname).toBe('/')
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByText(/not found/i)).toBeNull()

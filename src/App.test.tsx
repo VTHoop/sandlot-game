@@ -31,11 +31,18 @@ vi.mock('@clerk/react', () => ({
   UserButton: () => <div data-testid="clerk-user-button" />,
 }))
 
-vi.mock('convex/react', () => ({
-  useConvexAuth: () => sdk.convex,
-  useMutation: () => sdk.provision,
-  useQuery: (_query: unknown, args: unknown) => sdk.getGame(args),
-}))
+vi.mock('convex/react', async () => {
+  const { getFunctionName } = await import('convex/server')
+  type Ref = Parameters<typeof getFunctionName>[0]
+  return {
+    useConvexAuth: () => sdk.convex,
+    useMutation: () => sdk.provision,
+    // The landing list is the landing tests' business (`shell/Landing.test.tsx`);
+    // here it is simply empty.
+    useQuery: (query: Ref, args: unknown) =>
+      getFunctionName(query) === 'myGames:listMyGames' ? [] : sdk.getGame(args),
+  }
+})
 
 function signedOut() {
   sdk.clerk = { isLoaded: true, isSignedIn: false }
@@ -176,12 +183,11 @@ describe('App — provisioning the signed-in user', () => {
 describe('App — signed in', () => {
   beforeEach(signedIn)
 
-  it('lands on / with the app name, a hint to open a game by URL, and the user button', async () => {
+  it('lands on / with the app name and the user button', async () => {
     openAt('/')
 
     await screen.findByTestId('clerk-user-button')
     screen.getByRole('heading', { name: 'Sandlot' })
-    screen.getByText(/\/game\//)
   })
 
   it('shows page-not-found with a link home on a path that matches no route', async () => {
@@ -206,7 +212,7 @@ describe('App — signed in', () => {
     sdk.getGame.mockReturnValue(null)
     openAt('/game/abc123')
 
-    await screen.findByText(/open your game’s link/i)
+    await screen.findByRole('heading', { name: 'Sandlot' })
     expect(window.location.pathname).toBe('/')
     expect(screen.queryByText(/not found/i)).toBeNull()
   })
