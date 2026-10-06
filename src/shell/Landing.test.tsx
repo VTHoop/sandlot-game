@@ -127,11 +127,11 @@ describe('Landing — the game list', () => {
     ])
   })
 
-  it('leads with the viewer’s club, then the opponent’s club, then the person who holds it', async () => {
+  it('leads with the viewer’s club, then “vs.” the opponent’s club and, in parentheses, who holds it', async () => {
     await openLanding([scheduled(1)])
 
     const [row] = gameLinks()
-    expectInOrder(row, ['Ridgeview Rail', 'Harbor Kingfishers', 'kingfisher-kid'])
+    expectInOrder(row, ['Ridgeview Rail', 'vs. Harbor Kingfishers', '(kingfisher-kid)'])
     expect(text(row)).not.toContain('rail-skipper')
   })
 
@@ -145,14 +145,14 @@ describe('Landing — the game list', () => {
     expect(text(row)).not.toContain('kingfisher-kid')
   })
 
-  it('leads with the away club, and waits on the home club, when the viewer holds only the away club', async () => {
+  it('leads with the away club, then “@” the home club, and waits on it, when the viewer holds only the away club', async () => {
     await openLanding([
       scheduled(1, owns(false, true)),
       live(2, { viewerOwns: owns(false, true), yourMove: false }),
     ])
 
     const [scheduledRow, liveRow] = gameLinks()
-    expectInOrder(scheduledRow, ['Harbor Kingfishers', 'Ridgeview Rail', 'rail-skipper'])
+    expectInOrder(scheduledRow, ['Harbor Kingfishers', '@ Ridgeview Rail', '(rail-skipper)'])
     expect(text(scheduledRow)).not.toContain('kingfisher-kid')
     expect(text(liveRow)).toContain('Waiting on Ridgeview Rail')
   })
