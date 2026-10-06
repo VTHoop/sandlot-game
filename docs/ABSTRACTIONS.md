@@ -70,7 +70,7 @@ at a URL.
 | path | who | renders |
 |---|---|---|
 | `/design` | anyone, signed out too | the code-split showcase — **outside** the gate, never linked |
-| `/` | signed in + provisioned | `Landing`: wordmark, the viewer's games (`MyGames`, SAN-72 — loading, empty state with no claim UI, an error boundary rather than an empty list on a failed read; each row one link to `/game/<id>`, led by the viewer's club in amber, then the opponent's club and its manager's display name), Clerk `<UserButton>` (sign-out lives there) |
+| `/` | signed in + provisioned | `Landing`: wordmark, the viewer's games (`MyGames`, SAN-72 — loading, empty state with no claim UI, an error boundary rather than an empty list on a failed read; each row one link to `/game/<id>`, led by the viewer's club, then "vs." (home) or "@" (away) the opponent's club with its manager's display name in parentheses; amber only on "Your move", per ADR-0012), Clerk `<UserButton>` (sign-out lives there) |
 | `/game/:id` | signed in + provisioned | `GameScreen` (SAN-39): loading while `getGame` is pending; a redirect to `/` on `null` (missing and not-yours stay indistinguishable, ADR-0025); `StartGame` for a scheduled game; the code-split `LiveGame` — the duel, ending on the game-over screen — for a live or final one, rendered as the same element for both so a game that ends on screen keeps its instance (SAN-67) |
 | `*` | signed in + provisioned | `NotFound`, with a link home |
 

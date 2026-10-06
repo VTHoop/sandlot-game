@@ -47,15 +47,19 @@ function GameRow({ game }: { game: GameListEntry }) {
     >
       <Matchup game={game} />
       <StandingLine game={game} />
-      <span className="text-sm text-consequence">{statusOf(game)}</span>
+      <Status game={game} />
     </Link>
   )
 }
 
 /**
- * Whose game this is: the viewer's club in amber, then the club across the field
- * and the person who holds it. A viewer can hold different clubs in different
- * games, so their own leads. An owner of both clubs has no opponent to name.
+ * Whose game this is: the viewer's club, then the club across the field — "vs."
+ * at home, "@" on the road, as a schedule reads — and, in parentheses, the person
+ * who holds it. A viewer can hold different clubs in different games, so their
+ * own leads. An owner of both clubs has no opponent to name.
+ *
+ * Chalk, not amber: amber is reserved for consequence (ADR-0012), which on this
+ * list is only "Your move".
  */
 function Matchup({ game }: { game: GameListEntry }) {
   const { home, away, viewerOwns } = game
@@ -66,16 +70,18 @@ function Matchup({ game }: { game: GameListEntry }) {
   return (
     <>
       <ViewerClub>{(viewerOwns.home ? home : away).name}</ViewerClub>
-      <span className="font-display text-sm uppercase tracking-wider text-chalk">
-        {opponent.name}
+      <span className="flex flex-wrap items-baseline gap-x-2">
+        <span className="font-display text-sm uppercase tracking-wider text-chalk">
+          {`${viewerOwns.home ? 'vs.' : '@'} ${opponent.name}`}
+        </span>
+        <span className="text-sm text-muted">{`(${opponent.manager})`}</span>
       </span>
-      <span className="text-sm text-chalk">{opponent.manager}</span>
     </>
   )
 }
 
 function ViewerClub({ children }: { children: string }) {
-  return <span className="font-display uppercase tracking-wider text-consequence">{children}</span>
+  return <span className="font-display uppercase tracking-wider text-chalk">{children}</span>
 }
 
 const opponentOf = ({ home, away, viewerOwns }: GameListEntry): ListClubView =>
@@ -96,7 +102,17 @@ function StandingLine({ game }: { game: GameListEntry }) {
   )
 }
 
-/** What the game is waiting for, in words. */
+/** What the game is waiting for, in words. Amber only when it is waiting on the
+ * viewer — the one moment of consequence on the list (ADR-0012). */
+function Status({ game }: { game: GameListEntry }) {
+  const yourMove = game.status === GameStatus.Live && game.yourMove
+  return (
+    <span className={`text-sm ${yourMove ? 'text-consequence' : 'text-muted'}`}>
+      {statusOf(game)}
+    </span>
+  )
+}
+
 function statusOf(game: GameListEntry): string {
   if (game.status === GameStatus.Scheduled) return 'Ready to start'
   if (game.status === GameStatus.Final) return 'Final'
