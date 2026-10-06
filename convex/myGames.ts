@@ -24,11 +24,16 @@ import { type ClubOwnership, type Ctx, maybeUser, teamsForHalf } from './partici
  * each group most-recent-activity first.
  */
 
+/** A club on the list, with the display name of whoever holds it. */
+export interface ListClubView extends ClubView {
+  manager: string
+}
+
 /** The fields every row carries, whatever the game's status. */
 interface GameListCommon {
   id: Id<'games'>
-  home: ClubView
-  away: ClubView
+  home: ListClubView
+  away: ListClubView
   /** Which clubs the caller holds — both, for the hotseat. Names the opponent. */
   viewerOwns: ClubOwnership
 }
@@ -135,7 +140,13 @@ async function entryOf(ctx: Ctx, { game, owns, yourMove }: Placed): Promise<Game
     clubView(ctx, game.homeTeam),
     clubView(ctx, game.awayTeam),
   ])
-  const common: GameListCommon = { id: game._id, home, away, viewerOwns: owns }
+  // Red stub (SAN-72 row redesign): no manager yet.
+  const common: GameListCommon = {
+    id: game._id,
+    home: { ...home, manager: '' },
+    away: { ...away, manager: '' },
+    viewerOwns: owns,
+  }
   const score = { home: game.homeScore, away: game.awayScore }
   if (game.status === 'scheduled') return { ...common, status: GameStatus.Scheduled }
   if (game.status === 'final') return { ...common, status: GameStatus.Final, score }

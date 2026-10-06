@@ -41,13 +41,19 @@ interface League {
 async function seedLeague(): Promise<League> {
   const t = convexTest(schema, modules)
   const ids = await t.run(async (ctx) => {
-    const homeUser = await ctx.db.insert('users', { clerkSubject: HOME.subject, displayName: 'H' })
-    const awayUser = await ctx.db.insert('users', { clerkSubject: AWAY.subject, displayName: 'A' })
+    const homeUser = await ctx.db.insert('users', {
+      clerkSubject: HOME.subject,
+      displayName: 'rail-skipper',
+    })
+    const awayUser = await ctx.db.insert('users', {
+      clerkSubject: AWAY.subject,
+      displayName: 'kingfisher-kid',
+    })
     const thirdUser = await ctx.db.insert('users', {
       clerkSubject: THIRD.subject,
-      displayName: 'T',
+      displayName: 'comet-chaser',
     })
-    await ctx.db.insert('users', { clerkSubject: CLUBLESS.subject, displayName: 'C' })
+    await ctx.db.insert('users', { clerkSubject: CLUBLESS.subject, displayName: 'benchwarmer' })
     return {
       rail: await ctx.db.insert('teams', { owner: homeUser, name: 'Ridgeview Rail' }),
       kingfishers: await ctx.db.insert('teams', { owner: awayUser, name: 'Harbor Kingfishers' }),
@@ -244,7 +250,17 @@ describe('listMyGames — whose games', () => {
 })
 
 describe('listMyGames — what a row carries', () => {
-  it('names both clubs and the viewer’s, and nothing else, for a scheduled game', async () => {
+  it('names the viewer as the manager of both clubs when they hold both', async () => {
+    const league = await seedLeague()
+    await insertGame(league.t, league.rail, league.kingfishers)
+    await giveKingfishersToHome(league)
+
+    const [row] = await list(league.t, HOME)
+    expect(row?.home.manager).toBe('rail-skipper')
+    expect(row?.away.manager).toBe('rail-skipper')
+  })
+
+  it('names both clubs, each with its manager, and the viewer’s, and nothing else, for a scheduled game', async () => {
     const { t, rail, kingfishers } = await seedLeague()
     const game = await insertGame(t, rail, kingfishers)
 
@@ -252,8 +268,8 @@ describe('listMyGames — what a row carries', () => {
       {
         id: game,
         status: GameStatus.Scheduled,
-        home: { id: rail, name: 'Ridgeview Rail' },
-        away: { id: kingfishers, name: 'Harbor Kingfishers' },
+        home: { id: rail, name: 'Ridgeview Rail', manager: 'rail-skipper' },
+        away: { id: kingfishers, name: 'Harbor Kingfishers', manager: 'kingfisher-kid' },
         viewerOwns: { home: false, away: true },
       },
     ])
@@ -273,8 +289,8 @@ describe('listMyGames — what a row carries', () => {
       {
         id: game,
         status: GameStatus.Live,
-        home: { id: rail, name: 'Ridgeview Rail' },
-        away: { id: kingfishers, name: 'Harbor Kingfishers' },
+        home: { id: rail, name: 'Ridgeview Rail', manager: 'rail-skipper' },
+        away: { id: kingfishers, name: 'Harbor Kingfishers', manager: 'kingfisher-kid' },
         viewerOwns: { home: true, away: false },
         inning: 3,
         half: Half.Bottom,
@@ -297,8 +313,8 @@ describe('listMyGames — what a row carries', () => {
       {
         id: game,
         status: GameStatus.Final,
-        home: { id: rail, name: 'Ridgeview Rail' },
-        away: { id: kingfishers, name: 'Harbor Kingfishers' },
+        home: { id: rail, name: 'Ridgeview Rail', manager: 'rail-skipper' },
+        away: { id: kingfishers, name: 'Harbor Kingfishers', manager: 'kingfisher-kid' },
         viewerOwns: { home: true, away: false },
         score: { home: 3, away: 4 },
       },

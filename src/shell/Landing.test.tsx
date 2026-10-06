@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Id } from '../../convex/_generated/dataModel'
 import type { GameListEntry } from '../../convex/myGames'
 import App from '../App'
-import { CLUBS, owns } from '../duel/testing/liveViews'
+import { owns } from '../duel/testing/liveViews'
 
 /**
  * The signed-in landing screen's game list (SAN-72), tested through `<App />` at
@@ -49,6 +49,13 @@ afterEach(() => {
 })
 
 const gameId = (n: number) => `game-${n}` as Id<'games'>
+
+/** The two clubs every row here is between, each with the display name of the
+ * human who holds it. */
+const CLUBS = {
+  home: { id: 'home-club' as Id<'teams'>, name: 'Ridgeview Rail', manager: 'rail-skipper' },
+  away: { id: 'away-club' as Id<'teams'>, name: 'Harbor Kingfishers', manager: 'kingfisher-kid' },
+}
 
 /** Rows as the HOME owner of Ridgeview Rail reads them, unless `viewerOwns` says otherwise. */
 const scheduled = (n: number, viewerOwns = owns(true, false)): GameListEntry => ({
@@ -99,6 +106,15 @@ const gameLinks = () =>
   within(screen.getByRole('list', { name: /your games/i })).getAllByRole('link')
 const text = (element: HTMLElement) => element.textContent ?? ''
 
+/** Each of `lines` is its own element in `row`, in this order. */
+function expectInOrder(row: HTMLElement, lines: string[]) {
+  const elements = lines.map((line) => within(row).getByText(line))
+  for (const [index, element] of elements.slice(1).entries()) {
+    const before = elements[index] as HTMLElement
+    expect(before.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  }
+}
+
 describe('Landing — the game list', () => {
   it('lists the games in the order the server reports, each opening its game', async () => {
     await openLanding([live(1), scheduled(2), final(3)])
@@ -111,31 +127,33 @@ describe('Landing — the game list', () => {
     ])
   })
 
-  it('names the opponent’s club', async () => {
+  it('leads with the viewer’s club, then the opponent’s club, then the person who holds it', async () => {
     await openLanding([scheduled(1)])
 
     const [row] = gameLinks()
-    expect(text(row)).toContain('Harbor Kingfishers')
-    expect(text(row)).not.toContain('Ridgeview Rail')
+    expectInOrder(row, ['Ridgeview Rail', 'Harbor Kingfishers', 'kingfisher-kid'])
+    expect(text(row)).not.toContain('rail-skipper')
   })
 
-  it('names both clubs when the viewer holds both', async () => {
+  it('names both clubs, and no opponent, when the viewer holds both', async () => {
     await openLanding([scheduled(1, owns(true, true))])
 
     const [row] = gameLinks()
     expect(text(row)).toContain('Harbor Kingfishers')
     expect(text(row)).toContain('Ridgeview Rail')
+    expect(text(row)).not.toContain('rail-skipper')
+    expect(text(row)).not.toContain('kingfisher-kid')
   })
 
-  it('names the home club as the opponent, and waits on it, when the viewer holds only the away club', async () => {
+  it('leads with the away club, and waits on the home club, when the viewer holds only the away club', async () => {
     await openLanding([
       scheduled(1, owns(false, true)),
       live(2, { viewerOwns: owns(false, true), yourMove: false }),
     ])
 
     const [scheduledRow, liveRow] = gameLinks()
-    expect(text(scheduledRow)).toContain('Ridgeview Rail')
-    expect(text(scheduledRow)).not.toContain('Harbor Kingfishers')
+    expectInOrder(scheduledRow, ['Harbor Kingfishers', 'Ridgeview Rail', 'rail-skipper'])
+    expect(text(scheduledRow)).not.toContain('kingfisher-kid')
     expect(text(liveRow)).toContain('Waiting on Ridgeview Rail')
   })
 
