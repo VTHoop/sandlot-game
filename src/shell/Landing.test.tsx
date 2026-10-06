@@ -127,6 +127,18 @@ describe('Landing — the game list', () => {
     expect(text(row)).toContain('Ridgeview Rail')
   })
 
+  it('names the home club as the opponent, and waits on it, when the viewer holds only the away club', async () => {
+    await openLanding([
+      scheduled(1, owns(false, true)),
+      live(2, { viewerOwns: owns(false, true), yourMove: false }),
+    ])
+
+    const [scheduledRow, liveRow] = gameLinks()
+    expect(text(scheduledRow)).toContain('Ridgeview Rail')
+    expect(text(scheduledRow)).not.toContain('Harbor Kingfishers')
+    expect(text(liveRow)).toContain('Waiting on Ridgeview Rail')
+  })
+
   it('shows the inning, the score and “Your move” for a live game that needs the viewer', async () => {
     await openLanding([live(1, { inning: 4, half: Half.Bottom, score: { home: 5, away: 6 } })])
 
