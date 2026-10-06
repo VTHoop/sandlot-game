@@ -6,14 +6,15 @@ import { Navigate, useParams } from 'react-router'
 import { api } from '../../convex/_generated/api'
 import type { GameView } from '../../convex/gameView'
 import { Button } from '../components/ui/Button'
+import { MyGames } from './MyGames'
 import { HomeLink, Screen, Title, Waiting, Wordmark } from './Screen'
 
-/** `/` for a signed-in user. Games are opened by link; there is no list yet. */
+/** `/` for a signed-in user: their games (SAN-72). */
 export function Landing() {
   return (
     <Screen>
       <Wordmark />
-      <p className="text-sm text-muted">To play, open your game’s link. It looks like /game/…</p>
+      <MyGames />
       <UserButton />
     </Screen>
   )

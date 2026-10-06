@@ -244,7 +244,8 @@ async function dueUpView(ctx: Ctx, game: Doc<'games'>): Promise<PlayerView[]> {
   )
 }
 
-async function clubView(ctx: Ctx, id: Id<'teams'>): Promise<ClubView> {
+/** A club, named — or refuse, as for a player. Shared with the game list. */
+export async function clubView(ctx: Ctx, id: Id<'teams'>): Promise<ClubView> {
   const club = await ctx.db.get(id)
   if (!club) throw new Error(`Game references a club that no longer exists: ${id}`)
   return { id: club._id, name: club.name }
