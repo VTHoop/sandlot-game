@@ -106,13 +106,15 @@ const gameLinks = () =>
   within(screen.getByRole('list', { name: /your games/i })).getAllByRole('link')
 const text = (element: HTMLElement) => element.textContent ?? ''
 
-/** Each of `lines` is its own element in `row`, in this order. */
+/** Each of `lines` is its own element in `row`, in this order. Pairs are walked
+ * with `reduce` rather than by index — no computed member access (AGENTS.md). */
 function expectInOrder(row: HTMLElement, lines: string[]) {
-  const elements = lines.map((line) => within(row).getByText(line))
-  for (const [index, element] of elements.slice(1).entries()) {
-    const before = elements[index] as HTMLElement
-    expect(before.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  }
+  lines
+    .map((line) => within(row).getByText(line))
+    .reduce((earlier, later) => {
+      expect(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      return later
+    })
 }
 
 describe('Landing — the game list', () => {
