@@ -3,8 +3,7 @@ import { useQuery } from 'convex/react'
 import { Component, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { api } from '../../convex/_generated/api'
-import type { ClubView } from '../../convex/gameView'
-import type { GameListEntry } from '../../convex/myGames'
+import type { GameListEntry, ListClubView } from '../../convex/myGames'
 import { Waiting } from './Screen'
 
 /**
@@ -46,20 +45,40 @@ function GameRow({ game }: { game: GameListEntry }) {
       to={`/game/${game.id}`}
       className="flex flex-col gap-1 rounded-(--radius-tile) border border-edge bg-surface px-4 py-3 text-left focus-visible:outline-2 focus-visible:outline-consequence"
     >
-      <span className="font-display uppercase tracking-wider text-chalk">{matchupOf(game)}</span>
+      <Matchup game={game} />
       <StandingLine game={game} />
       <span className="text-sm text-consequence">{statusOf(game)}</span>
     </Link>
   )
 }
 
-/** The club across the field — or both, for a viewer who holds both. */
-function matchupOf({ home, away, viewerOwns }: GameListEntry): string {
-  if (viewerOwns.home && viewerOwns.away) return `${away.name} at ${home.name}`
-  return viewerOwns.home ? `vs ${away.name}` : `at ${home.name}`
+/**
+ * Whose game this is: the viewer's club in amber, then the club across the field
+ * and the person who holds it. A viewer can hold different clubs in different
+ * games, so their own leads. An owner of both clubs has no opponent to name.
+ */
+function Matchup({ game }: { game: GameListEntry }) {
+  const { home, away, viewerOwns } = game
+  if (viewerOwns.home && viewerOwns.away) {
+    return <ViewerClub>{`${away.name} at ${home.name}`}</ViewerClub>
+  }
+  const opponent = opponentOf(game)
+  return (
+    <>
+      <ViewerClub>{(viewerOwns.home ? home : away).name}</ViewerClub>
+      <span className="font-display text-sm uppercase tracking-wider text-chalk">
+        {opponent.name}
+      </span>
+      <span className="text-sm text-chalk">{opponent.manager}</span>
+    </>
+  )
 }
 
-const opponentOf = ({ home, away, viewerOwns }: GameListEntry): ClubView =>
+function ViewerClub({ children }: { children: string }) {
+  return <span className="font-display uppercase tracking-wider text-consequence">{children}</span>
+}
+
+const opponentOf = ({ home, away, viewerOwns }: GameListEntry): ListClubView =>
   viewerOwns.home ? away : home
 
 /** The inning and score of a game under way, or the score of a finished one. */

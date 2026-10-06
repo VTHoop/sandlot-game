@@ -2,7 +2,7 @@ import { GameStatus, type Half } from '@sandlot/engine/game'
 import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import { duelLocks } from './atBat'
-import { type ClubTotals, type ClubView, clubView } from './gameView'
+import type { ClubTotals, ClubView } from './gameView'
 import { type ClubOwnership, type Ctx, maybeUser, teamsForHalf } from './participants'
 
 /**
@@ -24,7 +24,11 @@ import { type ClubOwnership, type Ctx, maybeUser, teamsForHalf } from './partici
  * each group most-recent-activity first.
  */
 
-/** A club on the list, with the display name of whoever holds it. */
+/**
+ * A club on the list, with the display name of whoever holds it — the
+ * `users.displayName` provisioning wrote from the Clerk token. No email is
+ * stored, so none can be shown.
+ */
 export interface ListClubView extends ClubView {
   manager: string
 }
@@ -135,18 +139,25 @@ function ordered(placed: readonly Placed[]): Placed[] {
   return [...unfinished, ...finals.slice(0, FINALS_SHOWN)]
 }
 
+/**
+ * A club and the display name of whoever holds it. Both rows are referenced by
+ * id from authoritative state, so a missing one is corrupt state — refuse
+ * rather than list a club with no name or nobody behind it.
+ */
+async function listClubView(ctx: Ctx, id: Id<'teams'>): Promise<ListClubView> {
+  const club = await ctx.db.get(id)
+  if (!club) throw new Error(`Game references a club that no longer exists: ${id}`)
+  const owner = await ctx.db.get(club.owner)
+  if (!owner) throw new Error(`Club ${id} is held by a user who no longer exists`)
+  return { id: club._id, name: club.name, manager: owner.displayName }
+}
+
 async function entryOf(ctx: Ctx, { game, owns, yourMove }: Placed): Promise<GameListEntry> {
   const [home, away] = await Promise.all([
-    clubView(ctx, game.homeTeam),
-    clubView(ctx, game.awayTeam),
+    listClubView(ctx, game.homeTeam),
+    listClubView(ctx, game.awayTeam),
   ])
-  // Red stub (SAN-72 row redesign): no manager yet.
-  const common: GameListCommon = {
-    id: game._id,
-    home: { ...home, manager: '' },
-    away: { ...away, manager: '' },
-    viewerOwns: owns,
-  }
+  const common: GameListCommon = { id: game._id, home, away, viewerOwns: owns }
   const score = { home: game.homeScore, away: game.awayScore }
   if (game.status === 'scheduled') return { ...common, status: GameStatus.Scheduled }
   if (game.status === 'final') return { ...common, status: GameStatus.Final, score }
