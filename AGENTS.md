@@ -11,6 +11,8 @@ A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) r
 ## 1. Development Process
 
 ### Starting a task
+**Run `/start-ticket SAN-XX`.** It does every step below, from a fresh branch off `origin/main`, and stops for a go-ahead on the AC → test plan before any code is written. The steps are listed so they still bind when the skill isn't available.
+
 - Read the **Linear** issue and all comments fully (`mcp__linear__get_issue`, `mcp__linear__list_comments`). The issue is the source of truth for scope.
 - Check `docs/adr/` for relevant architecture decisions before any structural choice.
 - Check `docs/ARCHITECTURE.md` and `docs/ABSTRACTIONS.md` for existing structure and patterns.
@@ -19,9 +21,9 @@ A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) r
 - Post a Linear comment: `🚀 Starting: <brief approach>` (`mcp__linear__save_comment`).
 
 ### Branches & PRs (light PR flow)
-- One short-lived branch per task: `feat/…`, `fix/…`, `refactor/…`. Branch off `main`.
+- One short-lived branch per task, off `origin/main`: `<prefix>/san-<n>-<slug>` — prefix `feat`, `fix` or `refactor`; slug from the issue title, lowercase kebab, at most five words. The `san-<n>` is what links the PR to its Linear issue. A change with no issue drops it.
 - Open a **PR** for every change, even solo. Keep PRs small and single-purpose — the PR is the visible record of review discipline.
-- The PR must show: passing check suite, `/code-review` agent pass, and green Codacy + CodeScene checks.
+- The PR must show: passing check suite, a `/pr-review` pass from a session that did not write the code, with every finding answered (the Review gate below, ADR-0035), and green Codacy + CodeScene checks.
 - Squash-merge to `main`. Delete the branch.
 - **A task is not done until the PR is merged and the issue's completion comment is posted.**
 - **⛔ NEVER `--no-verify`.** If a hook blocks you, read the error and fix the code — never bypass, never lower a gate.
@@ -29,6 +31,7 @@ A turn-based baseball strategy game: a hidden-number duel (pitcher vs. batter) r
 ### TDD (mandatory)
 **Red → Green → Refactor → Commit.** One cycle per commit.
 - **You (the human) own the assertions.** The agent must not invent the spec it grades itself against. Tests encode behavior we decided, not behavior the agent prefers.
+  - **The decided behavior is the refined AC.** Every AC bullet maps to at least one test, and the owner approves that map before the first red test is written (`/start-ticket` stops for it). A bullet with no test is either untestable — say why — or a gap. The PR body carries the final map.
 - For bugs: write the failing regression test **first**, then fix.
 - **Commit the failing test as a checkpoint** before implementing, so cheating is visible in history.
 - **⛔ NEVER modify, weaken, or delete a test to make it pass.** If a test is wrong, fix it in its own commit with a stated reason.
@@ -112,9 +115,10 @@ How we write code, as distinct from the gates above that catch us not doing so. 
 - **One layer owns a domain; every mirror is guard-locked.** When two layers describe the same set of values, name one the source of truth and tie the other to it with a compile-time assertion, so the two cannot drift. Never hand-maintain the same domain in two places. The engine is the source for anything the at-bat model produces. Examples: `convex/validators.ts` mirrors the engine's outcome bands and is locked to them by an `AssertEqual` guard coercing the enum to its string values; `packages/engine/src/outcomes.ts` is the canonical band list the persisted `atBats.outcome` enum follows; `GroundBallResult` belongs to the engine with the persisted enum locked to it (ADR-0019); runner-aware base state keeps the engine as source and maps `Id<'players'>` onto it at the Convex boundary (ADR-0018).
 - **Concurrency by OCC, not by mechanism.** Convex runs mutations as serializable transactions, so reading the index range you are about to write into is enough to make a race safe: the loser conflicts and retries against the row the winner wrote. Do not add uniqueness columns, locks, or a `pending`/`claimed` state to defend against a double submit — that is a second thing to keep in step for a guarantee the database already gives. Examples: the duel's at-bat ordinal (SAN-20) and the provisioning upsert on `by_clerk_subject` (SAN-55) are the same argument on two different indexes.
 
-### PR-readiness checklist → completion comment on the Linear issue
-Before marking the issue done, post a comment covering:
+### PR-readiness checklist → PR body, then completion comment on the Linear issue
+Put this in the PR body when you open it — `/pr-review` reads it there — and post it as the completion comment before marking the issue done:
 - **What** was implemented (logic + UX, a few lines).
+- **AC → tests:** each AC bullet and the test(s) that prove it, by file and test name.
 - **Tests/coverage:** commands run, final coverage on changed code.
 - **CodeScene:** what the PR bot's Code Health Review flagged, and what you did about it (or "clean").
 - **Codacy:** the PR check's result, plus the local `trivy` / `opengrep` runs; confirm no new Critical/High.
@@ -128,43 +132,35 @@ Before marking the issue done, post a comment covering:
 - After any new Convex function/table, component/hook, data-model change, or integration: update `docs/ARCHITECTURE.md` / `docs/ABSTRACTIONS.md` in the same commit.
 
 ### Working with multiple agents
-This workflow is multi-agent-ready: the writer agent and an independent reviewer/QA agent must not be the same context. Use `/code-review` (fresh subagent) for adversarial review against the issue spec — the author never grades its own work. Background loops (e.g. refactor/health bots) are assistants, **not** a substitute for fixing your own regressions before merge.
+The writer and the reviewer must never be the same context, and neither may be the one who rules on the other. Each step of a ticket runs in its own fresh session, and the steps hand off through Linear and the PR, never through pasted text:
 
-### Automatic Code Review Protocol
+| Step | Skill | Run by |
+|---|---|---|
+| Pick the next work | `/next-up` | owner, every few tickets |
+| Settle the AC | `/refine-ticket SAN-XX` | owner |
+| Implement | `/start-ticket SAN-XX` | implementing session |
+| Review | `/pr-review <n>` | a session that did not write the code |
+| Answer the review | `/address-review <n>` | the implementing session |
+| Merge | — | owner |
 
-After completing code edits in a turn, you MUST run the following review cycle before presenting results to the user. This is not optional.
+`/pr-review` and `/refine-ticket` are user-level skills (`~/.claude/skills/`), not in this repo; the other three, and the `refinement-answerer` agent `/refine-ticket` calls, live in `.claude/`.
 
-**Skip this cycle only if:** the turn contained no code edits (reads, searches, planning, or conversation only).
+Subagents cannot spawn subagents, so `/pr-review` (which fans out to six reviewers) must run as a top-level session, never from inside another agent. Background loops are assistants, **not** a substitute for fixing your own regressions before merge.
 
-#### Step 1 — Spawn the Challenger
-Use the Agent tool with `subagent_type: "challenger"`. The agent definition lives at `.claude/agents/challenger.md`. Provide it:
-- The files you edited (paths)
-- A summary of what you changed
-- The **artifact type** (e.g. React component, Convex mutation/query/action, TypeScript engine module, Vitest test suite, Playwright spec, config file, markdown workflow spec)
+### Review gate
 
-The challenger is read-only (no Edit/Write) and will return either `LGTM` or a single specific concern.
+**This is the required review — the only one** (ADR-0035). `/code-review`, `/security-review` and `/self-review` are optional extra passes on a large or risky change; running one never replaces this gate.
 
-#### Step 2 — Arbitrate yourself
-Evaluate the challenger's concern directly. You have full context the challenger does not. Rule on:
-1. Is the concern valid and worth addressing?
-2. If yes: what specifically should change and why?
-3. If no: why is the original approach correct?
+1. **Open the PR** with the check suite green and the PR-readiness checklist in the body. **Do not review your own PR.** Stop and hand off.
+2. **The owner runs `/pr-review <n>` from a fresh session.** It validates every Blocker and Major against the diff before reporting it, and posts one ranked comment to the PR.
+3. **The implementing session runs `/address-review <n>`.** It reads the review from the PR and answers every Blocker, Major and Minor finding, one of three ways:
+   - **Fixed** — a behavior defect gets its failing test first, then the fix, per TDD above.
+   - **Dismissed with evidence** — a passing test, a query result, or a cited line showing the case is already handled. The finding already survived validation, so the burden is on the dismissal: "I disagree" and "out of scope" without a citation are not evidence.
+   - **Deferred to the owner** — the fix needs work outside the issue. Propose a follow-up issue; do not widen the PR.
 
-#### Step 3 — Act on the ruling, then output a findings summary
-- If you sided with the challenger: implement the fix immediately.
-- If you sided with your original approach: note why the concern was dismissed.
-
-Then present your work to the user followed by a **Review Findings** block in this format:
-
-```
----
-**Review Findings**
-- **Challenger:** [one sentence — the concern raised]
-- **Ruling:** Upheld / Dismissed
-- **Reason:** [one sentence — why]
-- **Action:** [what was changed, or "none"]
----
-```
+   Modernization recommendations are optional. A red Codacy or CodeScene check counts as a Blocker.
+4. **Re-review.** `/pr-review <n>` again from a fresh session. It reviews the fix commits and marks any earlier finding still present as open; the owner reads those against the dismissal evidence in the reply.
+5. **Merge** when the latest review is Approved, or every remaining finding is either dismissed with evidence the owner accepts or deferred to a follow-up issue the owner has created. **The owner arbitrates every contested dismissal and every deferral** — neither agent does — and resolves the review's conversations.
 
 ---
 
