@@ -8,17 +8,17 @@ The game is the substrate. What this repo is actually about is the system around
 
 ### Nothing merges on the author's own say-so
 
-Five layers see a change before it lands on `main`, and the agent that wrote it is none of them.
+Five layers see a change before it lands on `main`, and the agent that wrote it grades none of them.
 
 | Layer | Mechanism | What it catches |
 |---|---|---|
-| **1. In-loop, pre-commit** | [`challenger`](.claude/agents/challenger.md) — a read-only adversarial subagent spawned after every code-editing turn | Logic errors, edge cases, and contradictions with the contract, *before* the code is committed |
+| **1. In-loop, per edit** | [`tdd-guard`](.claude/hooks/tdd-guard.sh) — a hook that blocks any edit weakening a test or lowering a ratchet | Test tampering and gate erosion, deterministically, at the edit that causes it |
 | **2. Commit / push** | [Lefthook](lefthook.yml) — Biome + typecheck on staged files at commit; lint, typecheck, and coverage at push | Type errors, lint violations, and failing or under-covered tests, before anything reaches the remote |
 | **3. CI** | [GitHub Actions](.github/workflows/ci.yml) on every PR — lint, typecheck, coverage, plus a separate Playwright smoke job | Anything that passed locally by accident: stale lockfile, env drift, a client that crashes on mount |
 | **4. PR review** | Codacy, CodeScene, and CodeRabbit apps, all three on every PR | Security and static-analysis findings, code-health regressions, and a full reading of the diff by reviewers with no stake in it |
 | **5. Merge** | A human. PRs are mandatory on `main` via branch protection; squash-merge | Everything the other four are structurally unable to judge — whether this was the right thing to build |
 
-Layer 1 is the unusual one. The challenger has `Read`/`Grep`/`Glob`/`Bash` and no ability to edit; it returns either `LGTM` or exactly one finding, because a reviewer that produces a list of three has produced none. The author agent then has to rule on the record — Upheld or Dismissed, with a reason — in a `Review Findings` block printed to the human. The protocol is in [AGENTS.md](AGENTS.md#automatic-code-review-protocol); the reasoning is in [ADR-0008](docs/adr/0008-automatic-code-review-protocol.md).
+Every PR is reviewed from a session that did not write it. `/pr-review` posts its findings to the PR, and the author answers each one with a fix or with evidence there; the owner rules on any dismissal. The protocol is in [AGENTS.md](AGENTS.md#review-gate); the reasoning is in [ADR-0035](docs/adr/0035-review-gate-fresh-session-pr-review.md).
 
 ### Test integrity is a hook, not a promise
 
