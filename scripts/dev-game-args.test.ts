@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseArgs, parseResult, reseatNote, seatingLine, USAGE } from './devGameArgs'
+import { parseArgs, parseResult, reseatNote, seatingLine, USAGE } from './dev-game-args'
 
 describe('dev:game — the command line', () => {
   it('takes --home, --away and --force', () => {
@@ -63,21 +63,40 @@ describe('dev:game — the re-seat note', () => {
   const result = { game: 'jd71', home: 'Sam Hooper', away: 'Max Rivera' }
 
   it('prints nothing when no game was re-seated', () => {
-    expect(reseatNote({ ...result, reseated: 0 })).toBeNull()
+    expect(reseatNote({ ...result, reseated: 0, inProgress: 0 })).toBeNull()
+  })
+
+  it('says when a game in progress moved too', () => {
+    expect(reseatNote({ ...result, reseated: 0, inProgress: 1 })).toBe(
+      'Re-seated 1 game in progress: Sam Hooper (home) vs. Max Rivera (away).',
+    )
+    expect(reseatNote({ ...result, reseated: 2, inProgress: 1 })).toContain(
+      '2 earlier games and 1 game in progress',
+    )
   })
 
   it('says how many games, and who now holds the clubs', () => {
-    expect(reseatNote({ ...result, reseated: 1 })).toBe(
+    expect(reseatNote({ ...result, reseated: 1, inProgress: 0 })).toBe(
       'Re-seated 1 earlier game: Sam Hooper (home) vs. Max Rivera (away).',
     )
-    expect(reseatNote({ ...result, reseated: 3 })).toContain('3 earlier games')
+    expect(reseatNote({ ...result, reseated: 3, inProgress: 0 })).toContain('3 earlier games')
   })
 })
 
 describe('dev:game — reading the result', () => {
   it('reads what the mutation returned', () => {
-    const stdout = JSON.stringify({ game: 'jd71', home: 'Sam', away: 'bot', reseated: 0 }, null, 2)
-    expect(parseResult(stdout)).toEqual({ game: 'jd71', home: 'Sam', away: 'bot', reseated: 0 })
+    const stdout = JSON.stringify(
+      { game: 'jd71', home: 'Sam', away: 'bot', reseated: 0, inProgress: 0 },
+      null,
+      2,
+    )
+    expect(parseResult(stdout)).toEqual({
+      game: 'jd71',
+      home: 'Sam',
+      away: 'bot',
+      reseated: 0,
+      inProgress: 0,
+    })
   })
 
   it('refuses output that is not JSON, showing it', () => {
@@ -86,10 +105,16 @@ describe('dev:game — reading the result', () => {
     )
   })
 
-  it('refuses output that is not a result', () => {
-    expect(() => parseResult('"jd71"')).toThrow(/unexpected output/)
-    expect(() => parseResult('{"game":"JD 71","home":"a","away":"b","reseated":0}')).toThrow(
+  it('refuses a result missing a field', () => {
+    expect(() => parseResult('{"game":"jd71","home":"a","away":"b","reseated":0}')).toThrow(
       /unexpected output/,
     )
+  })
+
+  it('refuses output that is not a result', () => {
+    expect(() => parseResult('"jd71"')).toThrow(/unexpected output/)
+    expect(() =>
+      parseResult('{"game":"JD 71","home":"a","away":"b","reseated":0,"inProgress":0}'),
+    ).toThrow(/unexpected output/)
   })
 })

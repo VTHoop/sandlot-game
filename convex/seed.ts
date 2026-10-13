@@ -1,7 +1,8 @@
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { internalMutation, type MutationCtx } from './_generated/server'
-import { userBySubject } from './participants'
+import { isBotSeat } from './bot'
+import { gamesOfClubs, userBySubject } from './participants'
 import { AWAY_TEAM, HOME_TEAM, type PitcherSpec, type TeamSpec } from './seedRoster'
 import { upsertUserBySubject } from './users'
 
@@ -24,7 +25,8 @@ import { upsertUserBySubject } from './users'
  *   hold (SAN-62).
  *
  * {@link devGame} composes the three for the everyday case — a fresh game with
- * the developer seated — and is what `pnpm dev:game` runs (SAN-66).
+ * real accounts seated, chosen by display name — and is what `pnpm dev:game`
+ * runs (SAN-66, SAN-71).
  *
  * Bootstrap cannot stop short of that first game. A player row carries no team
  * column, so the *only* link from a club to its players is a `lineups` row, and
@@ -404,6 +406,8 @@ export interface DevGameResult {
   away: string
   /** Earlier not-yet-started games of the seed clubs whose seating just changed. */
   reseated: number
+  /** Earlier games in progress that moved with the clubs — only ever with `force`. */
+  inProgress: number
 }
 
 /**
@@ -416,14 +420,15 @@ export interface DevGameResult {
  * It composes the other three rather than adding a fourth way to do anything:
  * the seed clubs go back to the seed owner from *whoever* holds them, a bootstrap
  * run mints the game against the reassembled league, and the clubs are handed
- * out again. All in one transaction, so nothing observes the intermediate
- * ownership — the net effect is only the final seating.
+ * out again. The hand-back happens on every run — bootstrap finds the clubs only
+ * through the seed owner — including one that keeps the current seating. All in
+ * one transaction, so nothing observes the intermediate ownership.
  *
- * Every earlier game of those clubs follows the clubs to their new holders. A
- * game still in progress would change hands mid-play, so that refuses (naming the
- * game and who plays it) unless `force`; games not yet started are re-seated and
- * counted. A run that keeps the current seating moves nothing, so it is never
- * refused and re-seats nothing.
+ * Ownership is per club, so every earlier game of those clubs follows them to
+ * their new holders: games not yet started and finished games quietly, a game in
+ * progress only with `force` (without it, the run refuses, naming the game and who
+ * plays it). A run that keeps the current seating moves nothing, so it is never
+ * refused and reports nothing re-seated.
  *
  * With one real account, `home` defaults to it. With several, `home` is required.
  */
@@ -437,21 +442,21 @@ export const devGame = internalMutation({
     assertSeedEnabled()
 
     const accounts = await realAccounts(ctx)
-    const homeUser = await resolveHome(accounts, home)
+    const homeUser = resolveHome(accounts, home)
+    const awayUser = away === undefined ? null : resolveByName(accounts, away)
     const owner = await seedOwner(ctx)
-    const awayUser = away === undefined ? owner : (await resolveByName(accounts, away))._id
+    const awayId = awayUser?._id ?? owner
 
-    const reseated = await returnSeedClubs(ctx, { home: homeUser._id, away: awayUser }, force)
+    const moved = await returnSeedClubs(ctx, { home: homeUser._id, away: awayId }, force)
     const { game, homeTeam, awayTeam } = await bootstrap(ctx, owner)
     await ctx.db.patch(homeTeam, { owner: homeUser._id })
-    await ctx.db.patch(awayTeam, { owner: awayUser })
+    await ctx.db.patch(awayTeam, { owner: awayId })
 
-    const awayAccount = accounts.find((account) => account._id === awayUser)
     return {
       game,
       home: homeUser.displayName,
-      away: awayAccount?.displayName ?? BOT_NAME,
-      reseated,
+      away: awayUser?.displayName ?? BOT_NAME,
+      ...moved,
     }
   },
 })
@@ -516,53 +521,55 @@ async function seedClubs(ctx: MutationCtx): Promise<Doc<'teams'>[]> {
   return teams.filter((club) => seedNames.has(club.name))
 }
 
-/** Every game either club plays, once each. */
-async function gamesOf(ctx: MutationCtx, clubs: readonly Doc<'teams'>[]): Promise<Doc<'games'>[]> {
-  const lists = await Promise.all(
-    clubs.flatMap((club) => [
-      ctx.db
-        .query('games')
-        .withIndex('by_home_team', (q) => q.eq('homeTeam', club._id))
-        .collect(),
-      ctx.db
-        .query('games')
-        .withIndex('by_away_team', (q) => q.eq('awayTeam', club._id))
-        .collect(),
-    ]),
-  )
-  return [...new Map(lists.flat().map((game) => [game._id, game])).values()]
+/**
+ * Who holds a club, by display name, for a refusal to quote: `bot` for a seat the
+ * seed owner holds (ADR-0027), else the holder's name. A club or holder that does
+ * not exist is corrupt data, so this throws rather than calling it the bot.
+ */
+async function holderName(ctx: MutationCtx, team: Id<'teams'>): Promise<string> {
+  if (await isBotSeat(ctx, team)) return BOT_NAME
+  const club = await ctx.db.get(team)
+  if (!club) throw new Error(`Dev seed cannot name the holder of team ${team}: no club by that id.`)
+  const holder = await ctx.db.get(club.owner)
+  if (!holder) {
+    throw new Error(
+      `Dev seed cannot name the holder of club "${club.name}": no users row for its owner.`,
+    )
+  }
+  return holder.displayName
 }
 
-/** Who plays a game right now, by display name, for a refusal to quote. */
+/** `Sam (home) vs. bot (away)` for a game as its clubs are held right now. */
 async function playersOf(ctx: MutationCtx, game: Doc<'games'>): Promise<string> {
-  const names = await Promise.all(
-    [game.homeTeam, game.awayTeam].map(async (team) => {
-      const club = await ctx.db.get(team)
-      const holder = club ? await ctx.db.get(club.owner) : null
-      return holder && holder.clerkSubject !== SEED_CLERK_SUBJECT ? holder.displayName : BOT_NAME
-    }),
-  )
-  return `${names[0]} (home) vs. ${names[1]} (away)`
+  const [home, away] = await Promise.all([
+    holderName(ctx, game.homeTeam),
+    holderName(ctx, game.awayTeam),
+  ])
+  return `${home} (home) vs. ${away} (away)`
 }
+
+/** What taking the clubs back moved: games not yet started, and games in progress. */
+type Moved = Pick<DevGameResult, 'reseated' | 'inProgress'>
 
 /**
- * Hand the seed clubs back to the seed owner from whoever holds them, so
- * bootstrap finds its two — unless the seating is not changing, in which case
- * nothing moves and nothing is refused. Returns how many not-yet-started games
- * the move re-seats; refuses first when it would re-seat a live one.
+ * The earlier games the clubs' move re-seats, or refusal when one is in progress
+ * and `force` is off. A move that keeps the current seating re-seats nothing.
  */
-async function returnSeedClubs(
+async function gamesMoved(
   ctx: MutationCtx,
+  clubs: readonly Doc<'teams'>[],
   seating: { home: Id<'users'>; away: Id<'users'> },
   force: boolean,
-): Promise<number> {
-  const clubs = await seedClubs(ctx)
+): Promise<Moved> {
   const holder = (name: string) => clubs.find((club) => club.name === name)?.owner
-  const unchanged =
-    holder(HOME_TEAM.name) === seating.home && holder(AWAY_TEAM.name) === seating.away
-  if (unchanged) return 0
+  if (holder(HOME_TEAM.name) === seating.home && holder(AWAY_TEAM.name) === seating.away) {
+    return { reseated: 0, inProgress: 0 }
+  }
 
-  const games = await gamesOf(ctx, clubs)
+  const games = await gamesOfClubs(
+    ctx,
+    clubs.map((club) => club._id),
+  )
   const live = games.filter((game) => game.status === 'live')
   if (live.length > 0 && !force) {
     const named = await Promise.all(
@@ -573,8 +580,24 @@ async function returnSeedClubs(
         `Pass --force to re-seat it anyway.`,
     )
   }
+  return {
+    reseated: games.filter((game) => game.status === 'scheduled').length,
+    inProgress: live.length,
+  }
+}
 
+/**
+ * Hand the seed clubs back to the seed owner from whoever holds them, so
+ * bootstrap finds its two — on every run, whether or not the seating changes.
+ */
+async function returnSeedClubs(
+  ctx: MutationCtx,
+  seating: { home: Id<'users'>; away: Id<'users'> },
+  force: boolean,
+): Promise<Moved> {
+  const clubs = await seedClubs(ctx)
+  const moved = await gamesMoved(ctx, clubs, seating, force)
   const owner = await seedOwner(ctx)
   await Promise.all(clubs.map((club) => ctx.db.patch(club._id, { owner })))
-  return games.filter((game) => game.status === 'scheduled').length
+  return moved
 }

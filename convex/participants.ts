@@ -114,3 +114,26 @@ export function teamsForHalf(game: Doc<'games'>): {
     ? { battingTeam: game.awayTeam, pitchingTeam: game.homeTeam }
     : { battingTeam: game.homeTeam, pitchingTeam: game.awayTeam }
 }
+
+/**
+ * Every game a club in `clubs` plays in, each once — an owner of both clubs of a
+ * game finds it through both indexes.
+ */
+export async function gamesOfClubs(
+  ctx: Ctx,
+  clubs: readonly Id<'teams'>[],
+): Promise<Doc<'games'>[]> {
+  const found = await Promise.all(
+    clubs.flatMap((club) => [
+      ctx.db
+        .query('games')
+        .withIndex('by_home_team', (q) => q.eq('homeTeam', club))
+        .collect(),
+      ctx.db
+        .query('games')
+        .withIndex('by_away_team', (q) => q.eq('awayTeam', club))
+        .collect(),
+    ]),
+  )
+  return [...new Map(found.flat().map((game) => [game._id, game])).values()]
+}

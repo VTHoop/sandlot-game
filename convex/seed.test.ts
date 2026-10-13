@@ -957,6 +957,31 @@ describe('dev game in one step — re-seating earlier games', () => {
     expect(await census(t)).toMatchObject({ games: 2 })
   })
 
+  it('reports the games in progress that a forced run moved', async () => {
+    const t = harness()
+    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
+    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const live = await runDevGame(t, { home: 'sam', away: 'max' })
+    await goLive(t, live.game, REAL_SUBJECT)
+
+    const forced = await runDevGame(t, { home: 'sam', force: true })
+
+    expect(forced).toMatchObject({ reseated: 0, inProgress: 1 })
+  })
+
+  it('moves finished games with the clubs, without counting them', async () => {
+    const t = harness()
+    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
+    const max = await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const finished = await runDevGame(t, { home: 'sam', away: 'max' })
+    await t.run((ctx) => ctx.db.patch(finished.game, { status: 'final' }))
+
+    const next = await runDevGame(t, { home: 'max' })
+
+    expect(next).toMatchObject({ reseated: 0, inProgress: 0 })
+    expect((await seating(t, finished.game)).home).toBe(max)
+  })
+
   it('never refuses, and re-seats nothing, when the seating is unchanged', async () => {
     const t = harness()
     await signIn(t, REAL_SUBJECT, 'Sam Hooper')

@@ -1,14 +1,14 @@
 // Mint a fresh dev game with real accounts seated in it, and print its URL
 // (SAN-66, SAN-71). Run from workspace root:
-//   pnpm dev:game [--home <name>] [--away <name>] [--force]
+//   pnpm dev:game [--home NAME] [--away NAME] [--force]
 //
-//   --home <name>  seat this account at home; may be left out when the deployment
+//   --home NAME    seat this account at home; may be left out when the deployment
 //                  has one real account
-//   --away <name>  seat this account away; left out, the bot plays away. Naming
+//   --away NAME    seat this account away; left out, the bot plays away. Naming
 //                  the --home account gives it both clubs
 //   --force        re-seat an earlier game still in progress (otherwise refused)
 //
-// <name> is an account's display name, ignoring case: the whole name or its first
+// NAME is an account's display name, ignoring case: the whole name or its first
 // word ("sam" finds "Sam Hooper"). The two seed clubs are taken back from whoever
 // holds them, so earlier games of those clubs follow them to the new holders.
 //
@@ -17,7 +17,7 @@
 // SANDLOT_DEV_SEED=true on the dev deployment, and each seated account signed in
 // to the app once.
 import { spawnSync } from 'node:child_process'
-import { parseArgs, parseResult, reseatNote, seatingLine } from './devGameArgs'
+import { parseArgs, parseResult, reseatNote, seatingLine } from './dev-game-args'
 
 // Where the app may be served locally, in the order they are tried: a plain
 // `pnpm dev` (Vite's default, and what Playwright uses), then the agent

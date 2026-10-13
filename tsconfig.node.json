@@ -27,7 +27,7 @@
     "playwright.config.ts",
     "scripts/check-code-health.ts",
     "scripts/dev-game.ts",
-    "scripts/devGameArgs.ts",
-    "scripts/devGameArgs.test.ts"
+    "scripts/dev-game-args.ts",
+    "scripts/dev-game-args.test.ts"
   ]
 }

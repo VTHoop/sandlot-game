@@ -3,7 +3,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import { duelLocks } from './atBat'
 import type { ClubTotals, ClubView } from './gameView'
-import { type ClubOwnership, type Ctx, maybeUser, teamsForHalf } from './participants'
+import { type ClubOwnership, type Ctx, gamesOfClubs, maybeUser, teamsForHalf } from './participants'
 
 /**
  * The viewer's games, for the landing screen's list (SAN-72): one row per game in
@@ -74,26 +74,6 @@ interface Placed {
   /** When the game last moved: its latest play, else its start, else its creation. */
   activity: number
   yourMove: boolean
-}
-
-/**
- * Every game a club of the viewer's plays in, each once — an owner of both clubs
- * finds the same game through both indexes.
- */
-async function gamesOfClubs(ctx: Ctx, clubs: readonly Id<'teams'>[]): Promise<Doc<'games'>[]> {
-  const found = await Promise.all(
-    clubs.flatMap((club) => [
-      ctx.db
-        .query('games')
-        .withIndex('by_home_team', (q) => q.eq('homeTeam', club))
-        .collect(),
-      ctx.db
-        .query('games')
-        .withIndex('by_away_team', (q) => q.eq('awayTeam', club))
-        .collect(),
-    ]),
-  )
-  return [...new Map(found.flat().map((game) => [game._id, game])).values()]
 }
 
 /**
