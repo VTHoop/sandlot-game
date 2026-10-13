@@ -969,6 +969,59 @@ describe('dev game in one step — re-seating earlier games', () => {
 
     expect(again.reseated).toBe(0)
     expect(andAgain.reseated).toBe(0)
-    expect(await census(t)).toMatchObject({ games: 3 })
+    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 3, lineups: 6 })
+  })
+
+  it.each([
+    ['one account against another', { home: 'sam', away: 'max' }],
+    ['one account against the bot', { home: 'sam' }],
+    ['one account holding both clubs', { home: 'sam', away: 'sam' }],
+  ])('sets up the same pairing twice without forking the league: %s', async (_name, args) => {
+    const t = harness()
+    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
+    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+
+    await runDevGame(t, args)
+    await runDevGame(t, args)
+
+    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 2, lineups: 4 })
+  })
+
+  it('still switches seating after the same pairing was set up twice', async () => {
+    const t = harness()
+    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
+    const max = await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    await runDevGame(t, { home: 'sam', away: 'max' })
+    await runDevGame(t, { home: 'sam', away: 'max' })
+
+    const result = await runDevGame(t, { home: 'max' })
+
+    expect((await seating(t, result.game)).home).toBe(max)
+    expect(await census(t)).toMatchObject({ teams: 2, players: 20 })
+  })
+})
+
+describe('dev game in one step — refusing over corrupt seating', () => {
+  it('refuses rather than calling a missing holder the bot when naming a live game', async () => {
+    const t = harness()
+    const sam = await signIn(t, REAL_SUBJECT, 'Sam Hooper')
+    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const live = await runDevGame(t, { home: 'sam', away: 'max' })
+    await goLive(t, live.game, REAL_SUBJECT)
+    await t.run((ctx) => ctx.db.delete(sam))
+
+    await expect(runDevGame(t, { home: 'max' })).rejects.toThrow(/no users row|holder/i)
+  })
+
+  it('names the bot only for a seat the seed owner holds', async () => {
+    const t = harness()
+    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
+    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const live = await runDevGame(t, { home: 'sam' })
+    await goLive(t, live.game, REAL_SUBJECT)
+
+    const refusal = String(await runDevGame(t, { home: 'max' }).catch((e: unknown) => e))
+
+    expect(refusal).toContain('Sam Hooper (home) vs. bot (away)')
   })
 })

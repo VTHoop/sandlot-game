@@ -80,6 +80,12 @@ describe('dev:game — reading the result', () => {
     expect(parseResult(stdout)).toEqual({ game: 'jd71', home: 'Sam', away: 'bot', reseated: 0 })
   })
 
+  it('refuses output that is not JSON, showing it', () => {
+    expect(() => parseResult('Error: boom')).toThrow(
+      /unexpected output from convex run:\nError: boom/,
+    )
+  })
+
   it('refuses output that is not a result', () => {
     expect(() => parseResult('"jd71"')).toThrow(/unexpected output/)
     expect(() => parseResult('{"game":"JD 71","home":"a","away":"b","reseated":0}')).toThrow(
