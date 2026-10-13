@@ -8,6 +8,7 @@ export default defineConfig({
       'src/**/*.{test,spec}.{ts,tsx}',
       'packages/*/src/**/*.test.ts',
       'convex/**/*.test.ts',
+      'scripts/**/*.test.ts',
     ],
     environment: 'jsdom',
     // The engine harness suite exhaustively iterates the full attribute grid;
