@@ -703,9 +703,23 @@ function seedOwnerId(t: Harness) {
   })
 }
 
+/** The two accounts most tests seat: Sam (the first subject) and Max (the second). */
+async function signInSamAndMax(t: Harness) {
+  const sam = await signIn(t, REAL_SUBJECT, 'Sam Hooper')
+  const max = await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+  return { sam, max }
+}
+
 /** Open a game for play as one of its participants, so it is no longer scheduled. */
 function goLive(t: Harness, game: Id<'games'>, subject: string): Promise<unknown> {
   return t.withIdentity({ subject }).mutation(api.game.startGame, { game })
+}
+
+/** A game of Sam (home) vs. Max (away) that Sam has started. */
+async function liveSamVsMax(t: Harness): Promise<DevGameResult> {
+  const live = await runDevGame(t, { home: 'sam', away: 'max' })
+  await goLive(t, live.game, REAL_SUBJECT)
+  return live
 }
 
 describe('dev game in one step — the environment gate', () => {
@@ -739,8 +753,7 @@ describe('dev game in one step — which accounts it seats', () => {
 
   it('seats one account per club when both are named', async () => {
     const t = harness()
-    const sam = await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    const max = await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const { sam, max } = await signInSamAndMax(t)
 
     const result = await runDevGame(t, { home: 'Sam Hooper', away: 'Max Rivera' })
 
@@ -750,8 +763,7 @@ describe('dev game in one step — which accounts it seats', () => {
 
   it('leaves the bot away when only --home is named among several accounts', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    const max = await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const { max } = await signInSamAndMax(t)
 
     const result = await runDevGame(t, { home: 'max' })
 
@@ -763,8 +775,7 @@ describe('dev game in one step — which accounts it seats', () => {
 
   it('gives one account both clubs when --home and --away name it', async () => {
     const t = harness()
-    const sam = await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const { sam } = await signInSamAndMax(t)
 
     const result = await runDevGame(t, { home: 'sam', away: 'Sam Hooper' })
 
@@ -783,8 +794,7 @@ describe('dev game in one step — which accounts it seats', () => {
 
   it('requires --home when several accounts have signed in', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    await signInSamAndMax(t)
 
     await expect(runDevGame(t)).rejects.toThrow(/--home is required/)
     expect(await census(t)).toEqual({ teams: 0, players: 0, games: 0, lineups: 0 })
@@ -794,8 +804,7 @@ describe('dev game in one step — which accounts it seats', () => {
 describe('dev game in one step — matching a name', () => {
   it('matches the whole display name, ignoring case', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    const max = await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const { max } = await signInSamAndMax(t)
 
     const result = await runDevGame(t, { home: 'MAX rivera' })
 
@@ -804,8 +813,7 @@ describe('dev game in one step — matching a name', () => {
 
   it('matches the first word of the display name', async () => {
     const t = harness()
-    const sam = await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const { sam } = await signInSamAndMax(t)
 
     const result = await runDevGame(t, { home: 'sam' })
 
@@ -844,8 +852,7 @@ describe('dev game in one step — matching a name', () => {
 
   it('lists every account by name and subject when none matches, changing nothing', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    await signInSamAndMax(t)
 
     const refusal = String(await runDevGame(t, { home: 'nobody' }).catch((e: unknown) => e))
 
@@ -870,8 +877,7 @@ describe('dev game in one step — matching a name', () => {
 
   it('refuses a bad --away name before moving any club', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    await signInSamAndMax(t)
     const first = await runDevGame(t, { home: 'sam' })
     const before = await ownership(t)
 
@@ -918,8 +924,7 @@ describe('dev game in one step — taking the clubs back', () => {
 describe('dev game in one step — re-seating earlier games', () => {
   it('re-seats not-yet-started games and counts them', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    await signInSamAndMax(t)
     const first = await runDevGame(t, { home: 'sam' })
 
     const second = await runDevGame(t, { home: 'sam', away: 'max' })
@@ -930,10 +935,8 @@ describe('dev game in one step — re-seating earlier games', () => {
 
   it('refuses to re-seat a game in progress, naming it and who plays it', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
-    const live = await runDevGame(t, { home: 'sam', away: 'max' })
-    await goLive(t, live.game, REAL_SUBJECT)
+    await signInSamAndMax(t)
+    const live = await liveSamVsMax(t)
     const before = await ownership(t)
 
     const refusal = String(await runDevGame(t, { home: 'sam' }).catch((e: unknown) => e))
@@ -946,10 +949,8 @@ describe('dev game in one step — re-seating earlier games', () => {
 
   it('re-seats a game in progress when --force is given', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
-    const live = await runDevGame(t, { home: 'sam', away: 'max' })
-    await goLive(t, live.game, REAL_SUBJECT)
+    await signInSamAndMax(t)
+    await liveSamVsMax(t)
 
     const forced = await runDevGame(t, { home: 'sam', force: true })
 
@@ -959,10 +960,8 @@ describe('dev game in one step — re-seating earlier games', () => {
 
   it('reports the games in progress that a forced run moved', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
-    const live = await runDevGame(t, { home: 'sam', away: 'max' })
-    await goLive(t, live.game, REAL_SUBJECT)
+    await signInSamAndMax(t)
+    await liveSamVsMax(t)
 
     const forced = await runDevGame(t, { home: 'sam', force: true })
 
@@ -971,8 +970,7 @@ describe('dev game in one step — re-seating earlier games', () => {
 
   it('moves finished games with the clubs, without counting them', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    const max = await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const { max } = await signInSamAndMax(t)
     const finished = await runDevGame(t, { home: 'sam', away: 'max' })
     await t.run((ctx) => ctx.db.patch(finished.game, { status: 'final' }))
 
@@ -984,10 +982,8 @@ describe('dev game in one step — re-seating earlier games', () => {
 
   it('never refuses, and re-seats nothing, when the seating is unchanged', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
-    const live = await runDevGame(t, { home: 'sam', away: 'max' })
-    await goLive(t, live.game, REAL_SUBJECT)
+    await signInSamAndMax(t)
+    await liveSamVsMax(t)
 
     const again = await runDevGame(t, { home: 'sam', away: 'max' })
     const andAgain = await runDevGame(t, { home: 'sam', away: 'max' })
@@ -1003,8 +999,7 @@ describe('dev game in one step — re-seating earlier games', () => {
     ['one account holding both clubs', { home: 'sam', away: 'sam' }],
   ])('sets up the same pairing twice without forking the league: %s', async (_name, args) => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    await signInSamAndMax(t)
 
     await runDevGame(t, args)
     await runDevGame(t, args)
@@ -1014,8 +1009,7 @@ describe('dev game in one step — re-seating earlier games', () => {
 
   it('still switches seating after the same pairing was set up twice', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    const max = await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const { max } = await signInSamAndMax(t)
     await runDevGame(t, { home: 'sam', away: 'max' })
     await runDevGame(t, { home: 'sam', away: 'max' })
 
@@ -1029,8 +1023,7 @@ describe('dev game in one step — re-seating earlier games', () => {
 describe('dev game in one step — refusing over corrupt seating', () => {
   it('refuses rather than calling a missing holder the bot when naming a live game', async () => {
     const t = harness()
-    const sam = await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    const { sam } = await signInSamAndMax(t)
     const live = await runDevGame(t, { home: 'sam', away: 'max' })
     await goLive(t, live.game, REAL_SUBJECT)
     await t.run((ctx) => ctx.db.delete(sam))
@@ -1040,8 +1033,7 @@ describe('dev game in one step — refusing over corrupt seating', () => {
 
   it('names the bot only for a seat the seed owner holds', async () => {
     const t = harness()
-    await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-    await signIn(t, OTHER_SUBJECT, 'Max Rivera')
+    await signInSamAndMax(t)
     const live = await runDevGame(t, { home: 'sam' })
     await goLive(t, live.game, REAL_SUBJECT)
 
