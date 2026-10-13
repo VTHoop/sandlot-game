@@ -1,5 +1,7 @@
 // @vitest-environment edge-runtime
 /// <reference types="vite/client" />
+
+import type { FunctionArgs } from 'convex/server'
 import { convexTest } from 'convex-test'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api, internal } from './_generated/api'
@@ -673,7 +675,7 @@ describe('dev club assignment — the assigned user can play', () => {
   })
 })
 
-type DevGameArgs = { home?: string; away?: string; force?: boolean }
+type DevGameArgs = FunctionArgs<typeof internal.seed.devGame>
 /** The one-step dev game (SAN-66, SAN-71), with the opt-in flag on. */
 function runDevGame(t: Harness, args: DevGameArgs = {}): Promise<DevGameResult> {
   vi.stubEnv(SEED_ENV_FLAG, 'true')
@@ -924,13 +926,13 @@ describe('dev game in one step — taking the clubs back', () => {
 describe('dev game in one step — re-seating earlier games', () => {
   it('re-seats not-yet-started games and counts them', async () => {
     const t = harness()
-    await signInSamAndMax(t)
+    const { max } = await signInSamAndMax(t)
     const first = await runDevGame(t, { home: 'sam' })
 
     const second = await runDevGame(t, { home: 'sam', away: 'max' })
 
     expect(second.reseated).toBe(1)
-    expect((await seating(t, first.game)).away).toBe((await seating(t, second.game)).away)
+    expect((await seating(t, first.game)).away).toBe(max)
   })
 
   it('refuses to re-seat a game in progress, naming it and who plays it', async () => {
@@ -988,8 +990,8 @@ describe('dev game in one step — re-seating earlier games', () => {
     const again = await runDevGame(t, { home: 'sam', away: 'max' })
     const andAgain = await runDevGame(t, { home: 'sam', away: 'max' })
 
-    expect(again.reseated).toBe(0)
-    expect(andAgain.reseated).toBe(0)
+    expect(again).toMatchObject({ reseated: 0, inProgress: 0 })
+    expect(andAgain).toMatchObject({ reseated: 0, inProgress: 0 })
     expect(await census(t)).toEqual({ teams: 2, players: 20, games: 3, lineups: 6 })
   })
 
@@ -1028,7 +1030,7 @@ describe('dev game in one step — refusing over corrupt seating', () => {
     await goLive(t, live.game, REAL_SUBJECT)
     await t.run((ctx) => ctx.db.delete(sam))
 
-    await expect(runDevGame(t, { home: 'max' })).rejects.toThrow(/no users row|holder/i)
+    await expect(runDevGame(t, { home: 'max' })).rejects.toThrow(/no users row for its owner/)
   })
 
   it('names the bot only for a seat the seed owner holds', async () => {

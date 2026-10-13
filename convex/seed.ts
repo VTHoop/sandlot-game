@@ -53,7 +53,9 @@ import { upsertUserBySubject } from './users'
  * is handed two ids, and never looks up, infers, or asserts anything about who
  * owns them. That is what keeps the fixture working after a seeded club is
  * assigned to a real user ({@link assignClubToUser}) — the assignment breaks
- * bootstrap by design, and minting is the path that survives it.
+ * *bootstrap* by design, and minting is the path that survives it.
+ * {@link devGame} survives it differently: it finds the seed clubs by name,
+ * whoever holds them, and hands them back to the owner before bootstrapping.
  *
  * Every reuse lookup here is read-then-insert *into the range it just read*,
  * which is what makes them safe without a unique constraint (none of these
@@ -115,7 +117,7 @@ function assertSeedEnabled(): void {
   }
 }
 
-/** Every club the seed owner holds — the seed's whole world, read once. */
+/** Every club the seed owner holds — bootstrap's whole world, read once. */
 function ownedClubs(ctx: MutationCtx, owner: Id<'users'>): Promise<Doc<'teams'>[]> {
   return ctx.db
     .query('teams')
@@ -130,8 +132,9 @@ function ownedClubs(ctx: MutationCtx, owner: Id<'users'>): Promise<Doc<'teams'>[
  * fixture's bookkeeping permanently into a production entity, so the seed
  * verifies its assumption every run instead of trusting it.
  *
- * Anything other than "no clubs yet" or "exactly my two" means a club left. The
- * seed refuses rather than minting a replacement: a replacement would carry no
+ * Anything other than "no clubs yet" or "exactly my two" means a club left.
+ * Bootstrap refuses rather than minting a replacement ({@link devGame} avoids
+ * the question by handing the clubs back first): a replacement would carry no
  * prior lineup, so it would silently fork ten more players off the roster and
  * split the club's history in half. Handing a club to a real user is
  * {@link assignClubToUser}'s job (SAN-62) — not bootstrap's. Provisioning
@@ -447,7 +450,7 @@ export const devGame = internalMutation({
     const owner = await seedOwner(ctx)
     const awayId = awayUser?._id ?? owner
 
-    const moved = await returnSeedClubs(ctx, { home: homeUser._id, away: awayId }, force)
+    const moved = await returnSeedClubs(ctx, owner, { home: homeUser._id, away: awayId }, force)
     const { game, homeTeam, awayTeam } = await bootstrap(ctx, owner)
     await ctx.db.patch(homeTeam, { owner: homeUser._id })
     await ctx.db.patch(awayTeam, { owner: awayId })
@@ -592,12 +595,12 @@ async function gamesMoved(
  */
 async function returnSeedClubs(
   ctx: MutationCtx,
+  owner: Id<'users'>,
   seating: { home: Id<'users'>; away: Id<'users'> },
   force: boolean,
 ): Promise<Moved> {
   const clubs = await seedClubs(ctx)
   const moved = await gamesMoved(ctx, clubs, seating, force)
-  const owner = await seedOwner(ctx)
   await Promise.all(clubs.map((club) => ctx.db.patch(club._id, { owner })))
   return moved
 }

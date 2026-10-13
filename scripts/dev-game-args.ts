@@ -1,14 +1,12 @@
 // The command line and the printed link for `pnpm dev:game` (SAN-71), kept apart
 // from the script so they can be tested without running `convex`.
+import type { FunctionArgs } from 'convex/server'
+import type { internal } from '../convex/_generated/api'
 import type { DevGameResult as ServerResult } from '../convex/seed'
 
 export const USAGE = 'usage: pnpm dev:game [--home NAME] [--away NAME] [--force]'
 
-export interface DevGameArgs {
-  home?: string
-  away?: string
-  force?: boolean
-}
+export type DevGameArgs = FunctionArgs<typeof internal.seed.devGame>
 
 /** What `seed:devGame` answers — the server's own type, with the id as plain text. */
 export type DevGameResult = Omit<ServerResult, 'game'> & { game: string }

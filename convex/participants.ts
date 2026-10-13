@@ -6,7 +6,8 @@ import type { MutationCtx, QueryCtx } from './_generated/server'
  * Shared Clerk-auth + team-ownership helpers for participant gating. Used by the
  * secret at-bat round-trip (`atBat.ts`), the authoritative game-state mutations
  * (`game.ts`), and account provisioning (`users.ts`) so the auth rules live in
- * exactly one place. The Clerk subject — `subject` on the `UserIdentity` that
+ * exactly one place. {@link gamesOfClubs}, the one non-gating helper, is shared by
+ * the "My games" read model (`myGames.ts`) and the dev seed (`seed.ts`). The Clerk subject — `subject` on the `UserIdentity` that
  * `ctx.auth.getUserIdentity()` returns — maps to a `users` row via
  * `by_clerk_subject` (docs/ABSTRACTIONS.md → ConvexProviderWithClerk).
  *
