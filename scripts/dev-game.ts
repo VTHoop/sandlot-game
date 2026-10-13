@@ -1,53 +1,29 @@
-// Mint a fresh dev game with you seated in it, and print its URL (SAN-66).
-// Run from workspace root: pnpm dev:game [--hotseat] [--as user_…]
+// Mint a fresh dev game with real accounts seated in it, and print its URL
+// (SAN-66, SAN-71). Run from workspace root:
+//   pnpm dev:game [--home <name>] [--away <name>] [--force]
 //
-//   (default)   you hold the home club; the bot plays the away club
-//   --hotseat   you hold both clubs
-//   --as <sub>  seat this Clerk subject — only needed when the deployment has
-//               more than one signed-in account
+//   --home <name>  seat this account at home; may be left out when the deployment
+//                  has one real account
+//   --away <name>  seat this account away; left out, the bot plays away. Naming
+//                  the --home account gives it both clubs
+//   --force        re-seat an earlier game still in progress (otherwise refused)
+//
+// <name> is an account's display name, ignoring case: the whole name or its first
+// word ("sam" finds "Sam Hooper"). The two seed clubs are taken back from whoever
+// holds them, so earlier games of those clubs follow them to the new holders.
 //
 // A thin wrapper over `npx convex run seed:devGame` — the bootstrap and the club
 // assignment happen server-side in one transaction (convex/seed.ts). Needs
-// SANDLOT_DEV_SEED=true on the dev deployment, and you signed in to the app once.
+// SANDLOT_DEV_SEED=true on the dev deployment, and each seated account signed in
+// to the app once.
 import { spawnSync } from 'node:child_process'
+import { parseArgs, parseResult, reseatNote, seatingLine } from './devGameArgs'
 
 // Where the app may be served locally, in the order they are tried: a plain
 // `pnpm dev` (Vite's default, and what Playwright uses), then the agent
 // preview's pinned port. The link names whichever is answering.
 const APP_ORIGINS = ['http://localhost:5173', 'http://localhost:5183'] as const
 const PROBE_TIMEOUT_MS = 500
-const USAGE = 'usage: pnpm dev:game [--hotseat] [--as user_…]'
-
-interface DevGameArgs {
-  hotseat: boolean
-  clerkSubject?: string
-}
-
-function parseArgs(argv: readonly string[]): DevGameArgs {
-  const args: DevGameArgs = { hotseat: false }
-  const rest = [...argv]
-  while (rest.length > 0) {
-    const flag = rest.shift()
-    if (flag === '--') {
-      // `pnpm dev:game -- --hotseat` forwards the separator too.
-    } else if (flag === '--hotseat') {
-      args.hotseat = true
-    } else if (flag === '--as') {
-      args.clerkSubject = rest.shift()
-      if (!args.clerkSubject) throw new Error(`--as needs a Clerk subject\n${USAGE}`)
-    } else {
-      throw new Error(`unknown argument: ${flag}\n${USAGE}`)
-    }
-  }
-  return args
-}
-
-/** `convex run` prints the returned id as a quoted literal, e.g. `'jd71…'`. */
-function parseGameId(stdout: string): string {
-  const id = stdout.trim().replace(/^['"]|['"]$/g, '')
-  if (!/^[a-z0-9]+$/.test(id)) throw new Error(`unexpected output from convex run:\n${stdout}`)
-  return id
-}
 
 /** Whether a dev server answers at `origin`: any response is yes, a refused
  * connection or a timeout is no. */
@@ -74,10 +50,13 @@ async function main(): Promise<number> {
   })
   if (run.status !== 0) return run.status ?? 1
 
-  const game = parseGameId(run.stdout)
-  const seating = args.hotseat ? 'you hold both clubs' : 'you are home; the bot is away'
+  const result = parseResult(run.stdout)
+  const note = reseatNote(result)
+  if (note) console.log(note)
   const origin = await servingOrigin()
-  console.log(`New game (${seating}):\n  ${origin ?? APP_ORIGINS[0]}/game/${game}`)
+  console.log(
+    `New game (${seatingLine(result)}):\n  ${origin ?? APP_ORIGINS[0]}/game/${result.game}`,
+  )
   if (!origin) {
     console.log('No dev server is answering; start one with `pnpm dev` (and `npx convex dev`).')
   }

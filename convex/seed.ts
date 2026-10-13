@@ -392,83 +392,189 @@ export const mintDevGame = internalMutation({
   },
 })
 
+/** The bot's name in a seating line: a seat the seed owner holds. */
+const BOT_NAME = 'bot'
+
+/** What {@link devGame} set up: the new game, who sits where, and what it re-seated. */
+export interface DevGameResult {
+  game: Id<'games'>
+  /** Full display name of the home club's holder, or `bot`. */
+  home: string
+  /** Full display name of the away club's holder, or `bot`. */
+  away: string
+  /** Earlier not-yet-started games of the seed clubs whose seating just changed. */
+  reseated: number
+}
+
 /**
  * One step from "signed in" to "a game I'm in" (SAN-66, `pnpm dev:game`): mint a
- * fresh scheduled game with the developer holding the home club, and the away
- * club left with the seed owner for the bot to play (SAN-58). `hotseat: true`
- * hands the developer both clubs instead. Returns the new game's id.
+ * fresh scheduled game with real accounts holding the seed clubs, chosen by
+ * display name (SAN-71). `home` seats the home club; `away` seats the away club,
+ * or leaves it with the seed owner for the bot to play (SAN-58). Naming the same
+ * account for both hands it both clubs.
  *
  * It composes the other three rather than adding a fourth way to do anything:
- * the developer's seed clubs go back to the seed owner, a bootstrap run mints
- * the game against the reassembled league, and the clubs are handed out again.
- * All in one transaction, so nothing observes the intermediate ownership — the
- * net effect is only the final seating. Handing them back first is what lets
- * bootstrap's owner + name check pass after an earlier assignment, so the
- * command can be re-run back to back and switched between modes.
+ * the seed clubs go back to the seed owner from *whoever* holds them, a bootstrap
+ * run mints the game against the reassembled league, and the clubs are handed
+ * out again. All in one transaction, so nothing observes the intermediate
+ * ownership — the net effect is only the final seating.
  *
- * A seed club held by some *other* account is left alone, and bootstrap's
- * intact-check then refuses the whole run: taking a club from another tester is
- * {@link assignClubToUser}'s explicit job, not a side effect of this one.
+ * Every earlier game of those clubs follows the clubs to their new holders. A
+ * game still in progress would change hands mid-play, so that refuses (naming the
+ * game and who plays it) unless `force`; games not yet started are re-seated and
+ * counted. A run that keeps the current seating moves nothing, so it is never
+ * refused and re-seats nothing.
  *
- * With no `clerkSubject`, the developer is the deployment's only real account
- * (anyone but the seed owner). None, or more than one, refuses rather than
- * guessing — and the refusal says which subjects exist.
+ * With one real account, `home` defaults to it. With several, `home` is required.
  */
 export const devGame = internalMutation({
-  args: { clerkSubject: v.optional(v.string()), hotseat: v.optional(v.boolean()) },
-  handler: async (ctx, { clerkSubject, hotseat = false }): Promise<Id<'games'>> => {
+  args: {
+    home: v.optional(v.string()),
+    away: v.optional(v.string()),
+    force: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { home, away, force = false }): Promise<DevGameResult> => {
     assertSeedEnabled()
 
-    const developer = await resolveDeveloper(ctx, clerkSubject)
+    const accounts = await realAccounts(ctx)
+    const homeUser = await resolveHome(accounts, home)
     const owner = await seedOwner(ctx)
-    await returnSeedClubs(ctx, developer, owner)
+    const awayUser = away === undefined ? owner : (await resolveByName(accounts, away))._id
 
+    const reseated = await returnSeedClubs(ctx, { home: homeUser._id, away: awayUser }, force)
     const { game, homeTeam, awayTeam } = await bootstrap(ctx, owner)
-    await ctx.db.patch(homeTeam, { owner: developer })
-    if (hotseat) await ctx.db.patch(awayTeam, { owner: developer })
-    return game
+    await ctx.db.patch(homeTeam, { owner: homeUser._id })
+    await ctx.db.patch(awayTeam, { owner: awayUser })
+
+    const awayAccount = accounts.find((account) => account._id === awayUser)
+    return {
+      game,
+      home: homeUser.displayName,
+      away: awayAccount?.displayName ?? BOT_NAME,
+      reseated,
+    }
   },
 })
 
-/** The named account's row, or the deployment's only real account. */
-async function resolveDeveloper(
-  ctx: MutationCtx,
-  clerkSubject: string | undefined,
-): Promise<Id<'users'>> {
-  if (clerkSubject !== undefined) {
-    const user = await userBySubject(ctx, clerkSubject)
-    if (!user) {
-      throw new Error(
-        `Dev seed has no users row for Clerk subject "${clerkSubject}". ` +
-          `Sign in to the app as that account once, then re-run.`,
-      )
-    }
-    return user._id
-  }
-
+/** Every signed-in account but the bot's — the only ones a name can match. */
+async function realAccounts(ctx: MutationCtx): Promise<Doc<'users'>[]> {
   const users = await ctx.db.query('users').collect()
-  const real = users.filter((user) => user.clerkSubject !== SEED_CLERK_SUBJECT)
-  if (real.length === 1) return real[0]._id
-  if (real.length === 0) {
+  return users.filter((user) => user.clerkSubject !== SEED_CLERK_SUBJECT)
+}
+
+/** `Sam Hooper (user_abc)`, the way a refusal names a candidate. */
+function describeAccounts(accounts: readonly Doc<'users'>[]): string {
+  return accounts.map((user) => `${user.displayName} (${user.clerkSubject})`).join(', ')
+}
+
+function firstWord(name: string): string {
+  return name.trim().split(/\s+/)[0].toLowerCase()
+}
+
+/**
+ * The one account a name picks out: a whole-name match (ignoring case), else a
+ * first-word match. First-word matches count only when no whole name matches, so
+ * "Sam" still finds "Sam" when "Sam Hooper" exists. No match, or several at the
+ * winning level, refuses and lists the candidates.
+ */
+function resolveByName(accounts: readonly Doc<'users'>[], name: string): Doc<'users'> {
+  const wanted = name.trim().toLowerCase()
+  const whole = accounts.filter((user) => user.displayName.trim().toLowerCase() === wanted)
+  const matches =
+    whole.length > 0 ? whole : accounts.filter((user) => firstWord(user.displayName) === wanted)
+  if (matches.length === 1) return matches[0]
+  if (matches.length === 0) {
+    throw new Error(
+      `Dev seed found no account named "${name}". Accounts on this deployment: ` +
+        `${describeAccounts(accounts) || 'none'}.`,
+    )
+  }
+  throw new Error(
+    `Dev seed found several accounts named "${name}": ${describeAccounts(matches)}. ` +
+      `Two accounts with the same display name cannot be seated until one is renamed.`,
+  )
+}
+
+/** The home account: the one named, else the deployment's only real account. */
+function resolveHome(accounts: readonly Doc<'users'>[], home: string | undefined): Doc<'users'> {
+  if (home !== undefined) return resolveByName(accounts, home)
+  if (accounts.length === 1) return accounts[0]
+  if (accounts.length === 0) {
     throw new Error(
       'Dev seed found no signed-in account on this deployment. Sign in to the app once, then re-run.',
     )
   }
-  const subjects = real.map((user) => user.clerkSubject).join(', ')
-  throw new Error(`Dev seed found several accounts (${subjects}); name one with --as user_….`)
+  throw new Error(
+    `Dev seed found several accounts (${describeAccounts(accounts)}); --home is required.`,
+  )
 }
 
-/** Hand the developer's seed clubs back to the seed owner, so bootstrap finds its two. */
+/** Both seed clubs, whoever holds them. Dev data is small enough to read whole. */
+async function seedClubs(ctx: MutationCtx): Promise<Doc<'teams'>[]> {
+  const seedNames = new Set([HOME_TEAM.name, AWAY_TEAM.name])
+  const teams = await ctx.db.query('teams').collect()
+  return teams.filter((club) => seedNames.has(club.name))
+}
+
+/** Every game either club plays, once each. */
+async function gamesOf(ctx: MutationCtx, clubs: readonly Doc<'teams'>[]): Promise<Doc<'games'>[]> {
+  const lists = await Promise.all(
+    clubs.flatMap((club) => [
+      ctx.db
+        .query('games')
+        .withIndex('by_home_team', (q) => q.eq('homeTeam', club._id))
+        .collect(),
+      ctx.db
+        .query('games')
+        .withIndex('by_away_team', (q) => q.eq('awayTeam', club._id))
+        .collect(),
+    ]),
+  )
+  return [...new Map(lists.flat().map((game) => [game._id, game])).values()]
+}
+
+/** Who plays a game right now, by display name, for a refusal to quote. */
+async function playersOf(ctx: MutationCtx, game: Doc<'games'>): Promise<string> {
+  const names = await Promise.all(
+    [game.homeTeam, game.awayTeam].map(async (team) => {
+      const club = await ctx.db.get(team)
+      const holder = club ? await ctx.db.get(club.owner) : null
+      return holder && holder.clerkSubject !== SEED_CLERK_SUBJECT ? holder.displayName : BOT_NAME
+    }),
+  )
+  return `${names[0]} (home) vs. ${names[1]} (away)`
+}
+
+/**
+ * Hand the seed clubs back to the seed owner from whoever holds them, so
+ * bootstrap finds its two — unless the seating is not changing, in which case
+ * nothing moves and nothing is refused. Returns how many not-yet-started games
+ * the move re-seats; refuses first when it would re-seat a live one.
+ */
 async function returnSeedClubs(
   ctx: MutationCtx,
-  developer: Id<'users'>,
-  owner: Id<'users'>,
-): Promise<void> {
-  const seedNames = new Set([HOME_TEAM.name, AWAY_TEAM.name])
-  const held = await ownedClubs(ctx, developer)
-  await Promise.all(
-    held
-      .filter((club) => seedNames.has(club.name))
-      .map((club) => ctx.db.patch(club._id, { owner })),
-  )
+  seating: { home: Id<'users'>; away: Id<'users'> },
+  force: boolean,
+): Promise<number> {
+  const clubs = await seedClubs(ctx)
+  const holder = (name: string) => clubs.find((club) => club.name === name)?.owner
+  const unchanged =
+    holder(HOME_TEAM.name) === seating.home && holder(AWAY_TEAM.name) === seating.away
+  if (unchanged) return 0
+
+  const games = await gamesOf(ctx, clubs)
+  const live = games.filter((game) => game.status === 'live')
+  if (live.length > 0 && !force) {
+    const named = await Promise.all(
+      live.map(async (game) => `${game._id}: ${await playersOf(ctx, game)}`),
+    )
+    throw new Error(
+      `Dev seed would re-seat a game in progress — ${named.join('; ')}. ` +
+        `Pass --force to re-seat it anyway.`,
+    )
+  }
+
+  const owner = await seedOwner(ctx)
+  await Promise.all(clubs.map((club) => ctx.db.patch(club._id, { owner })))
+  return games.filter((game) => game.status === 'scheduled').length
 }

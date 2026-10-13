@@ -26,6 +26,8 @@
     "vitest.config.ts",
     "playwright.config.ts",
     "scripts/check-code-health.ts",
-    "scripts/dev-game.ts"
+    "scripts/dev-game.ts",
+    "scripts/devGameArgs.ts",
+    "scripts/devGameArgs.test.ts"
   ]
 }
