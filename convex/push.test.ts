@@ -151,8 +151,8 @@ async function twoHumanGame() {
   const { homeTeam, awayTeam } = await gameRow(t, game)
   await giveClub(t, homeTeam, HUMAN)
   await giveClub(t, awayTeam, OTHER)
-  await subscribe(t, HUMAN, 'https://push.test/human')
-  await subscribe(t, OTHER, 'https://push.test/other')
+  await subscribe(t, HUMAN, 'https://fcm.googleapis.com/fcm/send/human')
+  await subscribe(t, OTHER, 'https://fcm.googleapis.com/fcm/send/other')
   return { t, game, homeTeam, awayTeam }
 }
 
@@ -172,8 +172,8 @@ function otherSwings(t: Harness, game: Id<'games'>, number: number) {
 }
 
 const to = (endpoint: string) => (s: Sent) => s.endpoint === endpoint
-const HUMAN_DEVICE = 'https://push.test/human'
-const OTHER_DEVICE = 'https://push.test/other'
+const HUMAN_DEVICE = 'https://fcm.googleapis.com/fcm/send/human'
+const OTHER_DEVICE = 'https://fcm.googleapis.com/fcm/send/other'
 
 describe('push — when an at-bat opens', () => {
   it('sends each seat one "your turn" push when the game starts', async () => {
@@ -231,7 +231,7 @@ describe('push — what it says', () => {
     await elapse(t, 12 * HOUR)
 
     const [first, reminder] = sent.filter(to(HUMAN_DEVICE))
-    expect(reminder?.payload).toEqual(first?.payload)
+    expect(reminder.payload).toEqual(first.payload)
   })
 })
 
@@ -253,7 +253,7 @@ describe('push — the secret-state law', () => {
     // A reminder after the opponent locked reads exactly as the first push did.
     const reminders = sent.filter(to(HUMAN_DEVICE)).slice(1)
     expect(reminders).toHaveLength(1)
-    expect(reminders[0]?.payload).toEqual(untouched?.payload)
+    expect(reminders[0].payload).toEqual(untouched.payload)
   })
 })
 
@@ -335,20 +335,20 @@ describe('push — reminders', () => {
 describe('push — devices and permission', () => {
   it('sends to every device a player has allowed', async () => {
     const { t } = await twoHumanGame()
-    await subscribe(t, HUMAN, 'https://push.test/human-tablet')
+    await subscribe(t, HUMAN, 'https://fcm.googleapis.com/fcm/send/human-tablet')
     const { game } = { game: (await t.run((ctx) => ctx.db.query('games').first()))?._id }
     if (!game) throw new Error('no game')
     await t.withIdentity(HUMAN).mutation(api.game.startGame, { game })
     await elapse(t, 0)
 
     expect(sent.filter(to(HUMAN_DEVICE))).toHaveLength(1)
-    expect(sent.filter(to('https://push.test/human-tablet'))).toHaveLength(1)
+    expect(sent.filter(to('https://fcm.googleapis.com/fcm/send/human-tablet'))).toHaveLength(1)
   })
 
   it('deletes a subscription the push service reports as gone, and still reaches the rest', async () => {
     const { t } = await twoHumanGame()
-    await subscribe(t, HUMAN, 'https://push.test/human-dead')
-    gone.add('https://push.test/human-dead')
+    await subscribe(t, HUMAN, 'https://fcm.googleapis.com/fcm/send/human-dead')
+    gone.add('https://fcm.googleapis.com/fcm/send/human-dead')
     const game = (await t.run((ctx) => ctx.db.query('games').first()))?._id
     if (!game) throw new Error('no game')
     await t.withIdentity(HUMAN).mutation(api.game.startGame, { game })
@@ -390,7 +390,11 @@ describe('push — devices and permission', () => {
   it('refuses a subscription from a caller who is not signed in', async () => {
     const t = harness()
     await expect(
-      t.mutation(api.push.subscribe, { endpoint: 'https://push.test/x', p256dh: 'p', auth: 'a' }),
+      t.mutation(api.push.subscribe, {
+        endpoint: 'https://fcm.googleapis.com/fcm/send/x',
+        p256dh: 'p',
+        auth: 'a',
+      }),
     ).rejects.toThrow('Not authenticated')
   })
 })
