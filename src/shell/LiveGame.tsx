@@ -23,6 +23,7 @@ import {
 import { RevealMotion } from '../duel/RevealMotion'
 import { DuelSeat } from '../duel/seatAgent'
 import { WaitingTurn } from '../duel/WaitingTurn'
+import { registerThisDevice } from '../push/devicePush'
 import { GameOver } from './GameOver'
 import { Screen, Waiting } from './Screen'
 import '../duel/duel.css'
@@ -56,6 +57,14 @@ const NOTHING_RESOLVED = -1
  * reconnects itself, so a rejection here is a refusal, which only a bug causes.
  */
 function letDismissalGo(): void {
+  // Deliberately nothing: see above.
+}
+
+/**
+ * Turn notifications are a convenience: a device that could not be registered is
+ * let go, and the player plays exactly as before (SAN-23).
+ */
+function letPushGo(): void {
   // Deliberately nothing: see above.
 }
 
@@ -97,6 +106,7 @@ interface CommitTurnProps {
 function CommitTurn({ game, turn, atBatKey, onNotice }: CommitTurnProps) {
   const commitPitch = useMutation(api.atBat.commitPitch)
   const commitSwing = useMutation(api.atBat.commitSwing)
+  const subscribePush = useMutation(api.push.subscribe)
   const [attempt, setAttempt] = useState(0)
 
   const commit = (number: number) => {
@@ -104,6 +114,8 @@ function CommitTurn({ game, turn, atBatKey, onNotice }: CommitTurnProps) {
     send({ game: game.id, number }).then(
       () => {
         onNotice(null)
+        // The lock landed: now is when the app asks to tell this player their turn.
+        registerThisDevice(subscribePush).catch(letPushGo)
       },
       (error: unknown) => {
         // A refusal carries the server's own reason (ADR-0026); anything else is

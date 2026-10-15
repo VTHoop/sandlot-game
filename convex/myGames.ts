@@ -2,8 +2,9 @@ import { GameStatus, type Half } from '@sandlot/engine/game'
 import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import { duelLocks } from './atBat'
+import { ClubSide } from './clubSide'
 import type { ClubTotals, ClubView } from './gameView'
-import { type ClubOwnership, type Ctx, gamesOfClubs, maybeUser, teamsForHalf } from './participants'
+import { type ClubOwnership, type Ctx, gamesOfClubs, maybeUser, sideLocked } from './participants'
 
 /**
  * The viewer's games, for the landing screen's list (SAN-72): one row per game in
@@ -83,10 +84,10 @@ interface Placed {
  */
 async function owesNumber(ctx: Ctx, game: Doc<'games'>, owns: ClubOwnership): Promise<boolean> {
   const locks = await duelLocks(ctx, game._id)
-  const homeBats = teamsForHalf(game).battingTeam === game.homeTeam
-  const homeLocked = homeBats ? locks.swingCommitted : locks.pitchCommitted
-  const awayLocked = homeBats ? locks.pitchCommitted : locks.swingCommitted
-  return (owns.home && !homeLocked) || (owns.away && !awayLocked)
+  return (
+    (owns.home && !sideLocked(game, locks, ClubSide.Home)) ||
+    (owns.away && !sideLocked(game, locks, ClubSide.Away))
+  )
 }
 
 /** When the game last moved. A play is the latest thing to happen to a game that

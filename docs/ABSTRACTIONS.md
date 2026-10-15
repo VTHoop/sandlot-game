@@ -782,6 +782,38 @@ npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
 npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"seed|sandlot-dev-owner"}'
 ```
 
+## Turn notifications (`convex/push*.ts` + `src/push/` + `src/sw.ts`, SAN-23, ADR-0036)
+
+A push to each seat when an at-bat opens, and reminders if it has not locked.
+
+- **Trigger.** `atBatOpened(ctx, gameId)` runs in the two writes that open an
+  at-bat; it calls `scheduleBotSeats` and `notifySeats`, so neither can be missed
+  at one site. `notifySeats` only schedules, so a push can never fail an at-bat.
+- **Schedule.** Per seat: `pushSend.deliverTurn` at once, and at 12h, 36h and 60h.
+  All are scheduled up front and none is cancelled.
+- **Stop condition.** `push.turnFor` is the only one: null — a quiet no-op — when
+  the at-bat resolved, the seat has locked, or the game left `live`.
+- **Payload.** `{ title, body, url }` from club names, inning and score. No duel
+  number, nothing derived from one, nothing about the opponent's lock.
+- **Devices.** `push.subscribe` upserts by endpoint, and refuses one that is not
+  on a push service (https, default port, no credentials, a known host) — the
+  server posts to it, signed with its VAPID key; a device the push service
+  reports gone (404/410) is deleted silently.
+- **Client.** `registerThisDevice(send)` runs after a lock lands: ask if the
+  browser has not been asked, never if it has said no, then send the server this
+  device. Every failure is let go.
+- **Worker.** `turnNotificationOf(raw)` and `openGameWindow(clients, url)` decide
+  what a push shows and where a tap goes; `src/sw.ts` wires them to events.
+
+```bash
+# once per deployment
+npx web-push generate-vapid-keys
+npx convex env set VAPID_PUBLIC_KEY <public>
+npx convex env set VAPID_PRIVATE_KEY <private>
+npx convex env set VAPID_SUBJECT mailto:you@example.com
+# and VITE_VAPID_PUBLIC_KEY=<public> in .env.local
+```
+
 ## Live field state on the commit/waiting screens (SAN-51)
 
 The number-entry (commit) and waiting screens' field shows the current game state —

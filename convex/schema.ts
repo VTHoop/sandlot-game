@@ -11,6 +11,7 @@ import {
   outcomeBand,
   playerSource,
   position,
+  pushDevice,
   role,
   swingType,
 } from './validators'
@@ -201,6 +202,16 @@ export default defineSchema({
     k: v.float64(),
     tb: v.float64(),
   }).index('by_player', ['player']),
+
+  // One row per device a player has allowed notifications on (SAN-23, ADR-0003).
+  // `endpoint` is the push service's address for the device and is unique per
+  // device; the keys are what `web-push` needs to encrypt to it.
+  pushSubscriptions: defineTable({
+    user: v.id('users'),
+    ...pushDevice.fields,
+  })
+    .index('by_user', ['user'])
+    .index('by_endpoint', ['endpoint']),
 
   boxScoreLine: defineTable({
     game: v.id('games'),
