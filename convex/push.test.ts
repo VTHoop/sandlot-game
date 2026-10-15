@@ -74,10 +74,21 @@ function harness() {
 
 type Harness = ReturnType<typeof harness>
 
-/** Advance the clock and let every function that came due run to completion. */
+/**
+ * Advance the clock and let every function that came due run to completion.
+ *
+ * The clock moves an hour at a time, running what fell due before moving on:
+ * convex-test starts a due function from a timer but finishes it asynchronously,
+ * so one long jump would run every function at the end time and a push would
+ * read as sent at 200h instead of 12h. Everything here is on the hour.
+ */
 async function elapse(t: Harness, ms: number): Promise<void> {
-  vi.advanceTimersByTime(ms)
+  vi.advanceTimersByTime(0)
   await t.finishInProgressScheduledFunctions()
+  for (let left = ms; left > 0; left -= HOUR) {
+    vi.advanceTimersByTime(Math.min(left, HOUR))
+    await t.finishInProgressScheduledFunctions()
+  }
 }
 
 function gameRow(t: Harness, game: Id<'games'>): Promise<Doc<'games'>> {
