@@ -26,18 +26,25 @@ import { clubSide, pushDevice } from './validators'
 const PUSH_HOSTS = new Set(['fcm.googleapis.com', 'updates.push.services.mozilla.com'])
 const PUSH_HOST_SUFFIXES = ['.push.apple.com', '.notify.windows.com']
 
+/** Whether a host is one a push service hands endpoints out on. */
+function isPushHost(hostname: string): boolean {
+  return PUSH_HOSTS.has(hostname) || PUSH_HOST_SUFFIXES.some((s) => hostname.endsWith(s))
+}
+
+/** Plain https on the default port, with no credentials in the address. */
+function isPlainHttps(url: URL): boolean {
+  return url.protocol === 'https:' && url.port === '' && !url.username && !url.password
+}
+
 /**
  * Whether an endpoint is a push service's. `pushSend` posts to whatever is stored
  * here, signed with the server's VAPID key, so an endpoint a caller chose freely
- * would be a request the server makes for them (CWE-918). Only https, the default
- * port, no credentials, and a host from the list above.
+ * would be a request the server makes for them (CWE-918).
  */
 function isPushServiceEndpoint(endpoint: string): boolean {
-  const url = URL.canParse(endpoint) ? new URL(endpoint) : null
-  if (url?.protocol !== 'https:' || url.port !== '' || url.username || url.password) {
-    return false
-  }
-  return PUSH_HOSTS.has(url.hostname) || PUSH_HOST_SUFFIXES.some((s) => url.hostname.endsWith(s))
+  if (!URL.canParse(endpoint)) return false
+  const url = new URL(endpoint)
+  return isPlainHttps(url) && isPushHost(url.hostname)
 }
 
 export const subscribe = mutation({

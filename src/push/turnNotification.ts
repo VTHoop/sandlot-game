@@ -84,11 +84,8 @@ function navigated(open: WindowLike, url: string): Promise<boolean> {
 
 /** Open `url`: in a window that is already open, if it will go there, else a new one. */
 export async function openGameWindow(clients: ClientsLike, url: string): Promise<void> {
-  // Typed as possibly absent: with no open window there is nothing at index 0.
-  const [open]: (WindowLike | undefined)[] = await clients.matchAll({
-    type: 'window',
-    includeUncontrolled: true,
-  })
+  const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true })
+  const open = windows.shift()
   if (open && (await navigated(open, url))) {
     await open.focus()
     return
