@@ -17,6 +17,7 @@ import type * as game from "../game.js";
 import type * as gameView from "../gameView.js";
 import type * as myGames from "../myGames.js";
 import type * as participants from "../participants.js";
+import type * as push from "../push.js";
 import type * as revealDismissals from "../revealDismissals.js";
 import type * as seed from "../seed.js";
 import type * as seedRoster from "../seedRoster.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   gameView: typeof gameView;
   myGames: typeof myGames;
   participants: typeof participants;
+  push: typeof push;
   revealDismissals: typeof revealDismissals;
   seed: typeof seed;
   seedRoster: typeof seedRoster;

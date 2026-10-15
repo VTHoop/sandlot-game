@@ -202,6 +202,18 @@ export default defineSchema({
     tb: v.float64(),
   }).index('by_player', ['player']),
 
+  // One row per device a player has allowed notifications on (SAN-23, ADR-0003).
+  // `endpoint` is the push service's address for the device and is unique per
+  // device; the keys are what `web-push` needs to encrypt to it.
+  pushSubscriptions: defineTable({
+    user: v.id('users'),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+  })
+    .index('by_user', ['user'])
+    .index('by_endpoint', ['endpoint']),
+
   boxScoreLine: defineTable({
     game: v.id('games'),
     team: v.id('teams'),
