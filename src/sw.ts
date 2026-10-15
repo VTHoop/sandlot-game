@@ -1,5 +1,10 @@
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching'
-import { type ClientsLike, openGameWindow, turnNotificationOf } from './push/turnNotification'
+import {
+  type ClientsLike,
+  openGameWindow,
+  turnNotificationOf,
+  urlOf,
+} from './push/turnNotification'
 
 /**
  * The app's service worker (SAN-23, ADR-0036): the precache `vite-plugin-pwa`
@@ -55,7 +60,6 @@ worker.addEventListener('push', (event) => {
 
 worker.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const data = event.notification.data
-  const url = typeof data === 'object' && data !== null && 'url' in data ? String(data.url) : '/'
+  const url = urlOf(event.notification.data)
   event.waitUntil(openGameWindow(worker.clients, url))
 })

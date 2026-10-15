@@ -786,15 +786,18 @@ npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"seed|sandlot
 
 A push to each seat when an at-bat opens, and reminders if it has not locked.
 
-- **Trigger.** `notifySeats(ctx, gameId)` runs in the same two writes as
-  `scheduleBotSeats`. It only schedules, so a push can never fail an at-bat.
+- **Trigger.** `atBatOpened(ctx, gameId)` runs in the two writes that open an
+  at-bat; it calls `scheduleBotSeats` and `notifySeats`, so neither can be missed
+  at one site. `notifySeats` only schedules, so a push can never fail an at-bat.
 - **Schedule.** Per seat: `pushSend.deliverTurn` at once, and at 12h, 36h and 60h.
   All are scheduled up front and none is cancelled.
 - **Stop condition.** `push.turnFor` is the only one: null — a quiet no-op — when
   the at-bat resolved, the seat has locked, or the game left `live`.
 - **Payload.** `{ title, body, url }` from club names, inning and score. No duel
   number, nothing derived from one, nothing about the opponent's lock.
-- **Devices.** `push.subscribe` upserts by endpoint; a device the push service
+- **Devices.** `push.subscribe` upserts by endpoint, and refuses one that is not
+  on a push service (https, default port, no credentials, a known host) — the
+  server posts to it, signed with its VAPID key; a device the push service
   reports gone (404/410) is deleted silently.
 - **Client.** `registerThisDevice(send)` runs after a lock lands: ask if the
   browser has not been asked, never if it has said no, then send the server this

@@ -14,58 +14,84 @@ export interface TurnNotification {
   options: NotificationOptions & { data: { url: string } }
 }
 
-/** The part of a window client a tap needs. */
+/** The part of a window client a tap needs. Function-valued properties, not
+ * methods, so a test can hold and assert on one without detaching it. */
 export interface WindowLike {
   url: string
-  focus(): Promise<unknown>
-  navigate(url: string): Promise<unknown>
+  focus: () => Promise<unknown>
+  navigate: (url: string) => Promise<unknown>
 }
 
 /** The part of the worker's `clients` a tap needs. */
 export interface ClientsLike {
-  matchAll(options: { type: 'window'; includeUncontrolled: true }): Promise<WindowLike[]>
-  openWindow(url: string): Promise<unknown>
+  matchAll: (options: { type: 'window'; includeUncontrolled: true }) => Promise<WindowLike[]>
+  openWindow: (url: string) => Promise<unknown>
 }
 
 const FALLBACK_TITLE = 'Your turn'
 const HOME = '/'
 
-function fieldOf(parsed: unknown, key: 'title' | 'body' | 'url'): string | undefined {
-  if (typeof parsed !== 'object' || parsed === null) return undefined
-  const value = (parsed as Record<string, unknown>)[key]
+/** The text of a payload field, or undefined for anything that is not text. */
+function text(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
 
-function parse(raw: string): unknown {
+interface Payload {
+  title?: string
+  body?: string
+  url?: string
+}
+
+/** The server's payload fields, each only if it is text; `{}` for anything else. */
+function payloadOf(raw: string): Payload {
+  let parsed: unknown
   try {
-    return JSON.parse(raw)
+    parsed = JSON.parse(raw)
   } catch {
-    return null
+    return {}
+  }
+  if (typeof parsed !== 'object' || parsed === null) return {}
+  return {
+    title: 'title' in parsed ? text(parsed.title) : undefined,
+    body: 'body' in parsed ? text(parsed.body) : undefined,
+    url: 'url' in parsed ? text(parsed.url) : undefined,
   }
 }
 
 export function turnNotificationOf(raw: string): TurnNotification {
-  const parsed = parse(raw)
-  const title = fieldOf(parsed, 'title')
-  const url = fieldOf(parsed, 'url') ?? HOME
+  const { title, body, url = HOME } = payloadOf(raw)
   return {
     title: title ?? FALLBACK_TITLE,
     // One notification per game: a reminder replaces the push it repeats.
-    options: { body: fieldOf(parsed, 'body'), tag: url, data: { url } },
+    options: { body, tag: url, data: { url } },
   }
 }
 
-/** Open `url`: in a window that is already open, if there is one, else a new one. */
+/** Where a tapped notification goes: the url its data carries, else home. */
+export function urlOf(data: unknown): string {
+  if (typeof data !== 'object' || data === null || !('url' in data)) return HOME
+  return text(data.url) ?? HOME
+}
+
+/** Whether `open` could be taken to `url`. A window this worker does not control
+ * refuses, and the tap must still do something. */
+function navigated(open: WindowLike, url: string): Promise<boolean> {
+  return open.navigate(url).then(
+    () => true,
+    () => false,
+  )
+}
+
+/** Open `url`: in a window that is already open, if it will go there, else a new one. */
 export async function openGameWindow(clients: ClientsLike, url: string): Promise<void> {
-  const [open] = await clients.matchAll({ type: 'window', includeUncontrolled: true })
-  if (!open) {
-    await clients.openWindow(url)
+  // Typed as possibly absent: with no open window there is nothing at index 0.
+  const [open]: (WindowLike | undefined)[] = await clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true,
+  })
+  if (open && (await navigated(open, url))) {
+    await open.focus()
     return
   }
-  await open.navigate(url)
-  await open.focus()
-}
-
-export function urlOf(_data: unknown): string {
-  throw new Error('urlOf is not implemented')
+  await clients.openWindow(url)
 }
