@@ -14,7 +14,8 @@ import { pickBotNumber } from '@sandlot/engine/bot'
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { internalMutation, type MutationCtx, mutation, query } from './_generated/server'
-import { isBotSeat, scheduleBotSeats } from './bot'
+import { atBatOpened } from './atBatOpened'
+import { isBotSeat } from './bot'
 import {
   type DuelCommitResult,
   DuelRejection,
@@ -25,7 +26,6 @@ import {
 } from './duelContract'
 import { applyResolvedAtBat } from './game'
 import { authedUser, type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
-import { notifySeats } from './pushTrigger'
 import { duelRole, swingType as swingTypeValidator } from './validators'
 
 /**
@@ -281,10 +281,9 @@ async function tryResolve(
     runsScored: resolved.runsScored,
   })
   // The fold just opened the next at-bat (or ended the game): the bot commits
-  // for its seat in it now, not when the human gets round to theirs (SAN-58).
-  await scheduleBotSeats(ctx, game._id)
-  // ...and both seats are told it is their turn (SAN-23).
-  await notifySeats(ctx, game._id)
+  // for its seat in it now, not when the human gets round to theirs (SAN-58), and
+  // both seats are told it is their turn (SAN-23).
+  await atBatOpened(ctx, game._id)
 
   return { atBatId, sequence, outcome: resolved.outcome }
 }

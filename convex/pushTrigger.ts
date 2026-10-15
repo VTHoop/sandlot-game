@@ -1,7 +1,7 @@
 import { internal } from './_generated/api'
 import type { Id } from './_generated/dataModel'
 import type { MutationCtx } from './_generated/server'
-import { PushSeat } from './pushSeat'
+import { ClubSide } from './clubSide'
 
 /**
  * The one call a write makes when it opens an at-bat (SAN-23, ADR-0003):
@@ -32,7 +32,7 @@ export async function notifySeats(ctx: MutationCtx, gameId: Id<'games'>): Promis
   if (game.status !== 'live') return
 
   const sequence = game.lastResolvedSequence + 1
-  for (const seat of [PushSeat.Home, PushSeat.Away]) {
+  for (const seat of [ClubSide.Home, ClubSide.Away]) {
     for (const delay of NOTIFY_AFTER_MS) {
       await ctx.scheduler.runAfter(delay, internal.pushSend.deliverTurn, {
         game: gameId,

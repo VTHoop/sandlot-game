@@ -1,6 +1,7 @@
 import type { BuntResult, GroundBallResult, SwingType } from '@sandlot/engine/atBat'
 import type { OutcomeBandKey } from '@sandlot/engine/outcomes'
 import { type Infer, v } from 'convex/values'
+import type { ClubSide } from './clubSide'
 import type { DuelRole } from './duelContract'
 
 /**
@@ -131,6 +132,24 @@ export const duelRole = v.union(v.literal('pitching'), v.literal('batting'))
 
 const _duelRoleMatchesContract: AssertEqual<Infer<typeof duelRole>, `${DuelRole}`> = true
 void _duelRoleMatchesContract
+
+/** Which club of a matchup a value belongs to. The enum is the source of truth
+ * (a leaf module a browser client may import); this mirrors it for Convex. */
+export const clubSide = v.union(v.literal('home'), v.literal('away'))
+
+const _clubSideMatchesEnum: AssertEqual<Infer<typeof clubSide>, `${ClubSide}`> = true
+void _clubSideMatchesEnum
+
+/**
+ * One device a player has allowed notifications on (SAN-23, ADR-0036): the push
+ * service's address for it and the keys `web-push` encrypts to it. The stored row,
+ * its writer and the sender's arguments all derive from this one shape.
+ */
+export const pushDevice = v.object({
+  endpoint: v.string(),
+  p256dh: v.string(),
+  auth: v.string(),
+})
 
 /**
  * A 1–5 attribute rating. Modeled as a literal union so the 1–5 bound is a

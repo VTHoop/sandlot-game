@@ -11,6 +11,7 @@ import {
   outcomeBand,
   playerSource,
   position,
+  pushDevice,
   role,
   swingType,
 } from './validators'
@@ -207,9 +208,7 @@ export default defineSchema({
   // device; the keys are what `web-push` needs to encrypt to it.
   pushSubscriptions: defineTable({
     user: v.id('users'),
-    endpoint: v.string(),
-    p256dh: v.string(),
-    auth: v.string(),
+    ...pushDevice.fields,
   })
     .index('by_user', ['user'])
     .index('by_endpoint', ['endpoint']),

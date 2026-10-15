@@ -1,10 +1,10 @@
-import { v } from 'convex/values'
+import { type Infer, v } from 'convex/values'
 import type { Doc } from './_generated/dataModel'
 import { internalMutation, internalQuery, mutation } from './_generated/server'
 import { duelLocks } from './atBat'
-import { DuelRole } from './duelContract'
-import { authedUser, teamsForHalf } from './participants'
-import { PushSeat } from './pushSeat'
+import { ClubSide } from './clubSide'
+import { authedUser, sideLocked } from './participants'
+import { clubSide, pushDevice } from './validators'
 
 /**
  * Web push and turn reminders (SAN-23, ADR-0003, ADR-0036).
@@ -21,16 +21,40 @@ import { PushSeat } from './pushSeat'
  * recipient's own seat's, to stop reminding a seat that has already locked.
  */
 
+/** Hosts a browser hands out push endpoints on: Chrome and Edge's FCM, Firefox's
+ * autopush, Safari's web push and Windows' WNS. */
+const PUSH_HOSTS = new Set(['fcm.googleapis.com', 'updates.push.services.mozilla.com'])
+const PUSH_HOST_SUFFIXES = ['.push.apple.com', '.notify.windows.com']
+
+/**
+ * Whether an endpoint is a push service's. `pushSend` posts to whatever is stored
+ * here, signed with the server's VAPID key, so an endpoint a caller chose freely
+ * would be a request the server makes for them (CWE-918). Only https, the default
+ * port, no credentials, and a host from the list above.
+ */
+function isPushServiceEndpoint(endpoint: string): boolean {
+  const url = URL.canParse(endpoint) ? new URL(endpoint) : null
+  if (url?.protocol !== 'https:' || url.port !== '' || url.username || url.password) {
+    return false
+  }
+  return PUSH_HOSTS.has(url.hostname) || PUSH_HOST_SUFFIXES.some((s) => url.hostname.endsWith(s))
+}
+
 export const subscribe = mutation({
-  args: { endpoint: v.string(), p256dh: v.string(), auth: v.string() },
+  args: pushDevice.fields,
   handler: async (ctx, { endpoint, p256dh, auth }): Promise<null> => {
     const user = await authedUser(ctx)
+    if (!isPushServiceEndpoint(endpoint)) throw new Error('That endpoint is not a push service')
     const existing = await ctx.db
       .query('pushSubscriptions')
       .withIndex('by_endpoint', (q) => q.eq('endpoint', endpoint))
       .unique()
-    if (existing) await ctx.db.patch(existing._id, { user: user._id, p256dh, auth })
-    else await ctx.db.insert('pushSubscriptions', { user: user._id, endpoint, p256dh, auth })
+    if (!existing) {
+      await ctx.db.insert('pushSubscriptions', { user: user._id, endpoint, p256dh, auth })
+    } else if (existing.user !== user._id || existing.p256dh !== p256dh || existing.auth !== auth) {
+      // A device goes to whoever registered it last; an unchanged one is not rewritten.
+      await ctx.db.patch(existing._id, { user: user._id, p256dh, auth })
+    }
     return null
   },
 })
@@ -54,8 +78,8 @@ interface TurnPayload {
   url: string
 }
 
-function turnPayload(game: Doc<'games'>, home: Doc<'teams'>, away: Doc<'teams'>, seat: PushSeat) {
-  const opponent = seat === PushSeat.Home ? away : home
+function turnPayload(game: Doc<'games'>, home: Doc<'teams'>, away: Doc<'teams'>, seat: ClubSide) {
+  const opponent = seat === ClubSide.Home ? away : home
   const payload: TurnPayload = {
     title: `Your turn vs ${opponent.name}`,
     body: `${game.half === 'top' ? 'Top' : 'Bottom'} ${game.inning} · ${away.name} ${game.awayScore}, ${home.name} ${game.homeScore}`,
@@ -67,45 +91,40 @@ function turnPayload(game: Doc<'games'>, home: Doc<'teams'>, away: Doc<'teams'>,
 /** What to send one seat of one at-bat, and to which devices. */
 export interface TurnPush {
   payload: string
-  subscriptions: { endpoint: string; p256dh: string; auth: string }[]
+  subscriptions: Infer<typeof pushDevice>[]
+}
+
+/** Whether `sequence` is the at-bat open on a live game: the only one a push is for. */
+function isOpenAtBat(game: Doc<'games'> | null, sequence: number): game is Doc<'games'> {
+  return game?.status === 'live' && game.lastResolvedSequence + 1 === sequence
 }
 
 /**
  * What "your turn" says for one seat of one at-bat, or null when there is nothing
  * to say: the at-bat resolved, the game ended, or this seat has locked. Null is
- * what ends a reminder chain (`pushSend.deliverTurn`), so a stale trigger is a
- * quiet no-op. A seat with no devices still gets an empty list, not null, so its
- * chain keeps its place should the player allow notifications later.
+ * what turns a reminder into a quiet no-op (`pushSend.deliverTurn`). A seat with
+ * no devices still gets an empty list, not null, so a player who allows
+ * notifications later is reached by the reminders still to come.
  */
 export const turnFor = internalQuery({
-  args: {
-    game: v.id('games'),
-    sequence: v.float64(),
-    seat: v.union(v.literal('home'), v.literal('away')),
-  },
+  args: { game: v.id('games'), sequence: v.float64(), seat: clubSide },
   handler: async (ctx, args): Promise<TurnPush | null> => {
     const game = await ctx.db.get(args.game)
-    if (game?.status !== 'live' || game.lastResolvedSequence + 1 !== args.sequence) {
-      return null
-    }
+    if (!isOpenAtBat(game, args.sequence)) return null
 
-    // The validator literals equal the enum's values, so the relabel is sound.
-    const seat = args.seat as PushSeat
+    // The validator literals equal the enum's values (guarded in ./validators).
+    const seat = args.seat as ClubSide
     const [home, away, locks] = await Promise.all([
       ctx.db.get(game.homeTeam),
       ctx.db.get(game.awayTeam),
       duelLocks(ctx, game._id),
     ])
     if (!home || !away) throw new Error(`Game ${game._id} has a club that no longer exists`)
-
-    const club = seat === PushSeat.Home ? home : away
-    const role = teamsForHalf(game).battingTeam === club._id ? DuelRole.Batting : DuelRole.Pitching
-    const locked = role === DuelRole.Batting ? locks.swingCommitted : locks.pitchCommitted
-    if (locked) return null
+    if (sideLocked(game, locks, seat)) return null
 
     const rows = await ctx.db
       .query('pushSubscriptions')
-      .withIndex('by_user', (q) => q.eq('user', club.owner))
+      .withIndex('by_user', (q) => q.eq('user', (seat === ClubSide.Home ? home : away).owner))
       .collect()
     return {
       payload: JSON.stringify(turnPayload(game, home, away, seat)),

@@ -1,6 +1,7 @@
 import type { UserIdentity } from 'convex/server'
 import type { Doc, Id } from './_generated/dataModel'
 import type { MutationCtx, QueryCtx } from './_generated/server'
+import { ClubSide } from './clubSide'
 
 /**
  * Shared Clerk-auth + team-ownership helpers for participant gating. Used by the
@@ -114,6 +115,22 @@ export function teamsForHalf(game: Doc<'games'>): {
   return game.half === 'top'
     ? { battingTeam: game.awayTeam, pitchingTeam: game.homeTeam }
     : { battingTeam: game.homeTeam, pitchingTeam: game.awayTeam }
+}
+
+/**
+ * Whether one club's seat in the at-bat now open has locked, given the game's
+ * lock state. Either seat may lock first (ADR-0014); which role a club holds
+ * flips every half (SAN-21), so the lock is read through the half. Shared by the
+ * "My games" read model and the push scheduler, which both ask it of a club.
+ */
+export function sideLocked(
+  game: Doc<'games'>,
+  locks: { pitchCommitted: boolean; swingCommitted: boolean },
+  side: ClubSide,
+): boolean {
+  const homeBats = teamsForHalf(game).battingTeam === game.homeTeam
+  const batting = homeBats === (side === ClubSide.Home)
+  return batting ? locks.swingCommitted : locks.pitchCommitted
 }
 
 /**

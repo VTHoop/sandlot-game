@@ -1,9 +1,10 @@
 'use node'
 
-import { v } from 'convex/values'
+import { type Infer, v } from 'convex/values'
 import webpush from 'web-push'
 import { internal } from './_generated/api'
 import { type ActionCtx, internalAction } from './_generated/server'
+import { clubSide, type pushDevice } from './validators'
 
 /**
  * Hands the turn payload to the push service for each of a player's devices (SAN-23,
@@ -18,12 +19,15 @@ import { type ActionCtx, internalAction } from './_generated/server'
 
 const GONE = new Set([404, 410])
 
+/** A push service that hangs must not hold the action open until Convex's limit. */
+const SEND_TIMEOUT_MS = 10_000
+
 function statusOf(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null || !('statusCode' in error)) return undefined
   return typeof error.statusCode === 'number' ? error.statusCode : undefined
 }
 
-type Subscription = { endpoint: string; p256dh: string; auth: string }
+type Subscription = Infer<typeof pushDevice>
 
 async function sendToDevices(
   ctx: ActionCtx,
@@ -39,7 +43,9 @@ async function sendToDevices(
   await Promise.all(
     subscriptions.map(async ({ endpoint, p256dh, auth }) => {
       try {
-        await webpush.sendNotification({ endpoint, keys: { p256dh, auth } }, payload)
+        await webpush.sendNotification({ endpoint, keys: { p256dh, auth } }, payload, {
+          timeout: SEND_TIMEOUT_MS,
+        })
       } catch (error) {
         const status = statusOf(error)
         if (status !== undefined && GONE.has(status)) {
@@ -61,7 +67,7 @@ export const deliverTurn = internalAction({
   args: {
     game: v.id('games'),
     sequence: v.float64(),
-    seat: v.union(v.literal('home'), v.literal('away')),
+    seat: clubSide,
   },
   handler: async (ctx, args): Promise<null> => {
     const turn = await ctx.runQuery(internal.push.turnFor, {

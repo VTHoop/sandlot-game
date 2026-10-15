@@ -11,9 +11,8 @@ import {
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { type MutationCtx, mutation } from './_generated/server'
-import { scheduleBotSeats } from './bot'
+import { atBatOpened } from './atBatOpened'
 import { authedUser, isParticipant, ownershipOf } from './participants'
-import { notifySeats } from './pushTrigger'
 
 /**
  * Authoritative game-state mutations (SAN-21). The live `games` row — inning,
@@ -110,10 +109,9 @@ export const startGame = mutation({
     const context = await loadContext(ctx, game)
     // Written once: the status guard above refuses any later call (SAN-73).
     await ctx.db.patch(game._id, { ...toGamePatch(initGameState(context)), startedAt: Date.now() })
-    // The first at-bat is open: the bot commits for its seat now (SAN-58).
-    await scheduleBotSeats(ctx, game._id)
-    // ...and both seats are told it is their turn (SAN-23).
-    await notifySeats(ctx, game._id)
+    // The first at-bat is open: the bot commits for its seat now (SAN-58), and
+    // both seats are told it is their turn (SAN-23).
+    await atBatOpened(ctx, game._id)
   },
 })
 

@@ -9,6 +9,7 @@
  */
 
 import type * as atBat from "../atBat.js";
+import type * as atBatOpened from "../atBatOpened.js";
 import type * as atBatView from "../atBatView.js";
 import type * as bot from "../bot.js";
 import type * as clubSide from "../clubSide.js";
@@ -18,7 +19,6 @@ import type * as gameView from "../gameView.js";
 import type * as myGames from "../myGames.js";
 import type * as participants from "../participants.js";
 import type * as push from "../push.js";
-import type * as pushSeat from "../pushSeat.js";
 import type * as pushSend from "../pushSend.js";
 import type * as pushTrigger from "../pushTrigger.js";
 import type * as revealDismissals from "../revealDismissals.js";
@@ -35,6 +35,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   atBat: typeof atBat;
+  atBatOpened: typeof atBatOpened;
   atBatView: typeof atBatView;
   bot: typeof bot;
   clubSide: typeof clubSide;
@@ -44,7 +45,6 @@ declare const fullApi: ApiFromModules<{
   myGames: typeof myGames;
   participants: typeof participants;
   push: typeof push;
-  pushSeat: typeof pushSeat;
   pushSend: typeof pushSend;
   pushTrigger: typeof pushTrigger;
   revealDismissals: typeof revealDismissals;
