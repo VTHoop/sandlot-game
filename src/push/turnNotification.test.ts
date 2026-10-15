@@ -3,6 +3,7 @@ import {
   type ClientsLike,
   openGameWindow,
   turnNotificationOf,
+  urlOf,
   type WindowLike,
 } from './turnNotification'
 
@@ -82,5 +83,27 @@ describe('what a tap opens', () => {
     await openGameWindow(clients, '/game/game-1')
 
     expect(clients.matchAll).toHaveBeenCalledWith({ type: 'window', includeUncontrolled: true })
+  })
+})
+
+describe('a tap on a window this worker does not control', () => {
+  it('opens a new window when the open one refuses to navigate, so the tap still does something', async () => {
+    const uncontrolled = windowAt('https://sandlot.test/')
+    uncontrolled.navigate = vi.fn().mockRejectedValue(new TypeError('not controlled'))
+    const clients = clientsWith(uncontrolled)
+
+    await openGameWindow(clients, '/game/game-1')
+
+    expect(clients.openWindow).toHaveBeenCalledExactlyOnceWith('/game/game-1')
+  })
+})
+
+describe('where a tapped notification goes', () => {
+  it('reads the game’s url from the notification’s data', () => {
+    expect(urlOf({ url: '/game/game-1' })).toBe('/game/game-1')
+  })
+
+  it('goes home when the data is not a url', () => {
+    for (const data of [undefined, null, 'x', {}, { url: 3 }]) expect(urlOf(data)).toBe('/')
   })
 })

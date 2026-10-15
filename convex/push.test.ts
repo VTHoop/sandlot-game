@@ -427,3 +427,140 @@ describe('push — a bot game', () => {
     expect(sent.map((s) => s.endpoint)).toEqual([HUMAN_DEVICE])
   })
 })
+
+describe('push — which endpoints may be stored', () => {
+  const subscribeTo = (t: Harness, endpoint: string) =>
+    t.withIdentity(HUMAN).mutation(api.push.subscribe, { endpoint, p256dh: 'p256dh', auth: 'auth' })
+
+  async function provisioned() {
+    const t = harness()
+    await t.withIdentity(HUMAN).mutation(api.users.provision, {})
+    return t
+  }
+
+  it('takes the endpoints real push services hand out', async () => {
+    const t = await provisioned()
+    for (const endpoint of [
+      'https://fcm.googleapis.com/fcm/send/abc',
+      'https://updates.push.services.mozilla.com/wpush/v2/abc',
+      'https://web.push.apple.com/abc',
+      'https://wns2-par02p.notify.windows.com/w/?token=abc',
+    ]) {
+      await expect(subscribeTo(t, endpoint)).resolves.toBeNull()
+    }
+  })
+
+  it('refuses an endpoint that is not a push service, so the server never posts to a caller-chosen host', async () => {
+    const t = await provisioned()
+    for (const endpoint of [
+      'http://fcm.googleapis.com/fcm/send/abc',
+      'https://internal.example.test/hook',
+      'https://fcm.googleapis.com.evil.test/fcm/send/abc',
+      'https://evil.test/web.push.apple.com',
+      'https://fcm.googleapis.com:8443/fcm/send/abc',
+      'https://user:pw@fcm.googleapis.com/fcm/send/abc',
+      'not a url',
+    ]) {
+      await expect(subscribeTo(t, endpoint)).rejects.toThrow('push service')
+    }
+    expect(await t.run((ctx) => ctx.db.query('pushSubscriptions').collect())).toHaveLength(0)
+  })
+})
+
+describe('push — one row per device', () => {
+  it('keeps exactly one row when the same user registers the same device twice', async () => {
+    const { t } = await twoHumanGame()
+    await subscribe(t, HUMAN, HUMAN_DEVICE)
+
+    const rows = await t.run((ctx) => ctx.db.query('pushSubscriptions').collect())
+    expect(rows.filter((row) => row.endpoint === HUMAN_DEVICE)).toHaveLength(1)
+  })
+
+  it('hands a device to whoever registered it last, so the first user’s turns stop reaching it', async () => {
+    const { t, game } = await twoHumanGame()
+    await subscribe(t, OTHER, HUMAN_DEVICE)
+    await t.withIdentity(HUMAN).mutation(api.game.startGame, { game })
+    await elapse(t, 0)
+
+    // The home seat's push goes to HUMAN's remaining devices — none — and the
+    // away seat's now reaches the shared device as well as OTHER's own.
+    expect(sent.filter(to(HUMAN_DEVICE))).toHaveLength(1)
+    expect(sent.filter(to(HUMAN_DEVICE))[0]?.payload.title).toMatch(/^Your turn vs /)
+    const [row] = await t.run((ctx) =>
+      ctx.db
+        .query('pushSubscriptions')
+        .withIndex('by_endpoint', (q) => q.eq('endpoint', HUMAN_DEVICE))
+        .collect(),
+    )
+    const other = await t.run((ctx) =>
+      ctx.db
+        .query('users')
+        .withIndex('by_clerk_subject', (q) => q.eq('clerkSubject', OTHER.subject))
+        .unique(),
+    )
+    expect(row?.user).toBe(other?._id)
+  })
+})
+
+describe('push — what the push service tells us', () => {
+  it('deletes a subscription reported as 404 as well as 410', async () => {
+    const { t } = await twoHumanGame()
+    vi.mocked(webpush.sendNotification).mockImplementation(async (subscription) => {
+      if (subscription.endpoint === HUMAN_DEVICE) {
+        throw Object.assign(new Error('not found'), { statusCode: 404 })
+      }
+      return { statusCode: 201, body: '', headers: {} }
+    })
+    const game = (await t.run((ctx) => ctx.db.query('games').first()))?._id
+    if (!game) throw new Error('no game')
+    await t.withIdentity(HUMAN).mutation(api.game.startGame, { game })
+    await elapse(t, 0)
+
+    const left = await t.run((ctx) => ctx.db.query('pushSubscriptions').collect())
+    expect(left.map((row) => row.endpoint)).toEqual([OTHER_DEVICE])
+  })
+
+  it('does not wait on a push service that never answers', async () => {
+    await startedGame()
+
+    for (const call of vi.mocked(webpush.sendNotification).mock.calls) {
+      expect(call[2]).toMatchObject({ timeout: 10_000 })
+    }
+    expect(vi.mocked(webpush.sendNotification)).toHaveBeenCalled()
+  })
+})
+
+describe('push — more of the secret-state law', () => {
+  it('never carries the pitcher’s number either', async () => {
+    const { t, game } = await startedGame()
+    await humanPitches(t, game, 913)
+    await elapse(t, 200 * HOUR)
+
+    expect((await commitments(t, game)).map((row) => row.number)).toContain(913)
+    expect(JSON.stringify(sent)).not.toContain('913')
+  })
+})
+
+describe('push — the at-bat that ends the game', () => {
+  it('sends no push and no reminders for a game it has just finished', async () => {
+    const { t, game } = await startedGame()
+    // The away club is far behind in the top of the last inning with two out, so
+    // the next out ends the game.
+    await t.run((ctx) =>
+      ctx.db.patch(game, { inning: 6, half: 'top', outs: 2, homeScore: 20, awayScore: 0 }),
+    )
+
+    let sentBefore = sent.length
+    for (let atBat = 0; atBat < 60; atBat += 1) {
+      sentBefore = sent.length
+      await humanPitches(t, game, 100 + atBat * 7)
+      await otherSwings(t, game, 900 - atBat * 11)
+      await elapse(t, 0)
+      if ((await gameRow(t, game)).status === 'final') break
+    }
+
+    expect((await gameRow(t, game)).status).toBe('final')
+    await elapse(t, 200 * HOUR)
+    expect(sent).toHaveLength(sentBefore)
+  })
+})

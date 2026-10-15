@@ -65,3 +65,7 @@ export async function openGameWindow(clients: ClientsLike, url: string): Promise
   await open.navigate(url)
   await open.focus()
 }
+
+export function urlOf(_data: unknown): string {
+  throw new Error('urlOf is not implemented')
+}

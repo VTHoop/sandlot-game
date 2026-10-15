@@ -904,6 +904,7 @@ const DEVICE = {
 function stubBrowserPush(
   permission: NotificationPermission,
   asked: NotificationPermission | Error = 'granted',
+  existing?: { toJSON: () => unknown },
 ) {
   const notification = {
     permission,
@@ -921,7 +922,7 @@ function stubBrowserPush(
   }
   const pushManager = {
     subscribe: vi.fn(async () => subscription),
-    getSubscription: vi.fn(async () => null),
+    getSubscription: vi.fn(async () => existing ?? null),
   }
   vi.stubGlobal('Notification', notification)
   vi.stubGlobal('PushManager', class {})
@@ -1055,5 +1056,36 @@ describe('/game/:id — turn notifications', () => {
     })
     expect(screen.queryByRole('alert')).toBeNull()
     expect(sdk.subscribePush).not.toHaveBeenCalled()
+  })
+})
+
+describe('/game/:id — a device that is already subscribed', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+    Reflect.deleteProperty(navigator, 'serviceWorker')
+  })
+
+  it('sends the server the subscription it has instead of creating another', async () => {
+    const existing = {
+      toJSON: () => ({
+        endpoint: 'https://fcm.googleapis.com/fcm/send/existing',
+        keys: { p256dh: 'existing-p256dh', auth: 'existing-auth' },
+      }),
+    }
+    const { pushManager } = stubBrowserPush('granted', 'granted', existing)
+    await open(liveView())
+    await screen.findByLabelText(/your number/i)
+
+    lockNumber(472)
+
+    await waitFor(() => {
+      expect(sdk.subscribePush).toHaveBeenCalledExactlyOnceWith({
+        endpoint: 'https://fcm.googleapis.com/fcm/send/existing',
+        p256dh: 'existing-p256dh',
+        auth: 'existing-auth',
+      })
+    })
+    expect(pushManager.subscribe).not.toHaveBeenCalled()
   })
 })
