@@ -25,6 +25,7 @@ import {
 } from './duelContract'
 import { applyResolvedAtBat } from './game'
 import { authedUser, type Ctx, maybeUser, ownsTeam, teamsForHalf } from './participants'
+import { notifySeats } from './pushTrigger'
 import { duelRole, swingType as swingTypeValidator } from './validators'
 
 /**
@@ -282,6 +283,8 @@ async function tryResolve(
   // The fold just opened the next at-bat (or ended the game): the bot commits
   // for its seat in it now, not when the human gets round to theirs (SAN-58).
   await scheduleBotSeats(ctx, game._id)
+  // ...and both seats are told it is their turn (SAN-23).
+  await notifySeats(ctx, game._id)
 
   return { atBatId, sequence, outcome: resolved.outcome }
 }
