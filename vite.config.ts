@@ -9,6 +9,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // A hand-written worker (src/sw.ts): it holds the web-push handlers (SAN-23).
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       // manifest served from public/manifest.webmanifest (committed to repo)
       manifest: false,
     }),

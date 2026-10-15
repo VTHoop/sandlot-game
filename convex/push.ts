@@ -85,7 +85,7 @@ export const turnFor = internalQuery({
   },
   handler: async (ctx, args): Promise<TurnPush | null> => {
     const game = await ctx.db.get(args.game)
-    if (!game || game.status !== 'live' || game.lastResolvedSequence + 1 !== args.sequence) {
+    if (game?.status !== 'live' || game.lastResolvedSequence + 1 !== args.sequence) {
       return null
     }
 
