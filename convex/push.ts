@@ -1,5 +1,5 @@
 import { type Infer, v } from 'convex/values'
-import type { Doc } from './_generated/dataModel'
+import type { Doc, Id } from './_generated/dataModel'
 import { internalMutation, internalQuery, mutation } from './_generated/server'
 import { duelLocks } from './atBat'
 import { ClubSide } from './clubSide'
@@ -47,6 +47,19 @@ function isPushServiceEndpoint(endpoint: string): boolean {
   return isPlainHttps(url) && isPushHost(url.hostname)
 }
 
+function sameKeys(row: Doc<'pushSubscriptions'>, device: Infer<typeof pushDevice>): boolean {
+  return row.p256dh === device.p256dh && row.auth === device.auth
+}
+
+/** Whether the stored row already is this user's registration of this device. */
+function holds(
+  row: Doc<'pushSubscriptions'>,
+  user: Id<'users'>,
+  device: Infer<typeof pushDevice>,
+): boolean {
+  return row.user === user && sameKeys(row, device)
+}
+
 export const subscribe = mutation({
   args: pushDevice.fields,
   handler: async (ctx, { endpoint, p256dh, auth }): Promise<null> => {
@@ -58,7 +71,7 @@ export const subscribe = mutation({
       .unique()
     if (!existing) {
       await ctx.db.insert('pushSubscriptions', { user: user._id, endpoint, p256dh, auth })
-    } else if (existing.user !== user._id || existing.p256dh !== p256dh || existing.auth !== auth) {
+    } else if (!holds(existing, user._id, { endpoint, p256dh, auth })) {
       // A device goes to whoever registered it last; an unchanged one is not rewritten.
       await ctx.db.patch(existing._id, { user: user._id, p256dh, auth })
     }
