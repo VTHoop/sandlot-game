@@ -33,6 +33,7 @@ const sdk = vi.hoisted(() => ({
   commitPitch: vi.fn<(args: unknown) => Promise<unknown>>(),
   commitSwing: vi.fn<(args: unknown) => Promise<unknown>>(),
   dismissReveal: vi.fn<(args: unknown) => Promise<unknown>>(),
+  subscribePush: vi.fn<(args: unknown) => Promise<unknown>>(),
   /** Every query the app subscribed to, by name — what crossed the wire. */
   subscribed: new Set<string>(),
 }))
@@ -58,6 +59,7 @@ vi.mock('convex/react', async () => {
     ['atBat:commitPitch', (args) => sdk.commitPitch(args)],
     ['atBat:commitSwing', (args) => sdk.commitSwing(args)],
     ['revealDismissals:dismissReveal', (args) => sdk.dismissReveal(args)],
+    ['push:subscribe', (args) => sdk.subscribePush(args)],
   ])
   const named = <T,>(table: Map<string, T>, ref: Ref): T => {
     const name = getFunctionName(ref)
@@ -100,6 +102,7 @@ beforeEach(() => {
   sdk.commitPitch.mockReset().mockResolvedValue(null)
   sdk.commitSwing.mockReset().mockResolvedValue(null)
   sdk.dismissReveal.mockReset().mockResolvedValue(null)
+  sdk.subscribePush.mockReset().mockResolvedValue(null)
   sdk.subscribed.clear()
 })
 
@@ -885,5 +888,172 @@ describe('/game/:id — the line score (SAN-67)', () => {
     expect(region.contains(screen.getByRole('table', { name: 'Line score' }))).toBe(true)
     // WCAG 2.1.1: Safari does not make a scroller focusable on its own.
     expect(region.tabIndex).toBe(0)
+  })
+})
+
+/**
+ * Turn notifications (SAN-23). The browser's push surface is stubbed, so each test
+ * says what the browser would do and reads what the app asked of it.
+ */
+const DEVICE = {
+  endpoint: 'https://push.test/device',
+  p256dh: 'p256dh-key',
+  auth: 'auth-key',
+}
+
+function stubBrowserPush(
+  permission: NotificationPermission,
+  asked: NotificationPermission | Error = 'granted',
+) {
+  const notification = {
+    permission,
+    requestPermission: vi.fn(async () => {
+      if (asked instanceof Error) throw asked
+      notification.permission = asked
+      return asked
+    }),
+  }
+  const subscription = {
+    toJSON: () => ({
+      endpoint: DEVICE.endpoint,
+      keys: { p256dh: DEVICE.p256dh, auth: DEVICE.auth },
+    }),
+  }
+  const pushManager = {
+    subscribe: vi.fn(async () => subscription),
+    getSubscription: vi.fn(async () => null),
+  }
+  vi.stubGlobal('Notification', notification)
+  vi.stubGlobal('PushManager', class {})
+  Object.defineProperty(navigator, 'serviceWorker', {
+    value: { ready: Promise.resolve({ pushManager }) },
+    configurable: true,
+  })
+  vi.stubEnv(
+    'VITE_VAPID_PUBLIC_KEY',
+    'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U',
+  )
+  return { notification, pushManager }
+}
+
+describe('/game/:id — turn notifications', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+    Reflect.deleteProperty(navigator, 'serviceWorker')
+  })
+
+  it('does not ask for permission when the app loads, or while the viewer is still choosing a number', async () => {
+    const { notification } = stubBrowserPush('default')
+    await open(liveView())
+    await screen.findByLabelText(/your number/i)
+    fireEvent.change(numberInput(), { target: { value: '472' } })
+
+    expect(notification.requestPermission).not.toHaveBeenCalled()
+    expect(sdk.subscribePush).not.toHaveBeenCalled()
+  })
+
+  it('asks right after the viewer’s first lock lands, then sends the server this device and nothing else', async () => {
+    const { notification, pushManager } = stubBrowserPush('default')
+    await open(liveView())
+    await screen.findByLabelText(/your number/i)
+
+    lockNumber(472)
+
+    await waitFor(() => {
+      expect(sdk.subscribePush).toHaveBeenCalledExactlyOnceWith(DEVICE)
+    })
+    expect(notification.requestPermission).toHaveBeenCalledTimes(1)
+    expect(pushManager.subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({ userVisibleOnly: true }),
+    )
+  })
+
+  it('does not ask when the lock did not land', async () => {
+    const { notification } = stubBrowserPush('default')
+    sdk.commitSwing.mockRejectedValueOnce(new Error('offline'))
+    await open(liveView())
+    await screen.findByLabelText(/your number/i)
+
+    lockNumber(472)
+
+    await screen.findByRole('alert')
+    expect(notification.requestPermission).not.toHaveBeenCalled()
+  })
+
+  it('does not ask again once the browser has denied it', async () => {
+    const { notification } = stubBrowserPush('denied')
+    await open(liveView())
+    await screen.findByLabelText(/your number/i)
+
+    lockNumber(472)
+
+    await waitFor(() => {
+      expect(sdk.commitSwing).toHaveBeenCalledTimes(1)
+    })
+    expect(notification.requestPermission).not.toHaveBeenCalled()
+    expect(sdk.subscribePush).not.toHaveBeenCalled()
+  })
+
+  it('does not ask a second time after the viewer says no to the first', async () => {
+    const { notification } = stubBrowserPush('default', 'denied')
+    const hotseat = { viewerOwns: owns(true, true) }
+    const { serverReports } = await open(liveView(hotseat))
+    await screen.findByText('R. VANCE’s swing')
+    lockNumber(519)
+    await waitFor(() => {
+      expect(notification.requestPermission).toHaveBeenCalledTimes(1)
+    })
+
+    serverReports({ game: liveView({ ...hotseat, locks: locks(true, false) }) })
+    await screen.findByText('H. MARSH’s pitch')
+    lockNumber(472)
+
+    await waitFor(() => {
+      expect(sdk.commitSwing).toHaveBeenCalledTimes(1)
+    })
+    expect(notification.requestPermission).toHaveBeenCalledTimes(1)
+    expect(sdk.subscribePush).not.toHaveBeenCalled()
+  })
+
+  it('registers this device without asking when permission was already granted', async () => {
+    const { notification } = stubBrowserPush('granted')
+    await open(liveView())
+    await screen.findByLabelText(/your number/i)
+
+    lockNumber(472)
+
+    await waitFor(() => {
+      expect(sdk.subscribePush).toHaveBeenCalledExactlyOnceWith(DEVICE)
+    })
+    expect(notification.requestPermission).not.toHaveBeenCalled()
+  })
+
+  it('plays exactly as before when the browser throws on the way', async () => {
+    stubBrowserPush('default', new Error('blocked'))
+    await open(liveView())
+    await screen.findByLabelText(/your number/i)
+
+    lockNumber(472)
+
+    await waitFor(() => {
+      expect(sdk.commitSwing).toHaveBeenCalledExactlyOnceWith({ game: GAME_ID, number: 472 })
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(sdk.subscribePush).not.toHaveBeenCalled()
+  })
+
+  it('plays exactly as before in a browser with no push at all', async () => {
+    vi.stubGlobal('Notification', undefined)
+    await open(liveView())
+    await screen.findByLabelText(/your number/i)
+
+    lockNumber(472)
+
+    await waitFor(() => {
+      expect(sdk.commitSwing).toHaveBeenCalledExactlyOnceWith({ game: GAME_ID, number: 472 })
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(sdk.subscribePush).not.toHaveBeenCalled()
   })
 })
