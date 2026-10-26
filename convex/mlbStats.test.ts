@@ -82,7 +82,7 @@ const PITCHER_STAT = {
 const ADVANCED_STAT = { groundHits: 90, groundOuts: 210, ballsInPlay: 480 }
 
 const SPRINT_CSV =
-  '﻿"last_name, first_name","player_id","team_id","team","position","age","competitive_runs","bolts","hp_to_1b","sprint_speed"\n' +
+  '\uFEFF"last_name, first_name","player_id","team_id","team","position","age","competitive_runs","bolts","hp_to_1b","sprint_speed"\n' +
   '"Quill, Ada",900001,1,"HG","SS",27,"120","60","4.10","28.4"\n'
 
 function sources(over: Partial<SeasonSources> = {}): SeasonSources {

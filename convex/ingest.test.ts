@@ -173,7 +173,7 @@ function defaultWorld(): World {
       { id: DEE, fullName: 'Dee Fenwick' },
     ],
     sprintCsv:
-      '﻿"last_name, first_name","player_id","team_id","team","position","age","competitive_runs","bolts","hp_to_1b","sprint_speed"\n' +
+      '\uFEFF"last_name, first_name","player_id","team_id","team","position","age","competitive_runs","bolts","hp_to_1b","sprint_speed"\n' +
       `"Quill, Ada",${ADA},1,"HG","SS",27,"120","60","4.10","28.4"\n` +
       `"Ashby, Ren",${REN},1,"HG","DH",29,"80","30","4.20","27.1"\n`,
     failing: {},
