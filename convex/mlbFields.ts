@@ -1,0 +1,80 @@
+/**
+ * Reading the MLB sources' records field by field (SAN-25, ADR-0037). Every read
+ * refuses what is missing or malformed with an error that names the source, so
+ * a half-formed record aborts the run instead of becoming a half-formed row.
+ */
+
+/** Every source the ingest reads; an abort names the one that failed. */
+export type IngestSource =
+  | 'seasons'
+  | 'hitting'
+  | 'pitching'
+  | 'pitching-advanced'
+  | 'profiles'
+  | 'sprint-speed'
+
+/** The run aborted: a source failed, came back empty, or lacked a required field. */
+export class IngestError extends Error {
+  constructor(source: IngestSource, detail: string) {
+    super(`Ingest aborted: ${source}: ${detail}`)
+    this.name = 'IngestError'
+  }
+}
+
+/**
+ * One JSON object from a source, read by field name through a `Map` so no read
+ * is a computed member access (AGENTS.md → Code conventions).
+ */
+export class Fields {
+  private constructor(
+    private readonly source: IngestSource,
+    private readonly what: string,
+    private readonly values: ReadonlyMap<string, unknown>,
+  ) {}
+
+  static of(source: IngestSource, what: string, value: unknown): Fields {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new IngestError(source, `${what} is not an object`)
+    }
+    return new Fields(source, what, new Map(Object.entries(value)))
+  }
+
+  private lacks(key: string): never {
+    throw new IngestError(this.source, `${this.what} lacks ${key}`)
+  }
+
+  /** A non-negative number: a count, an id. */
+  count(key: string): number {
+    const value = this.values.get(key)
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) this.lacks(key)
+    return value
+  }
+
+  text(key: string): string {
+    const value = this.values.get(key)
+    if (typeof value !== 'string' || value === '') this.lacks(key)
+    return value
+  }
+
+  /** Text that may be absent; present but empty or not text is still refused. */
+  optionalText(key: string): string | null {
+    return this.values.has(key) ? this.text(key) : null
+  }
+
+  child(key: string): Fields {
+    const value = this.values.get(key)
+    if (value === undefined) this.lacks(key)
+    return Fields.of(this.source, `${this.what}.${key}`, value)
+  }
+
+  /** A child object that may be absent. */
+  optionalChild(key: string): Fields | null {
+    return this.values.has(key) ? this.child(key) : null
+  }
+
+  list(key: string): Fields[] {
+    const value = this.values.get(key)
+    if (!Array.isArray(value)) this.lacks(key)
+    return value.map((item, i) => Fields.of(this.source, `${this.what}.${key}[${i}]`, item))
+  }
+}
