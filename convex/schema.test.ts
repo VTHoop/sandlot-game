@@ -25,7 +25,7 @@ const tables = new Map<string, ExportedTable>(
 const EXPECTED_INDEXES: Record<string, Record<string, string[]>> = {
   users: { by_clerk_subject: ['clerkSubject'] },
   teams: { by_owner: ['owner'] },
-  players: { by_source: ['source'], by_role: ['role'] },
+  players: { by_source: ['source'], by_role: ['role'], by_mlb_id: ['mlbId', 'role'] },
   games: {
     by_status: ['status'],
     by_home_team: ['homeTeam'],
