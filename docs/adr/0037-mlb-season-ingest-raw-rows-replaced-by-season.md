@@ -16,7 +16,7 @@ SAN-26 turns real stats into the 1–5 attributes `players` requires, so somethi
 - **Command.** `pnpm ingest:mlb [--season YYYY]` wraps `npx convex run ingest:run`. SAN-28's cron calls the same action with the live season.
 
 ## Alternatives considered
-- **Upsert by `(season, mlbId, role)`.** Keeps unchanged rows, but needs a read per row and cannot drop a player the source stops listing. Replacing a season is about 3,200 writes, under Convex's 8,192 per mutation.
+- **Upsert by `(season, mlbId, role)`.** Keeps unchanged rows, but needs a read per row and cannot drop a player the source stops listing. Replacing a season is about 3,200 writes, under Convex's 16,000 documents written per mutation.
 - **Fetch inside the mutation.** Not possible; mutations cannot call out.
 - **Compute the default season from the calendar.** Cheaper, but a guess; the seasons endpoint states it.
 - **Leave sprint speed to SAN-29 with Statcast.** SAN-26 decided Speed uses it now.
