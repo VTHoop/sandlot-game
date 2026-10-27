@@ -101,6 +101,8 @@ interface World {
   sprintCsv: string
   /** Sources that answer with this HTTP status instead of their body. */
   failing: Partial<Record<IngestSource, number>>
+  /** The source whose request runs out of time. */
+  stalled?: IngestSource
 }
 
 const seasonRecord = (seasonId: string, regularSeasonEndDate: string) => ({
@@ -184,6 +186,7 @@ function defaultWorld(): World {
 
 let world: World
 let fetched: URL[]
+let signals: (AbortSignal | null | undefined)[]
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -216,10 +219,13 @@ function route(url: URL): { source: IngestSource; body: () => Response } {
 beforeEach(() => {
   world = defaultWorld()
   fetched = []
-  vi.stubGlobal('fetch', async (input: string | URL | Request) => {
+  signals = []
+  vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url)
     fetched.push(url)
+    signals.push(init?.signal)
     const { source, body } = route(url)
+    if (world.stalled === source) throw new DOMException('The operation timed out.', 'TimeoutError')
     const status = world.failing[source]
     return status === undefined ? body() : new Response('upstream trouble', { status })
   })
@@ -612,6 +618,29 @@ describe('ingest.run — a run that cannot finish', () => {
 
     await expect(ingest(t, failure.season)).rejects.toThrow(`${failure.source}:`)
 
+    expect(await rowsOf(t)).toEqual(before)
+  })
+
+  it('gives every request a deadline', async () => {
+    const t = harness()
+    await ingest(t)
+    expect(signals).toHaveLength(fetched.length)
+    expect(signals.every((signal) => signal instanceof AbortSignal)).toBe(true)
+  })
+
+  it.each([
+    'seasons',
+    'hitting',
+    'sprint-speed',
+  ] as const)('aborts naming %s when its request runs out of time, leaving the stored rows', async (source) => {
+    const t = harness()
+    await ingest(t, 2026)
+    const before = await rowsOf(t)
+    world.stalled = source
+
+    await expect(ingest(t, source === 'seasons' ? undefined : 2026)).rejects.toThrow(
+      `${source}: the request timed out`,
+    )
     expect(await rowsOf(t)).toEqual(before)
   })
 
