@@ -9,8 +9,11 @@ import {
   pitcherRates,
   regress,
   type Score,
+  scoreCommand,
   scoreContact,
   scoreEye,
+  scoreGroundBall,
+  scoreHrPer9,
   scorePower,
   scoreSprintSpeed,
   scoreVelocity,
@@ -261,6 +264,48 @@ const TABLES: readonly (readonly [string, (value: number) => Score, readonly Cas
       [0.1599, 1],
     ],
   ],
+  [
+    'Command (BB%, lower is better)',
+    scoreCommand,
+    [
+      [0.068, 5],
+      [0.0681, 4],
+      [0.077, 4],
+      [0.0771, 3],
+      [0.098, 3],
+      [0.0981, 2],
+      [0.112, 2],
+      [0.1121, 1],
+    ],
+  ],
+  [
+    'Movement: HR/9 (lower is better)',
+    scoreHrPer9,
+    [
+      [1.0, 5],
+      [1.001, 4],
+      [1.08, 4],
+      [1.081, 3],
+      [1.25, 3],
+      [1.251, 2],
+      [1.35, 2],
+      [1.351, 1],
+    ],
+  ],
+  [
+    'Movement: GB% (higher is better)',
+    scoreGroundBall,
+    [
+      [0.52, 5],
+      [0.5199, 4],
+      [0.46, 4],
+      [0.4599, 3],
+      [0.4, 3],
+      [0.3999, 2],
+      [0.36, 2],
+      [0.3599, 1],
+    ],
+  ],
 ]
 
 describe.each(TABLES)('%s', (_name, score, cases) => {
@@ -268,6 +313,40 @@ describe.each(TABLES)('%s', (_name, score, cases) => {
     cases,
   )('%s scores %s — a value exactly on a boundary takes the better score', (value, expected) => {
     expect(score(value)).toBe(expected)
+  })
+})
+
+describe('a league-average pitcher (2026 pooled rates)', () => {
+  // The season's pooled pitching line: K% .2214, BB% .0889, GB% .4237, HR/BF .0303
+  // over 38.4 batters faced per nine. A pitcher sitting exactly on it must be a 3
+  // everywhere — the tables are absolute, so this is what pins them to the season.
+  const season: LeagueRates = {
+    hitter: { iso: 0.1565, kRate: 0.2214, bbRate: 0.0889 },
+    pitcher: { kRate: 0.2214, bbRate: 0.0889, gbRate: 0.4237, hrPerBf: 0.0303 },
+  }
+  const average = pitcher({
+    battersFaced: 700,
+    outs: 492, // 700 BF × 27 ÷ 492 = 38.4 BF per nine
+    strikeOuts: 155,
+    baseOnBalls: 62,
+    homeRuns: 21,
+    groundHits: 93,
+    groundOuts: 110,
+    ballsInPlay: 480,
+  })
+
+  it('scores 3 on Velocity, Command, Movement and Awareness', () => {
+    expect(pitcherAttributes(average, season)).toEqual({
+      velocity: 3,
+      movement: 3,
+      awareness: 3,
+      command: 3,
+    })
+  })
+
+  it('is exactly the league on HR/9 (≈1.165) and scores that HR/9 a 3', () => {
+    expect(pitcherRates(average, season).hrPer9).toBeCloseTo(1.165, 1)
+    expect(scoreHrPer9(1.165)).toBe(3)
   })
 })
 
