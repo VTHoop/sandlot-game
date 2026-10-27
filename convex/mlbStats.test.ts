@@ -121,6 +121,17 @@ describe('latestCompletedSeason', () => {
     )
   })
 
+  it.each([
+    'abc',
+    '',
+    '20x6',
+  ])('refuses a season whose id is %j rather than ingest year NaN', (seasonId) => {
+    const broken = { seasons: [season(seasonId, '2026-09-27')] }
+    expect(() => latestCompletedSeason(broken, new Date('2026-10-26T00:00:00Z'))).toThrow(
+      'seasons:',
+    )
+  })
+
   it('refuses a season that lacks its regular-season end date', () => {
     const broken = { seasons: [{ seasonId: '2026' }] }
     expect(() => latestCompletedSeason(broken, new Date('2026-10-26T00:00:00Z'))).toThrow(
@@ -219,6 +230,13 @@ describe('buildSeasonRows', () => {
     const build = () => buildSeasonRows(sources({ hitting: twice }))
     expect(build).toThrow(IngestError)
     expect(build).toThrow('hitting:')
+  })
+
+  it('refuses a Savant file that lists a player twice, rather than keep the last record', () => {
+    const csv = `${SPRINT_CSV}"Quill, Ada",900001,1,"HG","SS",27,"90","40","4.10","27.0"\n`
+    const build = () => buildSeasonRows(sources({ sprintCsv: csv }))
+    expect(build).toThrow(IngestError)
+    expect(build).toThrow('sprint-speed:')
   })
 
   it('refuses a Savant file with no sprint_speed column', () => {
