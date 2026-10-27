@@ -52,11 +52,11 @@ Prove the core loop is fun and that the async social dynamic creates pull, among
 - [P1] Server-side bot opponent — so a single human can play a full game without a second device
 
 ### Project: Data Pipeline  *(P1)*
-- [P1] MLB Stats API ingest (2 calls: hitting + pitching), full-season snapshot
+- [P1] MLB Stats API ingest (hitting, pitching and the pitching batted-ball breakdown, plus Savant sprint speed), full-season snapshot
 - [P1] Stat → 1–5 attribute normalization (cut tables + small-sample regression — per spec)
 - [P1] Draft-pool qualification (hitters ≥300 PA, pitchers ≥50 IP)
 - [P2] Weekly scheduled refresh (Convex cron); the "scouting edge"
-- [P2] Statcast/pybaseball polish for Speed (sprint speed) + pitcher Movement
+- [P2] Statcast polish for pitcher Movement (whiff/barrel-against); Speed already ingests Savant sprint speed
 
 ### Project: Roster & Salary Cap  *(P1)*
 - [P1] Custom signature player creation (12-point build, off-cap)

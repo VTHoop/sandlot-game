@@ -782,6 +782,36 @@ npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
 npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"seed|sandlot-dev-owner"}'
 ```
 
+## MLB season ingest (`convex/ingest.ts` + `mlbStats.ts`, SAN-25, ADR-0037)
+
+Real stats land as raw rows first; attributes come later (SAN-26).
+
+- **One table, two shapes.** `mlbSeasonStats` is a `v.union` of `mlbHitterRow`
+  and `mlbPitcherRow`: one row per player per role per season. A two-way player
+  has both; a traded player has one, with full-season totals and `numTeams`.
+- **Validate whole, then write.** `ingest.run` fetches every source, runs it all
+  through `buildSeasonRows`, and only then calls `replaceSeason`, which deletes
+  the season's rows and inserts the new ones in one transaction. Any failed
+  request, empty answer or missing field throws an `IngestError` naming the
+  source (`seasons`, `hitting`, `pitching`, `pitching-advanced`, `profiles`,
+  `sprint-speed`) before a write, so the stored rows stay as they were.
+- **Reading a source.** `Fields.of(source, what, json)` reads a record by name
+  (`count`, `text`, `child`, `list`) and refuses what is missing; use it for the
+  next source rather than indexing parsed JSON.
+- **Unknown positions.** Stats say `X`: the profile lookup's primary position
+  replaces it, else the row stores `unknown`. Never guessed.
+- **Internal.** Everything is `internalAction` / `internalMutation`, so the
+  generated public `api` has no `ingest` module (a compile-time guard in
+  `ingest.test.ts`).
+
+```bash
+pnpm ingest:mlb                 # latest completed regular season
+pnpm ingest:mlb --season 2025   # a given season; re-running replaces its rows
+```
+
+No MLB data is committed: the sources are fetched at run time, and the tests'
+fixtures are invented players in the APIs' shapes (ADR-0006).
+
 ## Turn notifications (`convex/push*.ts` + `src/push/` + `src/sw.ts`, SAN-23, ADR-0036)
 
 A push to each seat when an at-bat opens, and reminders if it has not locked.

@@ -16,6 +16,9 @@ import type * as clubSide from "../clubSide.js";
 import type * as duelContract from "../duelContract.js";
 import type * as game from "../game.js";
 import type * as gameView from "../gameView.js";
+import type * as ingest from "../ingest.js";
+import type * as mlbFields from "../mlbFields.js";
+import type * as mlbStats from "../mlbStats.js";
 import type * as myGames from "../myGames.js";
 import type * as participants from "../participants.js";
 import type * as push from "../push.js";
@@ -24,6 +27,7 @@ import type * as pushTrigger from "../pushTrigger.js";
 import type * as revealDismissals from "../revealDismissals.js";
 import type * as seed from "../seed.js";
 import type * as seedRoster from "../seedRoster.js";
+import type * as sprintSpeed from "../sprintSpeed.js";
 import type * as users from "../users.js";
 import type * as validators from "../validators.js";
 
@@ -42,6 +46,9 @@ declare const fullApi: ApiFromModules<{
   duelContract: typeof duelContract;
   game: typeof game;
   gameView: typeof gameView;
+  ingest: typeof ingest;
+  mlbFields: typeof mlbFields;
+  mlbStats: typeof mlbStats;
   myGames: typeof myGames;
   participants: typeof participants;
   push: typeof push;
@@ -50,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   revealDismissals: typeof revealDismissals;
   seed: typeof seed;
   seedRoster: typeof seedRoster;
+  sprintSpeed: typeof sprintSpeed;
   users: typeof users;
   validators: typeof validators;
 }>;

@@ -194,3 +194,55 @@ const pitcherAttributes = v.object({
 
 /** A player carries exactly one attribute block, matching its {@link role}. */
 export const attributes = v.union(hitterAttributes, pitcherAttributes)
+
+/**
+ * Raw MLB season rows (SAN-25, ADR-0037): the stats exactly as the sources
+ * report them, one row per player per role. Not `players` rows — those need the
+ * 1–5 attributes SAN-26 derives from these. `position` is the source's own
+ * abbreviation (`TWP`, `DH`, …) or `unknown`; mapping it onto the engine's
+ * {@link position} slots is SAN-26's job.
+ */
+const mlbRowIdentity = {
+  mlbId: v.float64(),
+  name: v.string(),
+  season: v.float64(),
+  team: v.string(),
+  numTeams: v.float64(),
+  position: v.string(),
+}
+
+/** A hitter's season: the ISO / K% / BB% drivers and denominators, the
+ * Speed-proxy counts, and the Savant sprint-speed record when the player has one. */
+export const mlbHitterRow = v.object({
+  role: role.members[0],
+  ...mlbRowIdentity,
+  plateAppearances: v.float64(),
+  atBats: v.float64(),
+  hits: v.float64(),
+  doubles: v.float64(),
+  triples: v.float64(),
+  homeRuns: v.float64(),
+  strikeOuts: v.float64(),
+  baseOnBalls: v.float64(),
+  stolenBases: v.float64(),
+  caughtStealing: v.float64(),
+  sprintSpeed: v.optional(v.float64()),
+  competitiveRuns: v.optional(v.float64()),
+})
+
+/** A pitcher's season: K% / BB% / HR/9 drivers and denominators (`outs` is whole
+ * outs, so no innings-pitched decimal to misread) and the GB% inputs. */
+export const mlbPitcherRow = v.object({
+  role: role.members[1],
+  ...mlbRowIdentity,
+  battersFaced: v.float64(),
+  outs: v.float64(),
+  strikeOuts: v.float64(),
+  baseOnBalls: v.float64(),
+  homeRuns: v.float64(),
+  groundHits: v.float64(),
+  groundOuts: v.float64(),
+  ballsInPlay: v.float64(),
+})
+
+export const mlbSeasonRow = v.union(mlbHitterRow, mlbPitcherRow)

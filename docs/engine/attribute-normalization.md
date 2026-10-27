@@ -42,7 +42,7 @@ How a real player's season stats map onto the game's 1–5 attribute scale. Cali
 Hitters **≥300 PA**, pitchers **≥50 IP** (keeps good relievers). Yields ~150+ hitters + a deep pitching pool; regression handles borderline samples.
 
 ## Data sourcing
-6 of 8 attributes come from the free **MLB Stats API** (hitting + pitching, two calls). **Speed** (sprint speed) and **Movement** (whiff/barrel-against) are better from **Baseball Savant / pybaseball** — add as a later polish pass; the POC ships on the Stats API + the proxies above.
+The ingest (SAN-25, ADR-0037) lands raw rows from the free **MLB Stats API** — hitting, pitching, and the pitching `seasonAdvanced` batted-ball breakdown (GB% needs it) — plus a batched profile lookup for unreported positions and **Baseball Savant's** sprint-speed leaderboard, which feeds **Speed**. **Movement** (whiff/barrel-against) stays a later Statcast polish pass (SAN-29); the POC ships on GB% and HR/9 until then.
 
 ## Worked examples (2024)
 - **Aaron Judge** → Power 5 / Contact 3 / Eye 5 / Speed 3.

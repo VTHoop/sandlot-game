@@ -8,6 +8,7 @@ import {
   gameStatus,
   groundBallResult,
   half,
+  mlbSeasonRow,
   outcomeBand,
   playerSource,
   position,
@@ -212,6 +213,11 @@ export default defineSchema({
   })
     .index('by_user', ['user'])
     .index('by_endpoint', ['endpoint']),
+
+  // Raw MLB season stats (SAN-25, ADR-0037): one row per player per role per
+  // season, replaced wholesale by `ingest.replaceSeason`. INTERNAL ONLY — no
+  // public query or mutation reads it; SAN-26 turns it into `players` rows.
+  mlbSeasonStats: defineTable(mlbSeasonRow).index('by_season', ['season', 'role', 'mlbId']),
 
   boxScoreLine: defineTable({
     game: v.id('games'),

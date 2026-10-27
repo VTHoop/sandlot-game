@@ -39,6 +39,7 @@ const EXPECTED_INDEXES: Record<string, Record<string, string[]>> = {
   playerStatLine: { by_player: ['player'] },
   boxScoreLine: { by_game: ['game'] },
   pushSubscriptions: { by_user: ['user'], by_endpoint: ['endpoint'] },
+  mlbSeasonStats: { by_season: ['season', 'role', 'mlbId'] },
 }
 
 describe('multiplayer schema', () => {
