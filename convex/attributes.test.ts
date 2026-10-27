@@ -144,6 +144,21 @@ describe('leagueRates', () => {
   })
 })
 
+describe('leagueRates with nothing to pool', () => {
+  it('refuses a season with no hitters rather than dividing by zero', () => {
+    expect(() => leagueRates([], [pitcher()])).toThrow(/hitters/)
+  })
+
+  it('refuses a season with no pitchers rather than dividing by zero', () => {
+    expect(() => leagueRates([hitter()], [])).toThrow(/pitchers/)
+  })
+
+  it('refuses a pitching pool that never put a ball in play', () => {
+    const noBallsInPlay = pitcher({ ballsInPlay: 0, groundHits: 0, groundOuts: 0 })
+    expect(() => leagueRates([hitter()], [noBallsInPlay])).toThrow(/balls in play/)
+  })
+})
+
 describe('hitterRates', () => {
   // ISO events = 30 + 2·3 + 3·25 = 111 → (111 + 0.15 × 160) / (540 + 160)
   // K%  = (120 + 0.22 × 60) / (600 + 60); BB% = (50 + 0.08 × 120) / (600 + 120)
