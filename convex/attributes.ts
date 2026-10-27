@@ -85,14 +85,17 @@ function band(value: number, cuts: Cuts, reaches: Reaches): Score {
   return 1
 }
 
+// Hitter and Velocity edges are the doc's (FanGraphs tiers). Command, HR/9 and GB%
+// were recalibrated once on the 2026 pool so the league average scores 3 and both
+// ends are populated; they stay fixed after that (ADR-0038).
 const POWER: Cuts = { five: 0.23, four: 0.18, three: 0.135, two: 0.1 }
 const CONTACT: Cuts = { five: 0.13, four: 0.18, three: 0.24, two: 0.28 }
 const EYE: Cuts = { five: 0.14, four: 0.105, three: 0.07, two: 0.05 }
 const SPRINT_SPEED: Cuts = { five: 29, four: 28, three: 26.5, two: 25 }
 const VELOCITY: Cuts = { five: 0.28, four: 0.24, three: 0.2, two: 0.16 }
-const COMMAND: Cuts = { five: 0.05, four: 0.065, three: 0.09, two: 0.11 }
-const HR_PER_9: Cuts = { five: 0.7, four: 0.95, three: 1.3, two: 1.6 }
-const GROUND_BALL: Cuts = { five: 0.52, four: 0.47, three: 0.41, two: 0.36 }
+const COMMAND: Cuts = { five: 0.068, four: 0.077, three: 0.098, two: 0.112 }
+const HR_PER_9: Cuts = { five: 1.0, four: 1.08, three: 1.25, two: 1.35 }
+const GROUND_BALL: Cuts = { five: 0.52, four: 0.46, three: 0.4, two: 0.36 }
 
 export const scorePower = (iso: number): Score => band(iso, POWER, atLeast)
 export const scoreContact = (kRate: number): Score => band(kRate, CONTACT, atMost)
