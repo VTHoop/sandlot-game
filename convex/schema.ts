@@ -50,7 +50,9 @@ export default defineSchema({
 
   // Real (MLB-imported) or custom players. A player carries the attribute block
   // matching its role (hitter vs pitcher). `price` is nullable until derived by
-  // the balance/salary-cap pipeline.
+  // the balance/salary-cap pipeline. `mlbId` is the real player's MLB id, set only
+  // on `source: 'mlb'` rows (SAN-26): with `role` it is the key a re-run of
+  // `normalize.run` finds its row by — a two-way player is one MLB id, two roles.
   players: defineTable({
     name: v.string(),
     source: playerSource,
@@ -58,9 +60,11 @@ export default defineSchema({
     position,
     price: v.union(v.float64(), v.null()),
     attributes,
+    mlbId: v.optional(v.float64()),
   })
     .index('by_source', ['source'])
-    .index('by_role', ['role']),
+    .index('by_role', ['role'])
+    .index('by_mlb_id', ['mlbId', 'role']),
 
   // Authoritative current game state. `currentBatter`/`currentPitcher` are null
   // until the game goes live (and again once it is final). A game references two
