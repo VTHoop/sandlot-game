@@ -1,5 +1,5 @@
 import type { Infer } from 'convex/values'
-import { Fields, IngestError, IngestSource } from './mlbFields'
+import { Field, Fields, IngestError, IngestSource } from './mlbFields'
 import { parseSprintSpeeds, type SprintRecord } from './sprintSpeed'
 import type { mlbHitterRow, mlbPitcherRow } from './validators'
 
@@ -36,7 +36,7 @@ const dayOf = (date: Date): string => date.toISOString().slice(0, 10)
 
 /** A season record's year; an id that is not a year would become `year=NaN` in every request. */
 function yearOf(record: Fields): number {
-  const id = record.text('seasonId')
+  const id = record.text(Field.SeasonId)
   const year = Number(id)
   if (!Number.isInteger(year)) {
     throw new IngestError(IngestSource.Seasons, `season id ${id} is not a year`)
@@ -46,12 +46,12 @@ function yearOf(record: Fields): number {
 
 /** The most recent season whose regular season ended before `today` (UTC). */
 export function latestCompletedSeason(seasons: unknown, today: Date): number {
-  const records = Fields.of(IngestSource.Seasons, 'response', seasons).list('seasons')
+  const records = Fields.of(IngestSource.Seasons, 'response', seasons).list(Field.Seasons)
   if (records.length === 0) throw new IngestError(IngestSource.Seasons, 'returned no seasons')
   const ended = records
     .map((record) => ({
       year: yearOf(record),
-      lastGame: record.text('regularSeasonEndDate'),
+      lastGame: record.text(Field.RegularSeasonEndDate),
     }))
     .filter(({ lastGame }) => lastGame < dayOf(today))
   if (ended.length === 0) {
@@ -62,13 +62,13 @@ export function latestCompletedSeason(seasons: unknown, today: Date): number {
 
 /** The players of one stats response, as the API lists them. */
 function splitsOf(source: IngestSource, response: unknown): Fields[] {
-  const group = Fields.of(source, 'response', response).list('stats').shift()
-  const splits = group?.list('splits') ?? []
+  const group = Fields.of(source, 'response', response).list(Field.Stats).shift()
+  const splits = group?.list(Field.Splits) ?? []
   if (splits.length === 0) throw new IngestError(source, 'returned no players')
   return splits
 }
 
-const mlbIdOf = (split: Fields): number => split.child('player').count('id')
+const mlbIdOf = (split: Fields): number => split.child(Field.Player).count(Field.Id)
 
 /** A group's players by MLB id; the API lists each once, so a repeat is a bad response. */
 function byMlbId(source: IngestSource, response: unknown): Map<number, Fields> {
@@ -83,7 +83,7 @@ function byMlbId(source: IngestSource, response: unknown): Map<number, Fields> {
 
 /** The abbreviation the stats report, or null when none is reported. */
 function reportedPosition(split: Fields): string | null {
-  const abbreviation = split.optionalChild('position')?.text('abbreviation') ?? null
+  const abbreviation = split.optionalChild(Field.Position)?.text(Field.Abbreviation) ?? null
   return abbreviation === UNREPORTED_POSITION ? null : abbreviation
 }
 
@@ -105,8 +105,9 @@ export function unknownPositionIds(hitting: unknown, pitching: unknown): number[
 function listedPositions(people: Fields[]): Map<number, string> {
   const positions = new Map<number, string>()
   for (const person of people) {
-    const listed = person.optionalChild('primaryPosition')?.optionalText('abbreviation') ?? null
-    const id = person.count('id')
+    const listed =
+      person.optionalChild(Field.PrimaryPosition)?.optionalText(Field.Abbreviation) ?? null
+    const id = person.count(Field.Id)
     if (listed !== null) positions.set(id, listed)
   }
   return positions
@@ -116,7 +117,7 @@ function listedPositions(people: Fields[]): Map<number, string> {
 function profilePositions(profiles: unknown, needed: number[]): ReadonlyMap<number, string> {
   if (needed.length === 0) return new Map()
   if (profiles === null) throw new IngestError(IngestSource.Profiles, 'no lookup was made')
-  const people = Fields.of(IngestSource.Profiles, 'response', profiles).list('people')
+  const people = Fields.of(IngestSource.Profiles, 'response', profiles).list(Field.People)
   if (people.length === 0) throw new IngestError(IngestSource.Profiles, 'returned no players')
   return listedPositions(people)
 }
@@ -128,10 +129,10 @@ function positionOf(split: Fields, profiles: ReadonlyMap<number, string>): strin
 function identityOf(split: Fields, season: number, profiles: ReadonlyMap<number, string>) {
   return {
     mlbId: mlbIdOf(split),
-    name: split.child('player').text('fullName'),
+    name: split.child(Field.Player).text(Field.FullName),
     season,
-    team: split.child('team').text('name'),
-    numTeams: split.count('numTeams'),
+    team: split.child(Field.Team).text(Field.Name),
+    numTeams: split.count(Field.NumTeams),
     position: positionOf(split, profiles),
   }
 }
@@ -142,21 +143,21 @@ function hitterRow(
   profiles: ReadonlyMap<number, string>,
   sprint: ReadonlyMap<number, SprintRecord>,
 ): MlbHitterRow {
-  const stat = split.child('stat')
+  const stat = split.child(Field.Stat)
   const identity = identityOf(split, season, profiles)
   return {
     role: 'hitter',
     ...identity,
-    plateAppearances: stat.count('plateAppearances'),
-    atBats: stat.count('atBats'),
-    hits: stat.count('hits'),
-    doubles: stat.count('doubles'),
-    triples: stat.count('triples'),
-    homeRuns: stat.count('homeRuns'),
-    strikeOuts: stat.count('strikeOuts'),
-    baseOnBalls: stat.count('baseOnBalls'),
-    stolenBases: stat.count('stolenBases'),
-    caughtStealing: stat.count('caughtStealing'),
+    plateAppearances: stat.count(Field.PlateAppearances),
+    atBats: stat.count(Field.AtBats),
+    hits: stat.count(Field.Hits),
+    doubles: stat.count(Field.Doubles),
+    triples: stat.count(Field.Triples),
+    homeRuns: stat.count(Field.HomeRuns),
+    strikeOuts: stat.count(Field.StrikeOuts),
+    baseOnBalls: stat.count(Field.BaseOnBalls),
+    stolenBases: stat.count(Field.StolenBases),
+    caughtStealing: stat.count(Field.CaughtStealing),
     ...sprint.get(identity.mlbId),
   }
 }
@@ -167,19 +168,19 @@ function pitcherRow(
   profiles: ReadonlyMap<number, string>,
   breakdown: Fields,
 ): MlbPitcherRow {
-  const stat = split.child('stat')
-  const batted = breakdown.child('stat')
+  const stat = split.child(Field.Stat)
+  const batted = breakdown.child(Field.Stat)
   return {
     role: 'pitcher',
     ...identityOf(split, season, profiles),
-    battersFaced: stat.count('battersFaced'),
-    outs: stat.count('outs'),
-    strikeOuts: stat.count('strikeOuts'),
-    baseOnBalls: stat.count('baseOnBalls'),
-    homeRuns: stat.count('homeRuns'),
-    groundHits: batted.count('groundHits'),
-    groundOuts: batted.count('groundOuts'),
-    ballsInPlay: batted.count('ballsInPlay'),
+    battersFaced: stat.count(Field.BattersFaced),
+    outs: stat.count(Field.Outs),
+    strikeOuts: stat.count(Field.StrikeOuts),
+    baseOnBalls: stat.count(Field.BaseOnBalls),
+    homeRuns: stat.count(Field.HomeRuns),
+    groundHits: batted.count(Field.GroundHits),
+    groundOuts: batted.count(Field.GroundOuts),
+    ballsInPlay: batted.count(Field.BallsInPlay),
   }
 }
 

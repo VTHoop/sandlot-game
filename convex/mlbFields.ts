@@ -22,6 +22,41 @@ export class IngestError extends Error {
   }
 }
 
+/** The source fields the ingest reads, named once so no read is a quoted string. */
+export enum Field {
+  Abbreviation = 'abbreviation',
+  AtBats = 'atBats',
+  BallsInPlay = 'ballsInPlay',
+  BaseOnBalls = 'baseOnBalls',
+  BattersFaced = 'battersFaced',
+  CaughtStealing = 'caughtStealing',
+  Doubles = 'doubles',
+  FullName = 'fullName',
+  GroundHits = 'groundHits',
+  GroundOuts = 'groundOuts',
+  Hits = 'hits',
+  HomeRuns = 'homeRuns',
+  Id = 'id',
+  Name = 'name',
+  NumTeams = 'numTeams',
+  Outs = 'outs',
+  People = 'people',
+  PlateAppearances = 'plateAppearances',
+  Player = 'player',
+  Position = 'position',
+  PrimaryPosition = 'primaryPosition',
+  RegularSeasonEndDate = 'regularSeasonEndDate',
+  SeasonId = 'seasonId',
+  Seasons = 'seasons',
+  Splits = 'splits',
+  Stat = 'stat',
+  Stats = 'stats',
+  StolenBases = 'stolenBases',
+  StrikeOuts = 'strikeOuts',
+  Team = 'team',
+  Triples = 'triples',
+}
+
 const isRecord = (value: unknown): value is object =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -43,40 +78,40 @@ export class Fields {
     return new Fields(source, what, new Map(Object.entries(value)))
   }
 
-  private lacks(key: string): never {
+  private lacks(key: Field): never {
     throw new IngestError(this.source, `${this.what} lacks ${key}`)
   }
 
   /** A non-negative number: a count, an id. */
-  count(key: string): number {
+  count(key: Field): number {
     const value = this.values.get(key)
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) this.lacks(key)
     return value
   }
 
-  text(key: string): string {
+  text(key: Field): string {
     const value = this.values.get(key)
     if (typeof value !== 'string' || value === '') this.lacks(key)
     return value
   }
 
   /** Text that may be absent; present but empty or not text is still refused. */
-  optionalText(key: string): string | null {
+  optionalText(key: Field): string | null {
     return this.values.has(key) ? this.text(key) : null
   }
 
-  child(key: string): Fields {
+  child(key: Field): Fields {
     const value = this.values.get(key)
     if (value === undefined) this.lacks(key)
     return Fields.of(this.source, `${this.what}.${key}`, value)
   }
 
   /** A child object that may be absent. */
-  optionalChild(key: string): Fields | null {
+  optionalChild(key: Field): Fields | null {
     return this.values.has(key) ? this.child(key) : null
   }
 
-  list(key: string): Fields[] {
+  list(key: Field): Fields[] {
     const value = this.values.get(key)
     if (!Array.isArray(value)) this.lacks(key)
     return value.map((item, i) => Fields.of(this.source, `${this.what}.${key}[${i}]`, item))

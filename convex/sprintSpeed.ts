@@ -10,6 +10,11 @@ export interface SprintRecord {
   competitiveRuns: number
 }
 
+/** Exactly one of the two alternatives captured, so the other group is undefined. */
+function cellText([, quoted, bare]: readonly (string | undefined)[]): string {
+  return quoted?.replace(/""/g, '"') ?? bare ?? ''
+}
+
 /** One line's cells by column number. Quoted cells may hold commas; a doubled quote is a quote. */
 function cellsOf(line: string): ReadonlyMap<number, string> {
   const cells = new Map<number, string>()
@@ -19,9 +24,7 @@ function cellsOf(line: string): ReadonlyMap<number, string> {
     cell.lastIndex = at
     const match = cell.exec(line)
     if (!match) break
-    // Typed as optional on purpose: exactly one of the two alternatives captured.
-    const [, quoted, bare]: (string | undefined)[] = match
-    cells.set(cells.size, quoted?.replace(/""/g, '"') ?? bare ?? '')
+    cells.set(cells.size, cellText(match))
     at = cell.lastIndex + 1
   }
   return cells
