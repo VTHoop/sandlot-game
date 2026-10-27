@@ -1,5 +1,5 @@
 import type { Infer } from 'convex/values'
-import { Fields, IngestError, type IngestSource } from './mlbFields'
+import { Fields, IngestError, IngestSource } from './mlbFields'
 import { parseSprintSpeeds, type SprintRecord } from './sprintSpeed'
 import type { mlbHitterRow, mlbPitcherRow } from './validators'
 
@@ -8,8 +8,6 @@ import type { mlbHitterRow, mlbPitcherRow } from './validators'
  * returned into raw stat rows, and refuses anything incomplete. No I/O here —
  * `convex/ingest.ts` fetches, this reads.
  */
-
-export { IngestError, type IngestSource }
 
 export type MlbHitterRow = Infer<typeof mlbHitterRow>
 export type MlbPitcherRow = Infer<typeof mlbPitcherRow>
@@ -36,23 +34,35 @@ export interface SeasonSources {
 
 const dayOf = (date: Date): string => date.toISOString().slice(0, 10)
 
+/** A season record's year; an id that is not a year would become `year=NaN` in every request. */
+function yearOf(record: Fields): number {
+  const id = record.text('seasonId')
+  const year = Number(id)
+  if (!Number.isInteger(year)) {
+    throw new IngestError(IngestSource.Seasons, `season id ${id} is not a year`)
+  }
+  return year
+}
+
 /** The most recent season whose regular season ended before `today` (UTC). */
 export function latestCompletedSeason(seasons: unknown, today: Date): number {
-  const records = Fields.of('seasons', 'response', seasons).list('seasons')
-  if (records.length === 0) throw new IngestError('seasons', 'returned no seasons')
+  const records = Fields.of(IngestSource.Seasons, 'response', seasons).list('seasons')
+  if (records.length === 0) throw new IngestError(IngestSource.Seasons, 'returned no seasons')
   const ended = records
     .map((record) => ({
-      year: Number(record.text('seasonId')),
+      year: yearOf(record),
       lastGame: record.text('regularSeasonEndDate'),
     }))
     .filter(({ lastGame }) => lastGame < dayOf(today))
-  if (ended.length === 0) throw new IngestError('seasons', 'no regular season has ended yet')
+  if (ended.length === 0) {
+    throw new IngestError(IngestSource.Seasons, 'no regular season has ended yet')
+  }
   return Math.max(...ended.map(({ year }) => year))
 }
 
 /** The players of one stats response, as the API lists them. */
 function splitsOf(source: IngestSource, response: unknown): Fields[] {
-  const [group] = Fields.of(source, 'response', response).list('stats')
+  const group = Fields.of(source, 'response', response).list('stats').shift()
   const splits = group?.list('splits') ?? []
   if (splits.length === 0) throw new IngestError(source, 'returned no players')
   return splits
@@ -81,8 +91,8 @@ function reportedPosition(split: Fields): string | null {
 export function unknownPositionIds(hitting: unknown, pitching: unknown): number[] {
   const unknown = new Set<number>()
   for (const [source, response] of [
-    ['hitting', hitting],
-    ['pitching', pitching],
+    [IngestSource.Hitting, hitting],
+    [IngestSource.Pitching, pitching],
   ] as const) {
     for (const split of splitsOf(source, response)) {
       if (reportedPosition(split) === null) unknown.add(mlbIdOf(split))
@@ -91,12 +101,8 @@ export function unknownPositionIds(hitting: unknown, pitching: unknown): number[
   return [...unknown].sort((a, b) => a - b)
 }
 
-/** Listed primary positions for the players that needed a lookup. */
-function profilePositions(profiles: unknown, needed: number[]): ReadonlyMap<number, string> {
-  if (needed.length === 0) return new Map()
-  if (profiles === null) throw new IngestError('profiles', 'no lookup was made')
-  const people = Fields.of('profiles', 'response', profiles).list('people')
-  if (people.length === 0) throw new IngestError('profiles', 'returned no players')
+/** The primary position each profile lists; a profile that lists none is left out. */
+function listedPositions(people: Fields[]): Map<number, string> {
   const positions = new Map<number, string>()
   for (const person of people) {
     const listed = person.optionalChild('primaryPosition')?.optionalText('abbreviation') ?? null
@@ -104,6 +110,15 @@ function profilePositions(profiles: unknown, needed: number[]): ReadonlyMap<numb
     if (listed !== null) positions.set(id, listed)
   }
   return positions
+}
+
+/** Listed primary positions for the players that needed a lookup. */
+function profilePositions(profiles: unknown, needed: number[]): ReadonlyMap<number, string> {
+  if (needed.length === 0) return new Map()
+  if (profiles === null) throw new IngestError(IngestSource.Profiles, 'no lookup was made')
+  const people = Fields.of(IngestSource.Profiles, 'response', profiles).list('people')
+  if (people.length === 0) throw new IngestError(IngestSource.Profiles, 'returned no players')
+  return listedPositions(people)
 }
 
 function positionOf(split: Fields, profiles: ReadonlyMap<number, string>): string {
@@ -182,15 +197,18 @@ export function buildSeasonRows(sources: SeasonSources): {
     unknownPositionIds(sources.hitting, sources.pitching),
   )
   const sprint = parseSprintSpeeds(sources.sprintCsv)
-  const breakdowns = byMlbId('pitching-advanced', sources.pitchingAdvanced)
+  const breakdowns = byMlbId(IngestSource.PitchingAdvanced, sources.pitchingAdvanced)
 
-  const hitters = [...byMlbId('hitting', sources.hitting).values()].map((split) =>
+  const hitters = [...byMlbId(IngestSource.Hitting, sources.hitting).values()].map((split) =>
     hitterRow(split, season, profiles, sprint),
   )
-  const pitchers = [...byMlbId('pitching', sources.pitching).entries()].map(([id, split]) => {
-    const breakdown = breakdowns.get(id)
-    if (!breakdown) throw new IngestError('pitching-advanced', `no record for player ${id}`)
-    return pitcherRow(split, season, profiles, breakdown)
-  })
+  const pitchers = [...byMlbId(IngestSource.Pitching, sources.pitching).entries()].map(
+    ([id, split]) => {
+      const breakdown = breakdowns.get(id)
+      if (!breakdown)
+        throw new IngestError(IngestSource.PitchingAdvanced, `no record for player ${id}`)
+      return pitcherRow(split, season, profiles, breakdown)
+    },
+  )
   return { hitters, pitchers }
 }

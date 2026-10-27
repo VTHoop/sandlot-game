@@ -5,7 +5,7 @@ import type { Infer } from 'convex/values'
 import { convexTest } from 'convex-test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type api, internal } from './_generated/api'
-import type { IngestSource } from './mlbStats'
+import { IngestSource } from './mlbFields'
 import schema from './schema'
 import type { mlbHitterRow } from './validators'
 
@@ -100,7 +100,7 @@ interface World {
   people: unknown[]
   sprintCsv: string
   /** Sources that answer with this HTTP status instead of their body. */
-  failing: Partial<Record<IngestSource, number>>
+  failing: Map<IngestSource, number>
   /** The source whose request runs out of time. */
   stalled?: IngestSource
 }
@@ -110,75 +110,88 @@ const seasonRecord = (seasonId: string, regularSeasonEndDate: string) => ({
   regularSeasonEndDate,
 })
 
+const defaultSeasons = () => ({
+  seasons: [
+    seasonRecord('2025', '2025-09-28'),
+    seasonRecord('2026', '2026-09-27'),
+    seasonRecord('2027', '2027-09-26'),
+  ],
+})
+
+const defaultHitting = () => [
+  split({ id: ADA, name: 'Ada Quill', position: 'SS', stat: hit() }),
+  split({
+    id: BO,
+    name: 'Bo Marlow',
+    position: 'CF',
+    team: 'Prairie Owls',
+    numTeams: 2,
+    stat: hit({ plateAppearances: 480, hits: 120 }),
+  }),
+  split({
+    id: CY,
+    name: 'Cy Dunmore',
+    position: 'X',
+    stat: hit({ plateAppearances: 1, atBats: 1, hits: 0 }),
+  }),
+  split({ id: DEE, name: 'Dee Fenwick', position: 'X', stat: hit({ plateAppearances: 90 }) }),
+  split({ id: REN, name: 'Ren Ashby', position: 'TWP', stat: hit({ plateAppearances: 550 }) }),
+  split({
+    id: PIA,
+    name: 'Pia Voss',
+    position: 'P',
+    stat: hit({ plateAppearances: 1, atBats: 1, hits: 0 }),
+  }),
+]
+
+const defaultPitching = () => [
+  split({
+    id: REN,
+    name: 'Ren Ashby',
+    position: 'TWP',
+    stat: pitch({ battersFaced: 400, outs: 300 }),
+  }),
+  split({ id: PIA, name: 'Pia Voss', position: 'P', stat: pitch() }),
+  split({
+    id: GUS,
+    name: 'Gus Hale',
+    position: 'P',
+    team: 'Prairie Owls',
+    numTeams: 2,
+    stat: pitch({ outs: 420 }),
+  }),
+  split({
+    id: HAL,
+    name: 'Hal Treadwell',
+    position: 'P',
+    stat: pitch({ battersFaced: 1, outs: 1, strikeOuts: 0, baseOnBalls: 0, homeRuns: 0 }),
+  }),
+]
+
+const defaultAdvanced = () =>
+  [REN, PIA, GUS, HAL].map((id) =>
+    split({ id, name: `Pitcher ${id}`, position: 'P', stat: advanced() }),
+  )
+
+const defaultPeople = () => [
+  { id: CY, fullName: 'Cy Dunmore', primaryPosition: { abbreviation: 'DH' } },
+  { id: DEE, fullName: 'Dee Fenwick' },
+]
+
+const defaultSprintCsv = () =>
+  '\uFEFF"last_name, first_name","player_id","team_id","team","position","age","competitive_runs","bolts","hp_to_1b","sprint_speed"\n' +
+  `"Quill, Ada",${ADA},1,"HG","SS",27,"120","60","4.10","28.4"\n` +
+  `"Ashby, Ren",${REN},1,"HG","DH",29,"80","30","4.20","27.1"\n`
+
 function defaultWorld(): World {
   return {
-    seasons: {
-      seasons: [
-        seasonRecord('2025', '2025-09-28'),
-        seasonRecord('2026', '2026-09-27'),
-        seasonRecord('2027', '2027-09-26'),
-      ],
-    },
-    hitting: [
-      split({ id: ADA, name: 'Ada Quill', position: 'SS', stat: hit() }),
-      split({
-        id: BO,
-        name: 'Bo Marlow',
-        position: 'CF',
-        team: 'Prairie Owls',
-        numTeams: 2,
-        stat: hit({ plateAppearances: 480, hits: 120 }),
-      }),
-      split({
-        id: CY,
-        name: 'Cy Dunmore',
-        position: 'X',
-        stat: hit({ plateAppearances: 1, atBats: 1, hits: 0 }),
-      }),
-      split({ id: DEE, name: 'Dee Fenwick', position: 'X', stat: hit({ plateAppearances: 90 }) }),
-      split({ id: REN, name: 'Ren Ashby', position: 'TWP', stat: hit({ plateAppearances: 550 }) }),
-      split({
-        id: PIA,
-        name: 'Pia Voss',
-        position: 'P',
-        stat: hit({ plateAppearances: 1, atBats: 1, hits: 0 }),
-      }),
-    ],
-    pitching: [
-      split({
-        id: REN,
-        name: 'Ren Ashby',
-        position: 'TWP',
-        stat: pitch({ battersFaced: 400, outs: 300 }),
-      }),
-      split({ id: PIA, name: 'Pia Voss', position: 'P', stat: pitch() }),
-      split({
-        id: GUS,
-        name: 'Gus Hale',
-        position: 'P',
-        team: 'Prairie Owls',
-        numTeams: 2,
-        stat: pitch({ outs: 420 }),
-      }),
-      split({
-        id: HAL,
-        name: 'Hal Treadwell',
-        position: 'P',
-        stat: pitch({ battersFaced: 1, outs: 1, strikeOuts: 0, baseOnBalls: 0, homeRuns: 0 }),
-      }),
-    ],
-    advanced: [REN, PIA, GUS, HAL].map((id) =>
-      split({ id, name: `Pitcher ${id}`, position: 'P', stat: advanced() }),
-    ),
-    people: [
-      { id: CY, fullName: 'Cy Dunmore', primaryPosition: { abbreviation: 'DH' } },
-      { id: DEE, fullName: 'Dee Fenwick' },
-    ],
-    sprintCsv:
-      '\uFEFF"last_name, first_name","player_id","team_id","team","position","age","competitive_runs","bolts","hp_to_1b","sprint_speed"\n' +
-      `"Quill, Ada",${ADA},1,"HG","SS",27,"120","60","4.10","28.4"\n` +
-      `"Ashby, Ren",${REN},1,"HG","DH",29,"80","30","4.20","27.1"\n`,
-    failing: {},
+    seasons: defaultSeasons(),
+    hitting: defaultHitting(),
+    pitching: defaultPitching(),
+    advanced: defaultAdvanced(),
+    people: defaultPeople(),
+    sprintCsv: defaultSprintCsv(),
+    failing: new Map(),
   }
 }
 
@@ -191,29 +204,55 @@ let signals: (AbortSignal | null | undefined)[]
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
-/** The source a request is for, and what the world says it answers with. */
-function route(url: URL): { source: IngestSource; body: () => Response } {
-  const group = url.searchParams.get('group')
-  const kind = url.searchParams.get('stats')
-  if (url.pathname.endsWith('/seasons/all')) {
-    return { source: 'seasons', body: () => json(world.seasons) }
-  }
-  if (url.pathname.endsWith('/stats') && kind === 'season' && group === 'hitting') {
-    return { source: 'hitting', body: () => json(statsResponse(world.hitting)) }
-  }
-  if (url.pathname.endsWith('/stats') && kind === 'season' && group === 'pitching') {
-    return { source: 'pitching', body: () => json(statsResponse(world.pitching)) }
-  }
-  if (url.pathname.endsWith('/stats') && kind === 'seasonAdvanced' && group === 'pitching') {
-    return { source: 'pitching-advanced', body: () => json(statsResponse(world.advanced)) }
-  }
-  if (url.pathname.endsWith('/people')) {
-    return { source: 'profiles', body: () => json({ people: world.people }) }
-  }
-  if (url.href.startsWith(SAVANT)) {
-    return { source: 'sprint-speed', body: () => new Response(world.sprintCsv) }
-  }
-  throw new Error(`Unexpected fetch in a test: ${url.href}`)
+interface Route {
+  source: IngestSource
+  matches: (url: URL) => boolean
+  body: () => Response
+}
+
+const statsRequest = (kind: string, group: string) => (url: URL) =>
+  url.pathname.endsWith('/stats') &&
+  url.searchParams.get('stats') === kind &&
+  url.searchParams.get('group') === group
+
+/** Each source a request can be for, and what the world says it answers with. */
+const ROUTES: readonly Route[] = [
+  {
+    source: IngestSource.Seasons,
+    matches: (url) => url.pathname.endsWith('/seasons/all'),
+    body: () => json(world.seasons),
+  },
+  {
+    source: IngestSource.Hitting,
+    matches: statsRequest('season', 'hitting'),
+    body: () => json(statsResponse(world.hitting)),
+  },
+  {
+    source: IngestSource.Pitching,
+    matches: statsRequest('season', 'pitching'),
+    body: () => json(statsResponse(world.pitching)),
+  },
+  {
+    source: IngestSource.PitchingAdvanced,
+    matches: statsRequest('seasonAdvanced', 'pitching'),
+    body: () => json(statsResponse(world.advanced)),
+  },
+  {
+    source: IngestSource.Profiles,
+    matches: (url) => url.pathname.endsWith('/people'),
+    body: () => json({ people: world.people }),
+  },
+  {
+    source: IngestSource.SprintSpeed,
+    matches: (url) => url.href.startsWith(SAVANT),
+    body: () => new Response(world.sprintCsv),
+  },
+]
+
+function route(url: URL): Route {
+  const found = ROUTES.find((candidate) => candidate.matches(url))
+  if (!found) throw new Error(`Unexpected fetch in a test: ${url.href}`)
+  return found
 }
 
 beforeEach(() => {
@@ -226,7 +265,7 @@ beforeEach(() => {
     signals.push(init?.signal)
     const { source, body } = route(url)
     if (world.stalled === source) throw new DOMException('The operation timed out.', 'TimeoutError')
-    const status = world.failing[source]
+    const status = world.failing.get(source)
     return status === undefined ? body() : new Response('upstream trouble', { status })
   })
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -455,36 +494,36 @@ describe('ingest.run — a run that cannot finish', () => {
     break: (w: World) => void
   }> = [
     {
-      source: 'seasons',
+      source: IngestSource.Seasons,
       how: 'HTTP error',
       break: (w) => {
-        w.failing.seasons = 503
+        w.failing.set(IngestSource.Seasons, 503)
       },
     },
     {
-      source: 'seasons',
+      source: IngestSource.Seasons,
       how: 'empty',
       break: (w) => {
         w.seasons = { seasons: [] }
       },
     },
     {
-      source: 'seasons',
+      source: IngestSource.Seasons,
       how: 'a record without its end date',
       break: (w) => {
         w.seasons = { seasons: [{ seasonId: '2026' }] }
       },
     },
     {
-      source: 'hitting',
+      source: IngestSource.Hitting,
       how: 'HTTP error',
       season: 2026,
       break: (w) => {
-        w.failing.hitting = 503
+        w.failing.set(IngestSource.Hitting, 503)
       },
     },
     {
-      source: 'hitting',
+      source: IngestSource.Hitting,
       how: 'empty',
       season: 2026,
       break: (w) => {
@@ -492,7 +531,7 @@ describe('ingest.run — a run that cannot finish', () => {
       },
     },
     {
-      source: 'hitting',
+      source: IngestSource.Hitting,
       how: 'a record without plate appearances',
       season: 2026,
       break: (w) => {
@@ -500,15 +539,15 @@ describe('ingest.run — a run that cannot finish', () => {
       },
     },
     {
-      source: 'pitching',
+      source: IngestSource.Pitching,
       how: 'HTTP error',
       season: 2026,
       break: (w) => {
-        w.failing.pitching = 503
+        w.failing.set(IngestSource.Pitching, 503)
       },
     },
     {
-      source: 'pitching',
+      source: IngestSource.Pitching,
       how: 'empty',
       season: 2026,
       break: (w) => {
@@ -516,7 +555,7 @@ describe('ingest.run — a run that cannot finish', () => {
       },
     },
     {
-      source: 'pitching',
+      source: IngestSource.Pitching,
       how: 'a record without outs',
       season: 2026,
       break: (w) => {
@@ -529,15 +568,15 @@ describe('ingest.run — a run that cannot finish', () => {
       },
     },
     {
-      source: 'pitching-advanced',
+      source: IngestSource.PitchingAdvanced,
       how: 'HTTP error',
       season: 2026,
       break: (w) => {
-        w.failing['pitching-advanced'] = 503
+        w.failing.set(IngestSource.PitchingAdvanced, 503)
       },
     },
     {
-      source: 'pitching-advanced',
+      source: IngestSource.PitchingAdvanced,
       how: 'empty',
       season: 2026,
       break: (w) => {
@@ -545,7 +584,7 @@ describe('ingest.run — a run that cannot finish', () => {
       },
     },
     {
-      source: 'pitching-advanced',
+      source: IngestSource.PitchingAdvanced,
       how: 'a record without balls in play',
       season: 2026,
       break: (w) => {
@@ -558,15 +597,15 @@ describe('ingest.run — a run that cannot finish', () => {
       },
     },
     {
-      source: 'profiles',
+      source: IngestSource.Profiles,
       how: 'HTTP error',
       season: 2026,
       break: (w) => {
-        w.failing.profiles = 503
+        w.failing.set(IngestSource.Profiles, 503)
       },
     },
     {
-      source: 'profiles',
+      source: IngestSource.Profiles,
       how: 'empty',
       season: 2026,
       break: (w) => {
@@ -574,7 +613,7 @@ describe('ingest.run — a run that cannot finish', () => {
       },
     },
     {
-      source: 'profiles',
+      source: IngestSource.Profiles,
       how: 'a record without an id',
       season: 2026,
       break: (w) => {
@@ -582,15 +621,15 @@ describe('ingest.run — a run that cannot finish', () => {
       },
     },
     {
-      source: 'sprint-speed',
+      source: IngestSource.SprintSpeed,
       how: 'HTTP error',
       season: 2026,
       break: (w) => {
-        w.failing['sprint-speed'] = 503
+        w.failing.set(IngestSource.SprintSpeed, 503)
       },
     },
     {
-      source: 'sprint-speed',
+      source: IngestSource.SprintSpeed,
       how: 'empty',
       season: 2026,
       break: (w) => {
@@ -598,7 +637,7 @@ describe('ingest.run — a run that cannot finish', () => {
       },
     },
     {
-      source: 'sprint-speed',
+      source: IngestSource.SprintSpeed,
       how: 'a record without a sprint speed',
       season: 2026,
       break: (w) => {
@@ -629,23 +668,23 @@ describe('ingest.run — a run that cannot finish', () => {
   })
 
   it.each([
-    'seasons',
-    'hitting',
-    'sprint-speed',
-  ] as const)('aborts naming %s when its request runs out of time, leaving the stored rows', async (source) => {
+    IngestSource.Seasons,
+    IngestSource.Hitting,
+    IngestSource.SprintSpeed,
+  ])('aborts naming %s when its request runs out of time, leaving the stored rows', async (source) => {
     const t = harness()
     await ingest(t, 2026)
     const before = await rowsOf(t)
     world.stalled = source
 
-    await expect(ingest(t, source === 'seasons' ? undefined : 2026)).rejects.toThrow(
+    await expect(ingest(t, source === IngestSource.Seasons ? undefined : 2026)).rejects.toThrow(
       `${source}: the request timed out`,
     )
     expect(await rowsOf(t)).toEqual(before)
   })
 
   it('writes nothing to a season that had no rows yet', async () => {
-    world.failing.hitting = 503
+    world.failing.set(IngestSource.Hitting, 503)
     const t = harness()
     await expect(ingest(t, 2026)).rejects.toThrow('hitting:')
     expect(await rowsOf(t)).toEqual([])

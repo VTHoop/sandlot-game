@@ -5,13 +5,14 @@
  */
 
 /** Every source the ingest reads; an abort names the one that failed. */
-export type IngestSource =
-  | 'seasons'
-  | 'hitting'
-  | 'pitching'
-  | 'pitching-advanced'
-  | 'profiles'
-  | 'sprint-speed'
+export enum IngestSource {
+  Seasons = 'seasons',
+  Hitting = 'hitting',
+  Pitching = 'pitching',
+  PitchingAdvanced = 'pitching-advanced',
+  Profiles = 'profiles',
+  SprintSpeed = 'sprint-speed',
+}
 
 /** The run aborted: a source failed, came back empty, or lacked a required field. */
 export class IngestError extends Error {
@@ -20,6 +21,9 @@ export class IngestError extends Error {
     this.name = 'IngestError'
   }
 }
+
+const isRecord = (value: unknown): value is object =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
  * One JSON object from a source, read by field name through a `Map` so no read
@@ -33,7 +37,7 @@ export class Fields {
   ) {}
 
   static of(source: IngestSource, what: string, value: unknown): Fields {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    if (!isRecord(value)) {
       throw new IngestError(source, `${what} is not an object`)
     }
     return new Fields(source, what, new Map(Object.entries(value)))

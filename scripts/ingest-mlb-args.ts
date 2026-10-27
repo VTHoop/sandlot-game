@@ -12,13 +12,12 @@ export type IngestArgs = FunctionArgs<typeof internal.ingest.run>
 export function parseArgs(argv: readonly string[]): IngestArgs {
   const rest = argv.filter((arg) => arg !== '--')
   if (rest.length === 0) return {}
-  const [flag, year, ...extra] = rest
-  if (flag !== '--season' || extra.length > 0) {
+  const [flag, ...values] = rest
+  if (flag !== '--season' || values.length > 1) {
     throw new Error(`unknown argument: ${rest.join(' ')}\n${USAGE}`)
   }
-  if (year === undefined || !/^\d{4}$/.test(year)) {
-    throw new Error(`--season needs a four-digit year\n${USAGE}`)
-  }
+  const year = values.join('')
+  if (!/^\d{4}$/.test(year)) throw new Error(`--season needs a four-digit year\n${USAGE}`)
   return { season: Number(year) }
 }
 
@@ -26,8 +25,17 @@ function unexpected(stdout: string): Error {
   return new Error(`unexpected output from convex run:\n${stdout}`)
 }
 
-/** Read `convex run`'s stdout (JSON when piped) into an {@link IngestReport}. */
-export function parseReport(stdout: string): IngestReport {
+function requireCount(
+  fields: ReadonlyMap<string, unknown>,
+  key: keyof IngestReport,
+  stdout: string,
+) {
+  const value = fields.get(key)
+  if (typeof value !== 'number') throw unexpected(stdout)
+  return value
+}
+
+function fieldsOf(stdout: string): ReadonlyMap<string, unknown> {
   let parsed: unknown
   try {
     parsed = JSON.parse(stdout)
@@ -35,14 +43,17 @@ export function parseReport(stdout: string): IngestReport {
     throw unexpected(stdout)
   }
   if (typeof parsed !== 'object' || parsed === null) throw unexpected(stdout)
-  const fields = new Map(Object.entries(parsed))
-  const season = fields.get('season')
-  const hitters = fields.get('hitters')
-  const pitchers = fields.get('pitchers')
-  if (typeof season !== 'number' || typeof hitters !== 'number' || typeof pitchers !== 'number') {
-    throw unexpected(stdout)
+  return new Map(Object.entries(parsed))
+}
+
+/** Read `convex run`'s stdout (JSON when piped) into an {@link IngestReport}. */
+export function parseReport(stdout: string): IngestReport {
+  const fields = fieldsOf(stdout)
+  return {
+    season: requireCount(fields, 'season', stdout),
+    hitters: requireCount(fields, 'hitters', stdout),
+    pitchers: requireCount(fields, 'pitchers', stdout),
   }
-  return { season, hitters, pitchers }
 }
 
 /** `Ingested 2026: 751 hitters, 868 pitchers.` */

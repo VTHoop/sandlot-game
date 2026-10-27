@@ -214,7 +214,7 @@ const mlbRowIdentity = {
 /** A hitter's season: the ISO / K% / BB% drivers and denominators, the
  * Speed-proxy counts, and the Savant sprint-speed record when the player has one. */
 export const mlbHitterRow = v.object({
-  role: v.literal('hitter'),
+  role: role.members[0],
   ...mlbRowIdentity,
   plateAppearances: v.float64(),
   atBats: v.float64(),
@@ -233,7 +233,7 @@ export const mlbHitterRow = v.object({
 /** A pitcher's season: K% / BB% / HR/9 drivers and denominators (`outs` is whole
  * outs, so no innings-pitched decimal to misread) and the GB% inputs. */
 export const mlbPitcherRow = v.object({
-  role: v.literal('pitcher'),
+  role: role.members[1],
   ...mlbRowIdentity,
   battersFaced: v.float64(),
   outs: v.float64(),

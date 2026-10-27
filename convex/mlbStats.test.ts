@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { IngestError } from './mlbFields'
 import {
   buildSeasonRows,
-  IngestError,
   latestCompletedSeason,
   type SeasonSources,
   UNKNOWN_POSITION,

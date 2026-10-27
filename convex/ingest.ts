@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { internal } from './_generated/api'
 import { internalAction, internalMutation } from './_generated/server'
-import { IngestError, type IngestSource } from './mlbFields'
+import { IngestError, IngestSource } from './mlbFields'
 import { buildSeasonRows, latestCompletedSeason, unknownPositionIds } from './mlbStats'
 import { mlbHitterRow, mlbPitcherRow } from './validators'
 
@@ -28,47 +28,82 @@ export interface IngestReport {
   pitchers: number
 }
 
-async function fetchSource(source: IngestSource, url: string): Promise<Response> {
-  const response = await fetch(url).catch((error: unknown) => {
-    const reason = error instanceof Error ? error.message : 'unknown error'
-    throw new IngestError(source, `the request failed (${reason})`)
-  })
+/** Long enough for a whole season's page; short enough to name the source that stalled. */
+const REQUEST_TIMEOUT_MS = 60_000
+
+enum StatsKind {
+  Season = 'season',
+  SeasonAdvanced = 'seasonAdvanced',
+}
+
+enum StatsGroup {
+  Hitting = 'hitting',
+  Pitching = 'pitching',
+}
+
+function failureOf(source: IngestSource, error: unknown): IngestError {
+  if (error instanceof Error && error.name === 'TimeoutError') {
+    return new IngestError(source, 'the request timed out')
+  }
+  const reason = error instanceof Error ? error.message : 'unknown error'
+  return new IngestError(source, `the request failed (${reason})`)
+}
+
+async function fetchSource(source: IngestSource, url: URL): Promise<Response> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }).catch(
+    (error: unknown) => {
+      throw failureOf(source, error)
+    },
+  )
   if (!response.ok) throw new IngestError(source, `HTTP ${response.status}`)
   return response
 }
 
-async function fetchJson(source: IngestSource, url: string): Promise<unknown> {
+async function fetchJson(source: IngestSource, url: URL): Promise<unknown> {
   const response = await fetchSource(source, url)
   return response.json().catch(() => {
     throw new IngestError(source, 'the response is not JSON')
   })
 }
 
-async function fetchText(source: IngestSource, url: string): Promise<string> {
+async function fetchText(source: IngestSource, url: URL): Promise<string> {
   return (await fetchSource(source, url)).text()
 }
 
-function statsUrl(season: number, kind: 'season' | 'seasonAdvanced', group: string): string {
-  const query = new URLSearchParams({
+function statsUrl(season: number, kind: StatsKind, group: StatsGroup): URL {
+  const url = new URL(`${STATS_API}/stats`)
+  url.search = new URLSearchParams({
     stats: kind,
     group,
     season: String(season),
     playerPool: 'ALL',
     sportIds: '1',
     limit: EVERYONE,
-  })
-  return `${STATS_API}/stats?${query}`
+  }).toString()
+  return url
+}
+
+function sprintSpeedUrl(season: number): URL {
+  const url = new URL(SAVANT_SPRINT_SPEED)
+  url.searchParams.set('year', String(season))
+  url.searchParams.set('csv', 'true')
+  return url
 }
 
 /** The unknown-position players' listed positions, or null when none needs a lookup. */
 async function fetchProfiles(ids: number[]): Promise<unknown> {
   if (ids.length === 0) return null
-  return fetchJson('profiles', `${STATS_API}/people?personIds=${ids.join(',')}`)
+  const url = new URL(`${STATS_API}/people`)
+  url.searchParams.set('personIds', ids.join(','))
+  return fetchJson(IngestSource.Profiles, url)
 }
 
 async function seasonToIngest(requested: number | undefined): Promise<number> {
   if (requested !== undefined) return requested
-  const seasons = await fetchJson('seasons', `${STATS_API}/seasons/all?sportId=1`)
+  const seasons = await fetchJson(
+    IngestSource.Seasons,
+    new URL(`${STATS_API}/seasons/all?sportId=1`),
+  )
   return latestCompletedSeason(seasons, new Date())
 }
 
@@ -78,10 +113,13 @@ export const run = internalAction({
   handler: async (ctx, args): Promise<IngestReport> => {
     const season = await seasonToIngest(args.season)
     const [hitting, pitching, pitchingAdvanced, sprintCsv] = await Promise.all([
-      fetchJson('hitting', statsUrl(season, 'season', 'hitting')),
-      fetchJson('pitching', statsUrl(season, 'season', 'pitching')),
-      fetchJson('pitching-advanced', statsUrl(season, 'seasonAdvanced', 'pitching')),
-      fetchText('sprint-speed', `${SAVANT_SPRINT_SPEED}?year=${season}&csv=true`),
+      fetchJson(IngestSource.Hitting, statsUrl(season, StatsKind.Season, StatsGroup.Hitting)),
+      fetchJson(IngestSource.Pitching, statsUrl(season, StatsKind.Season, StatsGroup.Pitching)),
+      fetchJson(
+        IngestSource.PitchingAdvanced,
+        statsUrl(season, StatsKind.SeasonAdvanced, StatsGroup.Pitching),
+      ),
+      fetchText(IngestSource.SprintSpeed, sprintSpeedUrl(season)),
     ])
     const profiles = await fetchProfiles(unknownPositionIds(hitting, pitching))
 
