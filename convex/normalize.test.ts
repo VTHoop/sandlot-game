@@ -119,7 +119,8 @@ describe('normalize.run', () => {
       position: 'SS',
       price: null,
     })
-    expect(ada?.attributes).toEqual({ power: 3, contact: 3, speed: 3, eye: 3 })
+    // The league is Ada alone, so her rates regress to themselves: ISO 111/540 = .206 is a 4.
+    expect(ada?.attributes).toEqual({ power: 4, contact: 3, speed: 3, eye: 3 })
     expect(players.find((p) => p.mlbId === GUS)).toMatchObject({
       role: 'pitcher',
       position: 'P',
