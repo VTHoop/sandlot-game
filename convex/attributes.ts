@@ -125,24 +125,56 @@ const extraBases = (row: MlbHitterRow): number => row.doubles + 2 * row.triples 
 const sum = <T>(rows: readonly T[], pick: (row: T) => number): number =>
   rows.reduce((total, row) => total + pick(row), 0)
 
+/** One pooled rate, refusing a season whose rows never reached the denominator. */
+function pooled<T>(
+  rows: readonly T[],
+  events: (row: T) => number,
+  attempts: (row: T) => number,
+  denominator: string,
+): number {
+  const total = sum(rows, attempts)
+  if (total === 0) throw new RangeError(`the season has no ${denominator}, so no league rate`)
+  return sum(rows, events) / total
+}
+
+/** Every rate pooled over all of the season's rows of that role; throws if the pool is empty. */
 export function leagueRates(
   hitters: readonly MlbHitterRow[],
   pitchers: readonly MlbPitcherRow[],
 ): LeagueRates {
-  const plateAppearances = sum(hitters, (row) => row.plateAppearances)
-  const battersFaced = sum(pitchers, (row) => row.battersFaced)
-  const ballsInPlay = sum(pitchers, (row) => row.ballsInPlay)
+  const plateAppearances = (row: MlbHitterRow) => row.plateAppearances
+  const battersFaced = (row: MlbPitcherRow) => row.battersFaced
   return {
     hitter: {
-      iso: sum(hitters, extraBases) / sum(hitters, (row) => row.atBats),
-      kRate: sum(hitters, (row) => row.strikeOuts) / plateAppearances,
-      bbRate: sum(hitters, (row) => row.baseOnBalls) / plateAppearances,
+      iso: pooled(hitters, extraBases, (row) => row.atBats, 'hitters with at-bats'),
+      kRate: pooled(
+        hitters,
+        (row) => row.strikeOuts,
+        plateAppearances,
+        'hitters with plate appearances',
+      ),
+      bbRate: pooled(
+        hitters,
+        (row) => row.baseOnBalls,
+        plateAppearances,
+        'hitters with plate appearances',
+      ),
     },
     pitcher: {
-      kRate: sum(pitchers, (row) => row.strikeOuts) / battersFaced,
-      bbRate: sum(pitchers, (row) => row.baseOnBalls) / battersFaced,
-      gbRate: sum(pitchers, (row) => row.groundHits + row.groundOuts) / ballsInPlay,
-      hrPerBf: sum(pitchers, (row) => row.homeRuns) / battersFaced,
+      kRate: pooled(pitchers, (row) => row.strikeOuts, battersFaced, 'pitchers who faced a batter'),
+      bbRate: pooled(
+        pitchers,
+        (row) => row.baseOnBalls,
+        battersFaced,
+        'pitchers who faced a batter',
+      ),
+      gbRate: pooled(
+        pitchers,
+        (row) => row.groundHits + row.groundOuts,
+        (row) => row.ballsInPlay,
+        'balls in play',
+      ),
+      hrPerBf: pooled(pitchers, (row) => row.homeRuns, battersFaced, 'pitchers who faced a batter'),
     },
   }
 }
