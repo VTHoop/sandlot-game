@@ -784,7 +784,8 @@ npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"seed|sandlot
 
 ## MLB season ingest (`convex/ingest.ts` + `mlbStats.ts`, SAN-25, ADR-0037)
 
-Real stats land as raw rows first; attributes come later (SAN-26).
+Real stats land as raw rows first; the 1–5 attributes are derived from them by
+[season normalization](#season-normalization-convexattributests--seasonplayersts--normalizets-san-26-adr-0038).
 
 - **One table, two shapes.** `mlbSeasonStats` is a `v.union` of `mlbHitterRow`
   and `mlbPitcherRow`: one row per player per role per season. A two-way player
@@ -811,6 +812,32 @@ pnpm ingest:mlb --season 2025   # a given season; re-running replaces its rows
 
 No MLB data is committed: the sources are fetched at run time, and the tests'
 fixtures are invented players in the APIs' shapes (ADR-0006).
+
+## Season normalization (`convex/attributes.ts` + `seasonPlayers.ts` + `normalize.ts`, SAN-26, ADR-0038)
+
+Raw rows become `players` with 1–5 attributes. Three layers, each with one job:
+
+- **`attributes.ts` — pure scoring.** `regress(events, attempts, lg, C)` then a
+  cut-table lookup (`scorePower`, `scoreContact`, … each `band(value, cuts,
+  atLeast | atMost)`, so a value on an edge takes the better score).
+  `leagueRates` pools every row of the season and throws when a denominator is
+  zero; `pitcherRates` throws for a pitcher with no outs. Add an attribute by
+  adding a `Cuts` constant and a `scoreX` export, not by indexing a table.
+- **`seasonPlayers.ts` — planning.** `planSeason(hitters, pitchers)` returns the
+  players and the skips. League rates see every row, skipped ones included; a
+  player skipped on both rows is named once. `histogramsOf` counts players at
+  each score 1–5 per attribute.
+- **`normalize.ts` — the writer.** `normalize.run({ season })` reads the
+  season's `mlbSeasonStats`, throws if there are none, and upserts through
+  `by_mlb_id` (`[mlbId, role]`, `.unique()`). Update patches name, position and
+  attributes only, so a price survives; players the season lacks are untouched.
+  Internal (`internalMutation`), guarded by a compile-time check in
+  `normalize.test.ts`.
+
+```bash
+pnpm ingest:mlb --season 2026      # raw rows first
+pnpm normalize:mlb --season 2026   # then players; prints created/updated/skipped and the 1–5 histograms
+```
 
 ## Turn notifications (`convex/push*.ts` + `src/push/` + `src/sw.ts`, SAN-23, ADR-0036)
 
