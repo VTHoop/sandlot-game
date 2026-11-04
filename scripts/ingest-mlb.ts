@@ -9,24 +9,7 @@
 // storing all happen server-side (convex/ingest.ts). A source that fails or comes
 // back incomplete aborts the run with an error naming it, and the season's
 // stored rows are left as they were. Re-running a season replaces its rows.
-import { spawnSync } from 'node:child_process'
+import { runCommand } from './convex-run'
 import { parseArgs, parseReport, reportLine } from './ingest-mlb-args'
 
-function main(): number {
-  const args = parseArgs(process.argv.slice(2))
-  const run = spawnSync('npx', ['convex', 'run', 'ingest:run', JSON.stringify(args)], {
-    encoding: 'utf8',
-    stdio: ['inherit', 'pipe', 'inherit'],
-  })
-  if (run.status !== 0) return run.status ?? 1
-
-  console.log(reportLine(parseReport(run.stdout)))
-  return 0
-}
-
-try {
-  process.exitCode = main()
-} catch (error: unknown) {
-  console.error(error instanceof Error ? error.message : error)
-  process.exitCode = 1
-}
+runCommand('ingest:run', parseArgs, (stdout) => [reportLine(parseReport(stdout))])
