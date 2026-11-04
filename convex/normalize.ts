@@ -27,8 +27,8 @@ export interface NormalizeReport {
   scores: ScoreHistograms
 }
 
-/** Write one planned player; returns whether it made a new row or updated the existing one. */
-async function upsert(ctx: MutationCtx, player: PlannedPlayer): Promise<'created' | 'updated'> {
+/** Write one planned player: true when it inserted a new row, false when it patched the existing one. */
+async function upsert(ctx: MutationCtx, player: PlannedPlayer): Promise<boolean> {
   const existing = await ctx.db
     .query('players')
     .withIndex('by_mlb_id', (q) => q.eq('mlbId', player.mlbId).eq('role', player.role))
@@ -36,10 +36,10 @@ async function upsert(ctx: MutationCtx, player: PlannedPlayer): Promise<'created
   if (existing) {
     const { name, position, attributes } = player
     await ctx.db.patch(existing._id, { name, position, attributes })
-    return 'updated'
+    return false
   }
   await ctx.db.insert('players', { ...player, source: 'mlb', price: null })
-  return 'created'
+  return true
 }
 
 export const run = internalMutation({
@@ -56,12 +56,12 @@ export const run = internalMutation({
     }
 
     const { players, skipped } = planSeason(
-      rows.flatMap((row) => (row.role === 'hitter' ? [row] : [])),
-      rows.flatMap((row) => (row.role === 'pitcher' ? [row] : [])),
+      rows.filter((row) => row.role === 'hitter'),
+      rows.filter((row) => row.role === 'pitcher'),
     )
     let created = 0
     for (const player of players) {
-      if ((await upsert(ctx, player)) === 'created') created += 1
+      if (await upsert(ctx, player)) created += 1
     }
     return {
       season,

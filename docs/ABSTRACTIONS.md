@@ -784,7 +784,8 @@ npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"seed|sandlot
 
 ## MLB season ingest (`convex/ingest.ts` + `mlbStats.ts`, SAN-25, ADR-0037)
 
-Real stats land as raw rows first; attributes come later (SAN-26).
+Real stats land as raw rows first; the 1–5 attributes are derived from them by
+[season normalization](#season-normalization-convexattributests--seasonplayersts--normalizets-san-26-adr-0038).
 
 - **One table, two shapes.** `mlbSeasonStats` is a `v.union` of `mlbHitterRow`
   and `mlbPitcherRow`: one row per player per role per season. A two-way player

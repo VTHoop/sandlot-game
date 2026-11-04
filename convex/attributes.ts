@@ -12,13 +12,13 @@ import type { MlbHitterRow, MlbPitcherRow } from './mlbStats'
 
 export type Score = 1 | 2 | 3 | 4 | 5
 
-export interface HitterRates {
+interface HitterRates {
   iso: number
   kRate: number
   bbRate: number
 }
 
-export interface PitcherRates {
+interface PitcherRates {
   kRate: number
   bbRate: number
   gbRate: number
@@ -45,7 +45,7 @@ export interface PitcherAttributes {
 }
 
 /** Fewer competitive runs than this and the sprint speed is not trusted. */
-export const SPEED_MIN_RUNS = 10
+const SPEED_MIN_RUNS = 10
 
 /** What a hitter's Speed and every pitcher's Awareness are when there is nothing to score. */
 const MIDDLE: Score = 3

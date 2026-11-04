@@ -21,7 +21,7 @@ import type { position } from './validators'
  * unknown position, or one the engine has no lineup slot for, is skipped by name.
  */
 
-export type Position = Infer<typeof position>
+type Position = Infer<typeof position>
 
 export interface SkippedPlayer {
   mlbId: number
@@ -60,7 +60,7 @@ interface PlannedPitcher {
 
 export type PlannedPlayer = PlannedHitter | PlannedPitcher
 
-export interface SeasonPlan {
+interface SeasonPlan {
   players: PlannedPlayer[]
   skipped: SkippedPlayer[]
 }
@@ -73,9 +73,23 @@ const UNKNOWN = 'unknown'
 const TWO_WAY = 'TWP'
 const PITCHER = 'P'
 
-/** The lineup slots a hitter can take: every engine position but P. */
+const HITTER_SLOT_LIST = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'] as const
+
+/**
+ * Compile-time guard: the lineup slots a hitter can take are exactly every position
+ * the validator has but P, so a position added there fails typecheck here instead of
+ * being skipped as "no lineup slot".
+ */
+type AssertEqual<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : never
+const _slotsAreEveryPositionButP: AssertEqual<
+  (typeof HITTER_SLOT_LIST)[number],
+  Exclude<Position, 'P'>
+> = true
+void _slotsAreEveryPositionButP
+
 const HITTER_SLOTS: ReadonlyMap<string, Position> = new Map(
-  (['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'] as const).map((slot) => [slot, slot]),
+  HITTER_SLOT_LIST.map((slot) => [slot, slot]),
 )
 
 function hitterPosition(reported: string): { position: Position } | { skip: string } | null {
@@ -148,13 +162,14 @@ function tally(scores: readonly Score[]): ScoreCounts {
   return [count(1), count(2), count(3), count(4), count(5)]
 }
 
-const isHitter = (player: PlannedPlayer): player is PlannedHitter => player.role === 'hitter'
-const isPitcher = (player: PlannedPlayer): player is PlannedPitcher => player.role === 'pitcher'
-
 /** How many planned players scored each 1–5 on each attribute. */
 export function histogramsOf(players: readonly PlannedPlayer[]): ScoreHistograms {
-  const hitters = players.filter(isHitter).map((player) => player.attributes)
-  const pitchers = players.filter(isPitcher).map((player) => player.attributes)
+  const hitters = players
+    .filter((player) => player.role === 'hitter')
+    .map((player) => player.attributes)
+  const pitchers = players
+    .filter((player) => player.role === 'pitcher')
+    .map((player) => player.attributes)
   return {
     power: tally(hitters.map((a) => a.power)),
     contact: tally(hitters.map((a) => a.contact)),
