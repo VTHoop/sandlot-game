@@ -162,6 +162,19 @@ Subagents cannot spawn subagents, so `/pr-review` (which fans out to six reviewe
 4. **Re-review.** `/pr-review <n>` again from a fresh session. It reviews the fix commits and marks any earlier finding still present as open; the owner reads those against the dismissal evidence in the reply.
 5. **Merge** when the latest review is Approved, or every remaining finding is either dismissed with evidence the owner accepts or deferred to a follow-up issue the owner has created. **The owner arbitrates every contested dismissal and every deferral** — neither agent does — and resolves the review's conversations.
 
+## Verification
+
+Read by the `software-factory` skills. Run every command that applies to the changed paths before opening a PR.
+
+| Changed paths | Commands |
+|---|---|
+| any code | `pnpm lint`, `pnpm typecheck`, `pnpm test` |
+| `src/`, `convex/`, `packages/` | `pnpm test:coverage` (global floor 80%, ratcheted) |
+| `src/`, `e2e/` | `pnpm e2e:smoke` (under 5 minutes) |
+| docs only | `pnpm lint` |
+
+Not run by the agent: `pnpm codescene:check` (needs `CS_ACCESS_TOKEN`, runs after merge) and `cs delta main` / `trivy` / `opengrep` when the tool or token is missing; say so in the PR instead of reporting them as passing.
+
 ---
 
 ## 2. Product Rules

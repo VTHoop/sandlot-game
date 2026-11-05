@@ -11,5 +11,17 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "software-factory": {
+      "source": {
+        "source": "github",
+        "repo": "VTHoop/software-factory",
+        "ref": "v0.2.0"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "software-factory@software-factory": true
   }
 }
