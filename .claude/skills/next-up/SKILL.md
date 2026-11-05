@@ -19,17 +19,20 @@ Use the Linear MCP server's `list_projects`, `get_project`, `list_milestones`, `
 # Workflow
 
 ## 1. Gather
+Issue the independent reads below in parallel (Linear, `gh`, git, docs), and batch the per-PR reads in step 3 together rather than one at a time.
+
 1. **Linear.** For the Linear team whose issue key is `SAN`:
    - Projects and their milestones, status and target dates.
    - Open issues (backlog, unstarted, started, in review) with priority, estimate, project, milestone and relations — blocked-by matters most.
-   - Issues completed in the last 21 days.
+   - Issues completed in the last 21 days (`list_issues` with an `updatedAt` filter of `-P21D` and a completed state; ignore anything older).
 2. **GitHub and git.** `git fetch origin` is the only git write. Then (all read-only):
    - `gh pr list --state open --json number,title,headRefName,updatedAt,isDraft`
    - `gh pr list --state merged --limit 15 --json number,title,mergedAt`
    - `git log origin/main --oneline -20`
+   If `gh` is unauthenticated or unreachable, do not stop: continue with Linear and the docs, and say in the report which PR-derived sources were skipped (so deferred findings and drift checks are incomplete).
 3. **Beyond the backlog — sources of ticket-less work.** For each of the last 15 merged PRs, read the body, the `/pr-review` comment and the `/address-review` reply (`gh pr view <n> --json body,comments,reviews`):
    - findings **deferred to the owner** or deferred to a follow-up issue — check whether a Linear issue exists for each;
-   - `TODO` / `FIXME` / "follow-up" / "out of scope" notes, in the PR text and in the lines the PR added (`gh pr diff <n>`, scan added lines only);
+   - `TODO` / `FIXME` / "follow-up" / "out of scope" notes, in the PR text and in the lines the PR added (`gh pr diff <n> | grep '^+'` — read added lines only, never the whole diff);
    - "Before testing" or manual-test items that suggest a bug or gap.
 4. **Docs.** `docs/ROADMAP.md`, and the ADR filenames in `docs/adr/`. Read any ADR whose status is *Proposed* — it is an open decision. Compare the roadmap against what has merged: what it promises that has not shipped, and what shipped that it doesn't mention.
 
