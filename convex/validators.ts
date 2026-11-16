@@ -141,6 +141,16 @@ const _clubSideMatchesEnum: AssertEqual<Infer<typeof clubSide>, `${ClubSide}`> =
 void _clubSideMatchesEnum
 
 /**
+ * Who manages one side of a game (SAN-76, ADR-0039): a user, or the bot. Set when
+ * the game is created and never patched. A game is read through its managers, never
+ * through `teams.owner`.
+ */
+export const manager = v.union(
+  v.object({ kind: v.literal('user'), user: v.id('users') }),
+  v.object({ kind: v.literal('bot') }),
+)
+
+/**
  * One device a player has allowed notifications on (SAN-23, ADR-0036): the push
  * service's address for it and the keys `web-push` encrypts to it. The stored row,
  * its writer and the sender's arguments all derive from this one shape.

@@ -8,6 +8,7 @@ import {
   gameStatus,
   groundBallResult,
   half,
+  manager,
   mlbSeasonRow,
   outcomeBand,
   playerSource,
@@ -82,6 +83,11 @@ export default defineSchema({
   games: defineTable({
     homeTeam: v.id('teams'),
     awayTeam: v.id('teams'),
+    // Who plays each side (SAN-76, ADR-0039). Optional only until the backfill has
+    // run on every deployment; every reader goes through `managersOf`, which throws
+    // on a missing one. Written at creation, never patched.
+    homeManager: v.optional(manager),
+    awayManager: v.optional(manager),
     inning: v.float64(),
     half,
     outs: v.float64(),

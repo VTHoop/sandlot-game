@@ -397,6 +397,14 @@ export const mintDevGame = internalMutation({
   },
 })
 
+/** Backfill the managers of games created before SAN-76 (not yet implemented). */
+export const backfillGameManagers = internalMutation({
+  args: {},
+  handler: async (): Promise<number> => {
+    throw new Error('backfillGameManagers is not implemented')
+  },
+})
+
 /** The bot's name in a seating line: a seat the seed owner holds. */
 const BOT_NAME = 'bot'
 
