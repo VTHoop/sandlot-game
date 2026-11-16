@@ -4,7 +4,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import type { ResolvedAtBatView } from './duelContract'
 import { atBatLog, type ClubTotals, creditBatting, halfOf, hitsOf, rowsInHalf } from './gameView'
-import { type Ctx, isParticipant, maybeUser, ownershipOf } from './participants'
+import { type Ctx, isParticipant, managedSides, maybeUser } from './participants'
 
 /**
  * The resolved at-bat read model (SAN-39): the last at-bat a game resolved,
@@ -90,7 +90,7 @@ export const getLastAtBat = query({
     const game = await ctx.db.get(id)
     if (!game) return null
     const user = await maybeUser(ctx)
-    if (!user || !isParticipant(await ownershipOf(ctx, game, user))) return null
+    if (!user || !isParticipant(managedSides(game, user))) return null
 
     const log = await atBatLog(ctx, game._id)
     // The last row, destructured off a slice rather than indexed — no computed

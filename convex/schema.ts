@@ -105,7 +105,9 @@ export default defineSchema({
   })
     .index('by_status', ['status'])
     .index('by_home_team', ['homeTeam'])
-    .index('by_away_team', ['awayTeam']),
+    .index('by_away_team', ['awayTeam'])
+    .index('by_home_manager', ['homeManager.user'])
+    .index('by_away_manager', ['awayManager.user']),
 
   // Per-team lineup for a game: an ordered 1–9 batting list (array order IS the
   // batting order) plus the designated pitcher.

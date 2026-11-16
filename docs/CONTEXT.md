@@ -18,6 +18,12 @@ Orientation for any human or agent opening this repo. **`AGENTS.md` is the worki
 - **Decoded at-bat engine:** `/Users/hoop/dev/bbtn-engine-spec.md` — ⚠️ **PRIVATE, do NOT commit** (it contains the reverse-engineered source calculator's verbatim tables; see ADR-0006). Use it locally to understand the engine's *structure*, then **re-derive the numbers via simulation** for what ships.
 - **Source material (private, on disk):** `/Users/hoop/Downloads/Copy of BBTN 3.12.9 TYGEN 2 Runners.xlsx` (the calculator) and `…/Official Baseball by the Numbers Rules and Guidelines (Version 1).txt` (the rules).
 
+## Vocabulary
+- **Owner** — the user who holds a team. Ownership grants nothing inside a game (ADR-0039).
+- **Manager** — who runs one side of one game, home or away: a user or the bot. Recorded on the game when it is created and never changed; the server decides who may act from the two managers.
+- **Seat** — only the pitcher or batter role in the open at-bat. One account managing both sides can sit in either.
+- **Club** — a retired synonym for *team*. Older code and ADRs still say it (renaming is SAN-82).
+
 ## Cardinal rules (full text in the ADRs)
 - **Game integrity (ADR-0004 + AGENTS.md):** each committed number is secret — written by a Convex mutation, never returned by any client query until *both* sides have locked (commits are order-independent, ADR-0014). Add a test that asserts the opponent can't read it.
 - **IP & data (ADR-0006):** use the *mechanic*, not the original brand/text/tables. **Never commit MLB data** to this public repo. Re-derive balance; credit `r/baseballbythenumbers` as inspiration.

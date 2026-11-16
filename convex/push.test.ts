@@ -126,9 +126,31 @@ function atBats(t: Harness, game: Id<'games'>): Promise<Doc<'atBats'>[]> {
   )
 }
 
-async function giveClub(t: Harness, team: Id<'teams'>, who: typeof HUMAN): Promise<void> {
+/** Make `who` the manager of the side `team` plays in its games (SAN-76). */
+async function manageSideOf(t: Harness, team: Id<'teams'>, who: typeof HUMAN): Promise<void> {
   await t.withIdentity(who).mutation(api.users.provision, {})
-  await t.mutation(internal.seed.assignClubToUser, { team, clerkSubject: who.subject })
+  await t.run(async (ctx) => {
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerk_subject', (q) => q.eq('clerkSubject', who.subject))
+      .unique()
+    if (!user) throw new Error('not provisioned')
+    const manager = { kind: 'user' as const, user: user._id }
+    const [home, away] = await Promise.all([
+      ctx.db
+        .query('games')
+        .withIndex('by_home_team', (q) => q.eq('homeTeam', team))
+        .collect(),
+      ctx.db
+        .query('games')
+        .withIndex('by_away_team', (q) => q.eq('awayTeam', team))
+        .collect(),
+    ])
+    await Promise.all([
+      ...home.map((game) => ctx.db.patch(game._id, { homeManager: manager })),
+      ...away.map((game) => ctx.db.patch(game._id, { awayManager: manager })),
+    ])
+  })
 }
 
 function subscribe(t: Harness, who: typeof HUMAN, endpoint: string): Promise<unknown> {
@@ -149,8 +171,8 @@ async function twoHumanGame() {
   vi.stubEnv(SEED_ENV_FLAG, 'true')
   const game = await t.mutation(internal.seed.bootstrapDevLeague, {})
   const { homeTeam, awayTeam } = await gameRow(t, game)
-  await giveClub(t, homeTeam, HUMAN)
-  await giveClub(t, awayTeam, OTHER)
+  await manageSideOf(t, homeTeam, HUMAN)
+  await manageSideOf(t, awayTeam, OTHER)
   await subscribe(t, HUMAN, 'https://fcm.googleapis.com/fcm/send/human')
   await subscribe(t, OTHER, 'https://fcm.googleapis.com/fcm/send/other')
   return { t, game, homeTeam, awayTeam }
@@ -318,7 +340,13 @@ describe('push — reminders', () => {
 
   it('keeps each game’s reminders independent of every other game’s', async () => {
     const { t, game: first, homeTeam, awayTeam } = await startedGame()
-    const second = await t.mutation(internal.seed.mintDevGame, { homeTeam, awayTeam })
+    const { homeManager, awayManager } = await gameRow(t, first)
+    const second = await t.mutation(internal.seed.mintDevGame, {
+      homeTeam,
+      awayTeam,
+      homeManager,
+      awayManager,
+    })
     await t.withIdentity(HUMAN).mutation(api.game.startGame, { game: second })
     await elapse(t, 0)
 
@@ -376,8 +404,8 @@ describe('push — devices and permission', () => {
     vi.stubEnv(SEED_ENV_FLAG, 'true')
     const game = await t.mutation(internal.seed.bootstrapDevLeague, {})
     const { homeTeam, awayTeam } = await gameRow(t, game)
-    await giveClub(t, homeTeam, HUMAN)
-    await giveClub(t, awayTeam, OTHER)
+    await manageSideOf(t, homeTeam, HUMAN)
+    await manageSideOf(t, awayTeam, OTHER)
     await t.withIdentity(HUMAN).mutation(api.game.startGame, { game })
     await humanPitches(t, game, 300)
     await otherSwings(t, game, 700)
@@ -419,7 +447,7 @@ describe('push — a bot game', () => {
     vi.stubEnv(SEED_ENV_FLAG, 'true')
     const game = await t.mutation(internal.seed.bootstrapDevLeague, {})
     const { homeTeam } = await gameRow(t, game)
-    await giveClub(t, homeTeam, HUMAN)
+    await manageSideOf(t, homeTeam, HUMAN)
     await subscribe(t, HUMAN, HUMAN_DEVICE)
     await t.withIdentity(HUMAN).mutation(api.game.startGame, { game })
     await elapse(t, 0)

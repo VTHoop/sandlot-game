@@ -6,9 +6,21 @@ import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
+import type { MutationCtx } from './_generated/server'
 import { authedUser, maybeUser } from './participants'
 import schema from './schema'
 import { SEED_CLERK_SUBJECT } from './seed'
+
+/** The game's managers as its teams' owners are today: these fixtures predate
+ * managers, and what they pin is who may act, not how that was decided (SAN-76). */
+async function ownerManagers(ctx: MutationCtx, homeTeam: Id<'teams'>, awayTeam: Id<'teams'>) {
+  const [home, away] = await Promise.all([ctx.db.get(homeTeam), ctx.db.get(awayTeam)])
+  if (!home || !away) throw new Error('fixture team missing')
+  return {
+    homeManager: { kind: 'user' as const, user: home.owner },
+    awayManager: { kind: 'user' as const, user: away.owner },
+  }
+}
 
 // convex-test discovers the function modules; exclude the test files themselves.
 const modules = import.meta.glob(['./**/*.ts', '!./**/*.test.ts'])
@@ -52,6 +64,7 @@ function seedFixture(t: Harness): Promise<Id<'games'>> {
     const homeTeam = await ctx.db.insert('teams', { owner, name: 'Home' })
     const awayTeam = await ctx.db.insert('teams', { owner, name: 'Away' })
     return ctx.db.insert('games', {
+      ...(await ownerManagers(ctx, homeTeam, awayTeam)),
       homeTeam,
       awayTeam,
       inning: 1,

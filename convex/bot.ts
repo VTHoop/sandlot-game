@@ -1,19 +1,17 @@
 import { internal } from './_generated/api'
-import type { Id } from './_generated/dataModel'
+import type { Doc, Id } from './_generated/dataModel'
 import type { MutationCtx } from './_generated/server'
 import { DuelRole } from './duelContract'
-import { type Ctx, teamsForHalf, userBySubject } from './participants'
-import { isSeedEnabled, SEED_CLERK_SUBJECT } from './seed'
+import { isBotManaged, managerOfTeam, teamsForHalf } from './participants'
 
 /**
  * The server-side bot opponent (SAN-58, ADR-0027) — who the bot is, and when it
  * is asked to play. The commit itself lives in `atBat.commitBotSeat`, so
  * `duelCommitments` keeps exactly one reader.
  *
- * **A seat is the bot's exactly when its club is held by the dev seed owner**, and
- * only where the dev seed is enabled. Seed clubs exist for test games only, so the
- * bot is a test opponent, not a product feature: no column marks it and nothing
- * outside the fixture's own flag turns it on.
+ * **A seat is the bot's exactly when the game names the bot as that side's
+ * manager** (SAN-76, ADR-0039, superseding the seed-held definition of ADR-0027).
+ * Team ownership and the dev-seed flag have no say.
  *
  * **The bot commits the moment an at-bat opens.** Either side may lock first
  * (ADR-0014), so the bot never waits for the human: whatever opens an at-bat —
@@ -23,15 +21,11 @@ import { isSeedEnabled, SEED_CLERK_SUBJECT } from './seed'
  * the human's client closed.
  */
 
-/** Whether the bot plays for this club: the seed owner holds it, on a deployment
- * where the seed is enabled. No seed-owner row means no bot, the fail-safe way. */
-export async function isBotSeat(ctx: Ctx, team: Id<'teams'>): Promise<boolean> {
-  if (!isSeedEnabled()) return false
-  const [club, seedOwner] = await Promise.all([
-    ctx.db.get(team),
-    userBySubject(ctx, SEED_CLERK_SUBJECT),
-  ])
-  return club !== null && seedOwner !== null && club.owner === seedOwner._id
+/** Whether the bot plays this team's side of the game: exactly when the game
+ * names the bot as that side's manager (SAN-76, ADR-0039). Who owns the team and
+ * whether the dev seed is on have no say. */
+export function isBotSeat(game: Doc<'games'>, team: Id<'teams'>): boolean {
+  return isBotManaged(managerOfTeam(game, team))
 }
 
 /**
@@ -50,21 +44,24 @@ export async function scheduleBotSeats(ctx: MutationCtx, gameId: Id<'games'>): P
   const sequence = game.lastResolvedSequence + 1
   const { battingTeam, pitchingTeam } = teamsForHalf(game)
   await Promise.all([
-    scheduleIfBot(ctx, { game: gameId, sequence, role: DuelRole.Batting, team: battingTeam }),
-    scheduleIfBot(ctx, { game: gameId, sequence, role: DuelRole.Pitching, team: pitchingTeam }),
+    scheduleIfBot(ctx, game, { sequence, role: DuelRole.Batting, team: battingTeam }),
+    scheduleIfBot(ctx, game, { sequence, role: DuelRole.Pitching, team: pitchingTeam }),
   ])
 }
 
 /** One seat in the at-bat now open, and the club that fills it. */
 interface OpenSeat {
-  game: Id<'games'>
   sequence: number
   role: DuelRole
   team: Id<'teams'>
 }
 
-async function scheduleIfBot(ctx: MutationCtx, seat: OpenSeat): Promise<void> {
-  if (!(await isBotSeat(ctx, seat.team))) return
-  const { game, sequence, role } = seat
-  await ctx.scheduler.runAfter(0, internal.atBat.commitBotSeat, { game, sequence, role })
+async function scheduleIfBot(ctx: MutationCtx, game: Doc<'games'>, seat: OpenSeat): Promise<void> {
+  if (!isBotSeat(game, seat.team)) return
+  const { sequence, role } = seat
+  await ctx.scheduler.runAfter(0, internal.atBat.commitBotSeat, {
+    game: game._id,
+    sequence,
+    role,
+  })
 }

@@ -5,7 +5,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import { duelLocks } from './atBat'
 import { ClubSide } from './clubSide'
-import { type ClubOwnership, type Ctx, maybeUser, ownershipOf, teamsForHalf } from './participants'
+import { type Ctx, type ManagedSides, managedSides, maybeUser, teamsForHalf } from './participants'
 
 /**
  * The secret-safe live game read model (SAN-56) — the one query a client
@@ -116,7 +116,7 @@ interface GameViewCommon {
    * both — so it cannot tell a hotseat from a home-side player. This can, and it
    * is what a client reads to decide which seats it drives.
    */
-  viewerOwns: ClubOwnership
+  viewerOwns: ManagedSides
 }
 
 /**
@@ -352,12 +352,12 @@ function winnerOf(game: Doc<'games'>): ClubSide | null {
 // ─── The gate ───────────────────────────────────────────────────────────────
 
 /**
- * The one side `viewer` names, or null when the caller owns neither club. Home
- * wins, so a caller who owns BOTH — the one-account hotseat — reads as the home
+ * The one side `viewer` names, or null when the caller manages neither side. Home
+ * wins, so a caller who manages BOTH — the one-account hotseat — reads as the home
  * side and their seat follows the half like anyone else's. `viewerOwns` is what
  * tells that caller apart.
  */
-function viewerSideOf(owns: ClubOwnership): ClubSide | null {
+function viewerSideOf(owns: ManagedSides): ClubSide | null {
   if (owns.home) return ClubSide.Home
   if (owns.away) return ClubSide.Away
   return null
@@ -435,7 +435,7 @@ export const getGame = query({
 
     const user = await maybeUser(ctx)
     if (!user) return null
-    const viewerOwns = await ownershipOf(ctx, game, user)
+    const viewerOwns = managedSides(game, user)
     const viewer = viewerSideOf(viewerOwns)
     if (!viewer) return null
 

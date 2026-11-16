@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { parseArgs, parseResult, reseatNote, seatingLine, USAGE } from './dev-game-args'
+import { parseArgs, parseResult, seatingLine, USAGE } from './dev-game-args'
 
 describe('dev:game — the command line', () => {
-  it('takes --home, --away and --force', () => {
-    expect(parseArgs(['--home', 'sam', '--away', 'max', '--force'])).toEqual({
-      home: 'sam',
-      away: 'max',
-      force: true,
-    })
+  it('takes --home and --away', () => {
+    expect(parseArgs(['--home', 'sam', '--away', 'max'])).toEqual({ home: 'sam', away: 'max' })
+  })
+
+  it('takes --home-bot and --away-bot, to make either side bot-managed', () => {
+    expect(parseArgs(['--home-bot', '--away', 'max'])).toEqual({ homeBot: true, away: 'max' })
+    expect(parseArgs(['--home', 'sam', '--away-bot'])).toEqual({ home: 'sam', awayBot: true })
+  })
+
+  it('no longer takes --force', () => {
+    expect(() => parseArgs(['--force'])).toThrow(USAGE)
   })
 
   it('takes no arguments at all', () => {
@@ -29,13 +34,16 @@ describe('dev:game — the command line', () => {
   it.each([
     ['--home'],
     ['--away'],
-    ['--home', '--force'],
+    ['--home', '--away'],
   ])('fails when %s has no name, with the usage line', (...argv) => {
     expect(() => parseArgs(argv.flat())).toThrow(USAGE)
   })
 
-  it('describes --home, --away and --force in the usage line', () => {
-    expect(USAGE).toMatch(/--home.*--away.*--force/)
+  it('describes --home, --away, --home-bot and --away-bot in the usage line', () => {
+    for (const flag of ['--home', '--away', '--home-bot', '--away-bot']) {
+      expect(USAGE).toContain(flag)
+    }
+    expect(USAGE).not.toContain('--force')
   })
 })
 
@@ -52,51 +60,17 @@ describe('dev:game — the printed link', () => {
     )
   })
 
-  it('names one account twice when it holds both clubs', () => {
+  it('names one account twice when it manages both sides', () => {
     expect(seatingLine({ home: 'Sam Hooper', away: 'Sam Hooper' })).toBe(
       'Sam Hooper (home) vs. Sam Hooper (away)',
     )
   })
 })
 
-describe('dev:game — the re-seat note', () => {
-  const result = { game: 'jd71', home: 'Sam Hooper', away: 'Max Rivera' }
-
-  it('prints nothing when no game was re-seated', () => {
-    expect(reseatNote({ ...result, reseated: 0, inProgress: 0 })).toBeNull()
-  })
-
-  it('says when a game in progress moved too', () => {
-    expect(reseatNote({ ...result, reseated: 0, inProgress: 1 })).toBe(
-      'Re-seated 1 game in progress: Sam Hooper (home) vs. Max Rivera (away).',
-    )
-    expect(reseatNote({ ...result, reseated: 2, inProgress: 1 })).toContain(
-      '2 earlier games and 1 game in progress',
-    )
-  })
-
-  it('says how many games, and who now holds the clubs', () => {
-    expect(reseatNote({ ...result, reseated: 1, inProgress: 0 })).toBe(
-      'Re-seated 1 earlier game: Sam Hooper (home) vs. Max Rivera (away).',
-    )
-    expect(reseatNote({ ...result, reseated: 3, inProgress: 0 })).toContain('3 earlier games')
-  })
-})
-
 describe('dev:game — reading the result', () => {
   it('reads what the mutation returned', () => {
-    const stdout = JSON.stringify(
-      { game: 'jd71', home: 'Sam', away: 'bot', reseated: 0, inProgress: 0 },
-      null,
-      2,
-    )
-    expect(parseResult(stdout)).toEqual({
-      game: 'jd71',
-      home: 'Sam',
-      away: 'bot',
-      reseated: 0,
-      inProgress: 0,
-    })
+    const stdout = JSON.stringify({ game: 'jd71', home: 'Sam', away: 'bot' }, null, 2)
+    expect(parseResult(stdout)).toEqual({ game: 'jd71', home: 'Sam', away: 'bot' })
   })
 
   it('refuses output that is not JSON, showing it', () => {
@@ -106,15 +80,11 @@ describe('dev:game — reading the result', () => {
   })
 
   it('refuses a result missing a field', () => {
-    expect(() => parseResult('{"game":"jd71","home":"a","away":"b","reseated":0}')).toThrow(
-      /unexpected output/,
-    )
+    expect(() => parseResult('{"game":"jd71","home":"a"}')).toThrow(/unexpected output/)
   })
 
   it('refuses output that is not a result', () => {
     expect(() => parseResult('"jd71"')).toThrow(/unexpected output/)
-    expect(() =>
-      parseResult('{"game":"JD 71","home":"a","away":"b","reseated":0,"inProgress":0}'),
-    ).toThrow(/unexpected output/)
+    expect(() => parseResult('{"game":"JD 71","home":"a","away":"b"}')).toThrow(/unexpected output/)
   })
 })

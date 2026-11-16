@@ -4,11 +4,20 @@ import { query } from './_generated/server'
 import { duelLocks } from './atBat'
 import { ClubSide } from './clubSide'
 import type { ClubTotals, ClubView } from './gameView'
-import { type ClubOwnership, type Ctx, gamesOfClubs, maybeUser, sideLocked } from './participants'
+import {
+  type Ctx,
+  gamesManagedBy,
+  type ManagedSides,
+  type Manager,
+  managedSides,
+  managersOf,
+  maybeUser,
+  sideLocked,
+} from './participants'
 
 /**
  * The viewer's games, for the landing screen's list (SAN-72): one row per game in
- * which the caller holds a club, in the order the list shows them.
+ * which the caller manages a side, in the order the list shows them.
  *
  * Like `getGame` (ADR-0025), the rows are a discriminated union on status and
  * every number in them is absolute (ADR-0030). The per-caller fields are
@@ -26,9 +35,9 @@ import { type ClubOwnership, type Ctx, gamesOfClubs, maybeUser, sideLocked } fro
  */
 
 /**
- * A club on the list, with the display name of whoever holds it — the
- * `users.displayName` provisioning wrote from the Clerk token. No email is
- * stored, so none can be shown.
+ * A club on the list, with the display name of whoever manages that side of the
+ * game — the `users.displayName` provisioning wrote from the Clerk token, or
+ * "Bot". No email is stored, so none can be shown.
  */
 export interface ListClubView extends ClubView {
   manager: string
@@ -40,7 +49,7 @@ interface GameListCommon {
   home: ListClubView
   away: ListClubView
   /** Which clubs the caller holds — both, for the hotseat. Names the opponent. */
-  viewerOwns: ClubOwnership
+  viewerOwns: ManagedSides
 }
 
 /** One row of the viewer's game list. */
@@ -70,7 +79,7 @@ enum Group {
 /** A game placed in the list, before it is rendered into a row. */
 interface Placed {
   game: Doc<'games'>
-  owns: ClubOwnership
+  owns: ManagedSides
   group: Group
   /** When the game last moved: its latest play, else its start, else its creation. */
   activity: number
@@ -82,7 +91,7 @@ interface Placed {
  * Either seat may lock first (ADR-0014), so at the start of an at-bat both
  * participants are owed a number — the game screen's `turnFor` reads it the same way.
  */
-async function owesNumber(ctx: Ctx, game: Doc<'games'>, owns: ClubOwnership): Promise<boolean> {
+async function owesNumber(ctx: Ctx, game: Doc<'games'>, owns: ManagedSides): Promise<boolean> {
   const locks = await duelLocks(ctx, game._id)
   return (
     (owns.home && !sideLocked(game, locks, ClubSide.Home)) ||
@@ -101,7 +110,7 @@ async function lastActivity(ctx: Ctx, game: Doc<'games'>): Promise<number> {
   return latest?.createdAt ?? game.startedAt ?? game._creationTime
 }
 
-async function place(ctx: Ctx, game: Doc<'games'>, owns: ClubOwnership): Promise<Placed> {
+async function place(ctx: Ctx, game: Doc<'games'>, owns: ManagedSides): Promise<Placed> {
   const activity = await lastActivity(ctx, game)
   // Switched on the persisted literal — the schema layer's domain (AGENTS.md).
   if (game.status === 'scheduled') {
@@ -120,23 +129,34 @@ function ordered(placed: readonly Placed[]): Placed[] {
   return [...unfinished, ...finals.slice(0, FINALS_SHOWN)]
 }
 
+/** What the list shows for a bot-managed side. */
+export const BOT_MANAGER_NAME = 'Bot'
+
+/** The display name of the user or bot managing a side. A manager row that no
+ * longer exists is corrupt state — refuse rather than list nobody. */
+async function managerName(ctx: Ctx, manager: Manager): Promise<string> {
+  if (manager.kind === 'bot') return BOT_MANAGER_NAME
+  const user = await ctx.db.get(manager.user)
+  if (!user) throw new Error(`Game is managed by a user who no longer exists: ${manager.user}`)
+  return user.displayName
+}
+
 /**
- * A club and the display name of whoever holds it. Both rows are referenced by
- * id from authoritative state, so a missing one is corrupt state — refuse
- * rather than list a club with no name or nobody behind it.
+ * A club and the display name of whoever manages its side. The club row is
+ * referenced by id from authoritative state, so a missing one is corrupt state —
+ * refuse rather than list a club with no name.
  */
-async function listClubView(ctx: Ctx, id: Id<'teams'>): Promise<ListClubView> {
+async function listClubView(ctx: Ctx, id: Id<'teams'>, manager: Manager): Promise<ListClubView> {
   const club = await ctx.db.get(id)
   if (!club) throw new Error(`Game references a club that no longer exists: ${id}`)
-  const owner = await ctx.db.get(club.owner)
-  if (!owner) throw new Error(`Club ${id} is held by a user who no longer exists`)
-  return { id: club._id, name: club.name, manager: owner.displayName }
+  return { id: club._id, name: club.name, manager: await managerName(ctx, manager) }
 }
 
 async function entryOf(ctx: Ctx, { game, owns, yourMove }: Placed): Promise<GameListEntry> {
+  const managers = managersOf(game)
   const [home, away] = await Promise.all([
-    listClubView(ctx, game.homeTeam),
-    listClubView(ctx, game.awayTeam),
+    listClubView(ctx, game.homeTeam, managers.home),
+    listClubView(ctx, game.awayTeam, managers.away),
   ])
   const common: GameListCommon = { id: game._id, home, away, viewerOwns: owns }
   const score = { home: game.homeScore, away: game.awayScore }
@@ -155,7 +175,7 @@ async function entryOf(ctx: Ctx, { game, owns, yourMove }: Placed): Promise<Game
 
 /**
  * The caller's games, ordered for the landing list. Empty for a caller with no
- * identity, no `users` row, or no club — the screen shows one empty state for
+ * identity, no `users` row, or no game to manage — the screen shows one empty state for
  * all three, and no claim UI (ADR-0028).
  */
 export const listMyGames = query({
@@ -163,17 +183,9 @@ export const listMyGames = query({
   handler: async (ctx): Promise<GameListEntry[]> => {
     const user = await maybeUser(ctx)
     if (!user) return []
-    const clubs = await ctx.db
-      .query('teams')
-      .withIndex('by_owner', (q) => q.eq('owner', user._id))
-      .collect()
-    const held = new Set(clubs.map((club) => club._id))
-    const games = await gamesOfClubs(ctx, [...held])
-
+    const games = await gamesManagedBy(ctx, user)
     const placed = await Promise.all(
-      games.map((game) =>
-        place(ctx, game, { home: held.has(game.homeTeam), away: held.has(game.awayTeam) }),
-      ),
+      games.map((game) => place(ctx, game, managedSides(game, user))),
     )
     return Promise.all(ordered(placed).map((item) => entryOf(ctx, item)))
   },
