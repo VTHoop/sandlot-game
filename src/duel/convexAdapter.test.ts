@@ -135,7 +135,11 @@ async function seedLiveGame() {
     const awayTeam = await ctx.db.insert('teams', { owner: manager, name: 'Harbor Kingfishers' })
     const players = await insertPlayers(ctx)
 
-    const game = await ctx.db.insert('games', scheduledRow(homeTeam, awayTeam))
+    const game = await ctx.db.insert('games', {
+      ...scheduledRow(homeTeam, awayTeam),
+      homeManager: { kind: 'user', user: manager },
+      awayManager: { kind: 'user', user: manager },
+    })
     await ctx.db.insert('lineups', {
       game,
       team: awayTeam,
@@ -379,14 +383,16 @@ describe('the Convex-backed adapter — rejections carry their category', () => 
   it('reports a club the caller does not own as terminal', async () => {
     const { t, game } = await seedLiveGame()
     const adapter = await createConvexDuelAdapter(gatewayFor(t, MANAGER, game))
-    // The manager is re-pointed off both clubs after the adapter opened — the
-    // shape SAN-62's dev assignment can produce mid-session.
+    // The manager is replaced on both sides after the adapter opened — a game's
+    // managers never change in the product (SAN-76), so this is a raw write.
     await t.run(async (ctx) => {
       const other = await ctx.db.insert('users', { clerkSubject: 'other', displayName: 'O' })
       const row = await ctx.db.get(game)
       if (row) {
-        await ctx.db.patch(row.homeTeam, { owner: other })
-        await ctx.db.patch(row.awayTeam, { owner: other })
+        await ctx.db.patch(row._id, {
+          homeManager: { kind: 'user', user: other },
+          awayManager: { kind: 'user', user: other },
+        })
       }
     })
 

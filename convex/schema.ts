@@ -8,6 +8,7 @@ import {
   gameStatus,
   groundBallResult,
   half,
+  manager,
   mlbSeasonRow,
   outcomeBand,
   playerSource,
@@ -82,6 +83,12 @@ export default defineSchema({
   games: defineTable({
     homeTeam: v.id('teams'),
     awayTeam: v.id('teams'),
+    // Who plays each side (SAN-76, ADR-0039). Optional only until the backfill has
+    // run on every deployment; every reader goes through `managersOf`, which throws
+    // on a missing one. Written at creation, never patched — except by the
+    // one-time `seed.backfillGameManagers`.
+    homeManager: v.optional(manager),
+    awayManager: v.optional(manager),
     inning: v.float64(),
     half,
     outs: v.float64(),
@@ -99,7 +106,9 @@ export default defineSchema({
   })
     .index('by_status', ['status'])
     .index('by_home_team', ['homeTeam'])
-    .index('by_away_team', ['awayTeam']),
+    .index('by_away_team', ['awayTeam'])
+    .index('by_home_manager', ['homeManager.user'])
+    .index('by_away_manager', ['awayManager.user']),
 
   // Per-team lineup for a game: an ordered 1–9 batting list (array order IS the
   // batting order) plus the designated pitcher.

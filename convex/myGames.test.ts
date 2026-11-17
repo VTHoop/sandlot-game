@@ -6,8 +6,20 @@ import { convexTest, type TestConvex } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
+import type { MutationCtx } from './_generated/server'
 import type { GameListEntry } from './myGames'
 import schema from './schema'
+
+/** The game's managers as its teams' owners are today: these fixtures predate
+ * managers, and what they pin is who may act, not how that was decided (SAN-76). */
+async function ownerManagers(ctx: MutationCtx, homeTeam: Id<'teams'>, awayTeam: Id<'teams'>) {
+  const [home, away] = await Promise.all([ctx.db.get(homeTeam), ctx.db.get(awayTeam)])
+  if (!home || !away) throw new Error('fixture team missing')
+  return {
+    homeManager: { kind: 'user' as const, user: home.owner },
+    awayManager: { kind: 'user' as const, user: away.owner },
+  }
+}
 
 // convex-test discovers the function modules; exclude the test files themselves.
 const modules = import.meta.glob(['./**/*.ts', '!./**/*.test.ts'])
@@ -100,7 +112,12 @@ const insertGame = (
   awayTeam: Id<'teams'>,
   overrides: GameOverrides = {},
 ): Promise<Id<'games'>> =>
-  t.run((ctx) => ctx.db.insert('games', gameRow(homeTeam, awayTeam, overrides)))
+  t.run(async (ctx) =>
+    ctx.db.insert('games', {
+      ...gameRow(homeTeam, awayTeam, overrides),
+      ...(await ownerManagers(ctx, homeTeam, awayTeam)),
+    }),
+  )
 
 /** A resolved at-bat in the log at `createdAt` — the game's latest play when it
  * is the highest sequence. Only the time and order matter to the list. */
@@ -200,6 +217,15 @@ const giveKingfishersToHome = (league: League) =>
       .unique()
     if (!home) throw new Error('seed has no HOME user')
     await ctx.db.patch(league.kingfishers, { owner: home._id })
+    const games = await ctx.db
+      .query('games')
+      .withIndex('by_away_team', (q) => q.eq('awayTeam', league.kingfishers))
+      .collect()
+    await Promise.all(
+      games.map((game) =>
+        ctx.db.patch(game._id, { awayManager: { kind: 'user', user: home._id } }),
+      ),
+    )
   })
 
 const list = (t: Harness, identity: { subject: string }) =>

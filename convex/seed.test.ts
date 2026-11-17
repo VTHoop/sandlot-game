@@ -26,7 +26,6 @@ const SEED_IDENTITY = { subject: SEED_CLERK_SUBJECT }
 
 /** A real signed-in Clerk account — the kind a seeded club gets handed to. */
 const REAL_SUBJECT = 'user_real_person'
-const REAL_IDENTITY = { subject: REAL_SUBJECT }
 
 /** A second one, for moving a club that a real user already holds. */
 const OTHER_SUBJECT = 'user_second_tester'
@@ -67,18 +66,6 @@ function provision(t: Harness, subject: string): Promise<Id<'users'>> {
   return t.withIdentity({ subject }).mutation(api.users.provision, {})
 }
 
-/** Re-point one club at a Clerk subject, with the opt-in flag on. The mutation
- * answers nothing, which reaches a caller as `null`. */
-function runAssign(t: Harness, team: Id<'teams'>, clerkSubject: string): Promise<null> {
-  vi.stubEnv(SEED_ENV_FLAG, 'true')
-  return t.mutation(internal.seed.assignClubToUser, { team, clerkSubject })
-}
-
-/** Who holds this club right now. */
-function ownerOf(t: Harness, team: Id<'teams'>): Promise<Id<'users'> | undefined> {
-  return t.run(async (ctx) => (await ctx.db.get(team))?.owner)
-}
-
 /** Every club as `name:owner`, sorted — the whole ownership picture in one value. */
 function ownership(t: Harness): Promise<string[]> {
   return t.run(async (ctx) => {
@@ -88,14 +75,13 @@ function ownership(t: Harness): Promise<string[]> {
 }
 
 /**
- * Hand a seeded club to a real signed-in user, through both real paths: SAN-55
- * mints the row, SAN-62's dev-only assignment moves the club. Nothing here
- * patches `owner` directly, so the seed's behaviour after a claim is tested
- * against the mechanism that actually performs one.
+ * Hand a seeded club to a real signed-in user, as the product eventually will
+ * (the draft, SAN-34): nothing in the seed does it any more (SAN-76), so the test
+ * moves `teams.owner` directly.
  */
 async function claimClub(t: Harness, team: Id<'teams'>, subject = REAL_SUBJECT): Promise<void> {
-  await provision(t, subject)
-  await runAssign(t, team, subject)
+  const owner = await provision(t, subject)
+  await t.run((ctx) => ctx.db.patch(team, { owner }))
 }
 
 /** Count the rows a fork would visibly inflate. */
@@ -517,164 +503,6 @@ describe('minting an extra game — a club with no roster', () => {
   })
 })
 
-describe('dev club assignment — the environment gate', () => {
-  it('refuses to assign when the opt-in flag is absent', async () => {
-    const { t, row } = await seeded()
-    await provision(t, REAL_SUBJECT)
-    const before = await ownerOf(t, row.awayTeam)
-
-    vi.stubEnv(SEED_ENV_FLAG, undefined)
-    await expect(
-      t.mutation(internal.seed.assignClubToUser, {
-        team: row.awayTeam,
-        clerkSubject: REAL_SUBJECT,
-      }),
-    ).rejects.toThrow(SEED_ENV_FLAG)
-    expect(await ownerOf(t, row.awayTeam)).toBe(before)
-  })
-})
-
-/**
- * The subject must already resolve to a `users` row. Provisioning it here would
- * make this a second writer of `users`, and the `.unique()` safety on
- * `by_clerk_subject` — which has no unique constraint behind it — rests on
- * `upsertUserBySubject` (SAN-55) being the only one.
- */
-describe('dev club assignment — naming the user', () => {
-  it('refuses a Clerk subject with no users row rather than provisioning one', async () => {
-    const { t, row } = await seeded()
-
-    await expect(runAssign(t, row.awayTeam, 'user_never_signed_in')).rejects.toThrow(
-      /user_never_signed_in/,
-    )
-    // Only the seed owner — the refusal minted nothing.
-    const users = await t.run((ctx) => ctx.db.query('users').collect())
-    expect(users.map((user) => user.clerkSubject)).toEqual([SEED_CLERK_SUBJECT])
-  })
-
-  it('leaves the club where it was when it refuses', async () => {
-    const { t, row } = await seeded()
-    const before = await ownership(t)
-
-    await expect(runAssign(t, row.awayTeam, 'user_never_signed_in')).rejects.toThrow()
-
-    expect(await ownership(t)).toEqual(before)
-  })
-
-  it('names the bare id when the club row is gone entirely', async () => {
-    const { t, row } = await seeded()
-    await provision(t, REAL_SUBJECT)
-    const owner = await ownerOf(t, row.homeTeam)
-    if (!owner) throw new Error('seeded club has no owner')
-    // A stale id in someone's shell history, same as minting's ghost club.
-    const ghost = await t.run((ctx) => ctx.db.insert('teams', { owner, name: 'Deleted' }))
-    await t.run((ctx) => ctx.db.delete(ghost))
-
-    await expect(runAssign(t, ghost, REAL_SUBJECT)).rejects.toThrow(ghost)
-  })
-})
-
-describe('dev club assignment — what it moves', () => {
-  it('hands the named club to the named user', async () => {
-    const { t, row } = await seeded()
-    const user = await provision(t, REAL_SUBJECT)
-
-    await runAssign(t, row.awayTeam, REAL_SUBJECT)
-
-    expect(await ownerOf(t, row.awayTeam)).toBe(user)
-  })
-
-  it('leaves the club it was not named holding whoever held it', async () => {
-    const { t, row } = await seeded()
-    const seedOwner = await ownerOf(t, row.homeTeam)
-    await provision(t, REAL_SUBJECT)
-
-    await runAssign(t, row.awayTeam, REAL_SUBJECT)
-
-    // The seed owner keeps a club, which is what leaves a team for a bot to
-    // play (SAN-58).
-    expect(await ownerOf(t, row.homeTeam)).toBe(seedOwner)
-  })
-
-  it('lets one user hold both clubs, so a solo developer can play both sides', async () => {
-    const { t, row } = await seeded()
-    const user = await provision(t, REAL_SUBJECT)
-
-    await runAssign(t, row.awayTeam, REAL_SUBJECT)
-    await runAssign(t, row.homeTeam, REAL_SUBJECT)
-
-    expect(await ownerOf(t, row.awayTeam)).toBe(user)
-    expect(await ownerOf(t, row.homeTeam)).toBe(user)
-  })
-
-  it('succeeds as a no-op when the named user already holds the club', async () => {
-    const { t, row } = await seeded()
-    await claimClub(t, row.awayTeam)
-    const before = await t.run((ctx) => ctx.db.get(row.awayTeam))
-
-    // Running the same command twice is a normal dev move, not an error.
-    await runAssign(t, row.awayTeam, REAL_SUBJECT)
-
-    expect(await t.run((ctx) => ctx.db.get(row.awayTeam))).toEqual(before)
-  })
-})
-
-/**
- * Taking a club from a real user is allowed here by design: resetting a club, or
- * handing it back to the bot, is a normal dev move.
- */
-describe('dev club assignment — moving a club a real user already holds', () => {
-  it('re-points it to another test account', async () => {
-    const { t, row } = await seeded()
-    await claimClub(t, row.awayTeam)
-    const other = await provision(t, OTHER_SUBJECT)
-
-    await runAssign(t, row.awayTeam, OTHER_SUBJECT)
-
-    expect(await ownerOf(t, row.awayTeam)).toBe(other)
-  })
-
-  it('re-points it back to the seed owner', async () => {
-    const { t, row } = await seeded()
-    const seedOwner = await ownerOf(t, row.awayTeam)
-    await claimClub(t, row.awayTeam)
-
-    await runAssign(t, row.awayTeam, SEED_CLERK_SUBJECT)
-
-    expect(await ownerOf(t, row.awayTeam)).toBe(seedOwner)
-  })
-})
-
-/**
- * The point of the whole ticket: an assignment is what turns a signed-in
- * account into a game participant. The away club bats in the top half, so its
- * new owner swings while the seed owner — still holding the home club —
- * pitches.
- */
-describe('dev club assignment — the assigned user can play', () => {
-  it('refuses the real user before the assignment', async () => {
-    const { t, game } = await seeded()
-    await provision(t, REAL_SUBJECT)
-
-    await expect(
-      t.withIdentity(REAL_IDENTITY).mutation(api.game.startGame, { game }),
-    ).rejects.toThrow(/not authorized/i)
-  })
-
-  it('lets them start the game and swing once the club is theirs', async () => {
-    const { t, game, row, away } = await seeded()
-    await claimClub(t, row.awayTeam)
-
-    await t.withIdentity(REAL_IDENTITY).mutation(api.game.startGame, { game })
-    await t.withIdentity(SEED_IDENTITY).mutation(api.atBat.commitPitch, { game, number: 500 })
-    await t.withIdentity(REAL_IDENTITY).mutation(api.atBat.commitSwing, { game, number: 500 })
-
-    const atBats = await t.run((ctx) => ctx.db.query('atBats').collect())
-    expect(atBats).toHaveLength(1)
-    expect(atBats[0].batter).toBe(away.batters[0]._id)
-  })
-})
-
 type DevGameArgs = FunctionArgs<typeof internal.seed.devGame>
 /** The one-step dev game (SAN-66, SAN-71), with the opt-in flag on. */
 function runDevGame(t: Harness, args: DevGameArgs = {}): Promise<DevGameResult> {
@@ -687,21 +515,14 @@ function signIn(t: Harness, subject: string, name: string): Promise<Id<'users'>>
   return t.withIdentity({ subject, name }).mutation(api.users.provision, {})
 }
 
-/** Who holds each side of a game, by users row. */
+/** Who manages each side of a game: a users row, or `'bot'`. */
 function seating(t: Harness, game: Id<'games'>) {
   return t.run(async (ctx) => {
     const row = await ctx.db.get(game)
     if (!row) throw new Error('dev game returned an id with no game behind it')
-    const home = await ctx.db.get(row.homeTeam)
-    const away = await ctx.db.get(row.awayTeam)
-    return { status: row.status, home: home?.owner, away: away?.owner }
-  })
-}
-
-function seedOwnerId(t: Harness) {
-  return t.run(async (ctx) => {
-    const users = await ctx.db.query('users').collect()
-    return users.find((user) => user.clerkSubject === SEED_CLERK_SUBJECT)?._id
+    const who = (manager: typeof row.homeManager) =>
+      manager?.kind === 'user' ? manager.user : manager?.kind
+    return { status: row.status, home: who(row.homeManager), away: who(row.awayManager) }
   })
 }
 
@@ -710,18 +531,6 @@ async function signInSamAndMax(t: Harness) {
   const sam = await signIn(t, REAL_SUBJECT, 'Sam Hooper')
   const max = await signIn(t, OTHER_SUBJECT, 'Max Rivera')
   return { sam, max }
-}
-
-/** Open a game for play as one of its participants, so it is no longer scheduled. */
-function goLive(t: Harness, game: Id<'games'>, subject: string): Promise<unknown> {
-  return t.withIdentity({ subject }).mutation(api.game.startGame, { game })
-}
-
-/** A game of Sam (home) vs. Max (away) that Sam has started. */
-async function liveSamVsMax(t: Harness): Promise<DevGameResult> {
-  const live = await runDevGame(t, { home: 'sam', away: 'max' })
-  await goLive(t, live.game, REAL_SUBJECT)
-  return live
 }
 
 describe('dev game in one step — the environment gate', () => {
@@ -744,7 +553,7 @@ describe('dev game in one step — which accounts it seats', () => {
     expect(await seating(t, result.game)).toEqual({
       status: 'scheduled',
       home: me,
-      away: await seedOwnerId(t),
+      away: 'bot',
     })
     expect(result).toMatchObject({ home: 'Sam Hooper', away: 'bot' })
   })
@@ -771,7 +580,7 @@ describe('dev game in one step — which accounts it seats', () => {
 
     expect(await seating(t, result.game)).toMatchObject({
       home: max,
-      away: await seedOwnerId(t),
+      away: 'bot',
     })
   })
 
@@ -890,111 +699,7 @@ describe('dev game in one step — matching a name', () => {
   })
 })
 
-describe('dev game in one step — taking the clubs back', () => {
-  it('re-runs back to back on the same league, switching seating', async () => {
-    const t = harness()
-    const me = await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-
-    await runDevGame(t, { home: 'sam', away: 'sam' })
-    const second = await runDevGame(t, { home: 'sam' })
-
-    expect(await seating(t, second.game)).toMatchObject({ home: me, away: await seedOwnerId(t) })
-    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 2, lineups: 4 })
-  })
-
-  it('picks up a league whose clubs were assigned by hand', async () => {
-    const { t, row } = await seeded()
-    await claimClub(t, row.awayTeam)
-
-    const result = await runDevGame(t)
-
-    expect(await seating(t, result.game)).toMatchObject({ away: await seedOwnerId(t) })
-    expect(await census(t)).toMatchObject({ teams: 2, players: 20 })
-  })
-
-  it('takes the clubs from a holder who is not the one being seated', async () => {
-    const { t, row } = await seeded()
-    await claimClub(t, row.awayTeam, OTHER_SUBJECT)
-    const sam = await signIn(t, REAL_SUBJECT, 'Sam Hooper')
-
-    const result = await runDevGame(t, { home: 'sam' })
-
-    expect(await seating(t, result.game)).toMatchObject({ home: sam, away: await seedOwnerId(t) })
-  })
-})
-
-describe('dev game in one step — re-seating earlier games', () => {
-  it('re-seats not-yet-started games and counts them', async () => {
-    const t = harness()
-    const { max } = await signInSamAndMax(t)
-    const first = await runDevGame(t, { home: 'sam' })
-
-    const second = await runDevGame(t, { home: 'sam', away: 'max' })
-
-    expect(second.reseated).toBe(1)
-    expect((await seating(t, first.game)).away).toBe(max)
-  })
-
-  it('refuses to re-seat a game in progress, naming it and who plays it', async () => {
-    const t = harness()
-    await signInSamAndMax(t)
-    const live = await liveSamVsMax(t)
-    const before = await ownership(t)
-
-    const refusal = String(await runDevGame(t, { home: 'sam' }).catch((e: unknown) => e))
-
-    expect(refusal).toContain(live.game)
-    expect(refusal).toContain('Sam Hooper (home) vs. Max Rivera (away)')
-    expect(await ownership(t)).toEqual(before)
-    expect(await census(t)).toMatchObject({ games: 1 })
-  })
-
-  it('re-seats a game in progress when --force is given', async () => {
-    const t = harness()
-    await signInSamAndMax(t)
-    await liveSamVsMax(t)
-
-    const forced = await runDevGame(t, { home: 'sam', force: true })
-
-    expect(await seating(t, forced.game)).toMatchObject({ away: await seedOwnerId(t) })
-    expect(await census(t)).toMatchObject({ games: 2 })
-  })
-
-  it('reports the games in progress that a forced run moved', async () => {
-    const t = harness()
-    await signInSamAndMax(t)
-    await liveSamVsMax(t)
-
-    const forced = await runDevGame(t, { home: 'sam', force: true })
-
-    expect(forced).toMatchObject({ reseated: 0, inProgress: 1 })
-  })
-
-  it('moves finished games with the clubs, without counting them', async () => {
-    const t = harness()
-    const { max } = await signInSamAndMax(t)
-    const finished = await runDevGame(t, { home: 'sam', away: 'max' })
-    await t.run((ctx) => ctx.db.patch(finished.game, { status: 'final' }))
-
-    const next = await runDevGame(t, { home: 'max' })
-
-    expect(next).toMatchObject({ reseated: 0, inProgress: 0 })
-    expect((await seating(t, finished.game)).home).toBe(max)
-  })
-
-  it('never refuses, and re-seats nothing, when the seating is unchanged', async () => {
-    const t = harness()
-    await signInSamAndMax(t)
-    await liveSamVsMax(t)
-
-    const again = await runDevGame(t, { home: 'sam', away: 'max' })
-    const andAgain = await runDevGame(t, { home: 'sam', away: 'max' })
-
-    expect(again).toMatchObject({ reseated: 0, inProgress: 0 })
-    expect(andAgain).toMatchObject({ reseated: 0, inProgress: 0 })
-    expect(await census(t)).toEqual({ teams: 2, players: 20, games: 3, lineups: 6 })
-  })
-
+describe('dev game in one step — setting up the same pairing again', () => {
   it.each([
     ['one account against another', { home: 'sam', away: 'max' }],
     ['one account against the bot', { home: 'sam' }],
@@ -1022,25 +727,58 @@ describe('dev game in one step — re-seating earlier games', () => {
   })
 })
 
-describe('dev game in one step — refusing over corrupt seating', () => {
-  it('refuses rather than calling a missing holder the bot when naming a live game', async () => {
+describe('dev game in one step — bot-managed sides and team ownership (SAN-76)', () => {
+  it('makes the home side bot-managed with --home-bot, naming an account away', async () => {
     const t = harness()
-    const { sam } = await signInSamAndMax(t)
-    const live = await runDevGame(t, { home: 'sam', away: 'max' })
-    await goLive(t, live.game, REAL_SUBJECT)
-    await t.run((ctx) => ctx.db.delete(sam))
+    const { max } = await signInSamAndMax(t)
 
-    await expect(runDevGame(t, { home: 'max' })).rejects.toThrow(/no users row for its owner/)
+    const result = await runDevGame(t, { homeBot: true, away: 'max' })
+
+    expect(await seating(t, result.game)).toMatchObject({ home: 'bot', away: max })
+    expect(result).toMatchObject({ home: 'bot', away: 'Max Rivera' })
   })
 
-  it('names the bot only for a seat the seed owner holds', async () => {
+  it('makes the away side bot-managed with --away-bot', async () => {
+    const t = harness()
+    const { sam } = await signInSamAndMax(t)
+
+    const result = await runDevGame(t, { home: 'sam', awayBot: true })
+
+    expect(await seating(t, result.game)).toMatchObject({ home: sam, away: 'bot' })
+  })
+
+  it('refuses both sides bot-managed, writing nothing', async () => {
     const t = harness()
     await signInSamAndMax(t)
-    const live = await runDevGame(t, { home: 'sam' })
-    await goLive(t, live.game, REAL_SUBJECT)
 
-    const refusal = String(await runDevGame(t, { home: 'max' }).catch((e: unknown) => e))
+    await expect(runDevGame(t, { homeBot: true, awayBot: true })).rejects.toThrow(/both sides/)
+    expect(await census(t)).toEqual({ teams: 0, players: 0, games: 0, lineups: 0 })
+  })
 
-    expect(refusal).toContain('Sam Hooper (home) vs. bot (away)')
+  it('refuses a side that names an account and the bot at once', async () => {
+    const t = harness()
+    await signInSamAndMax(t)
+
+    await expect(runDevGame(t, { home: 'sam', homeBot: true })).rejects.toThrow(/use the bot/)
+  })
+
+  it('leaves team ownership and earlier games alone', async () => {
+    const t = harness()
+    await signInSamAndMax(t)
+    const first = await runDevGame(t, { home: 'sam', away: 'max' })
+    const owners = await ownership(t)
+    const before = await seating(t, first.game)
+
+    await runDevGame(t, { home: 'max', away: 'sam' })
+
+    expect(await ownership(t)).toEqual(owners)
+    expect(await seating(t, first.game)).toEqual(before)
+  })
+
+  it('refuses when a seed club has been moved to another owner, rather than seat around it', async () => {
+    const { t, row } = await seeded()
+    await claimClub(t, row.awayTeam)
+
+    await expect(runDevGame(t)).rejects.toThrow(/expected either none or exactly/)
   })
 })

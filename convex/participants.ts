@@ -4,13 +4,13 @@ import type { MutationCtx, QueryCtx } from './_generated/server'
 import { ClubSide } from './clubSide'
 
 /**
- * Shared Clerk-auth + team-ownership helpers for participant gating. Used by the
+ * Shared Clerk-auth + game-manager helpers for participant gating. Used by the
  * secret at-bat round-trip (`atBat.ts`), the authoritative game-state mutations
  * (`game.ts`), and account provisioning (`users.ts`) so the auth rules live in
- * exactly one place. {@link gamesOfClubs}, the one non-gating helper, is shared by
- * the "My games" read model (`myGames.ts`) and the dev seed (`seed.ts`). The Clerk subject — `subject` on the `UserIdentity` that
- * `ctx.auth.getUserIdentity()` returns — maps to a `users` row via
- * `by_clerk_subject` (docs/ABSTRACTIONS.md → ConvexProviderWithClerk).
+ * exactly one place. {@link gamesManagedBy}, the one non-gating helper, is the
+ * "My games" read model's lookup (`myGames.ts`). The Clerk subject — `subject` on
+ * the `UserIdentity` that `ctx.auth.getUserIdentity()` returns — maps to a `users`
+ * row via `by_clerk_subject` (docs/ABSTRACTIONS.md → ConvexProviderWithClerk).
  *
  * `ctx.auth.getUserIdentity()` and the `Not authenticated` message are spelled
  * only here. A caller that needs the raw identity — provisioning, which resolves
@@ -66,43 +66,62 @@ export async function authedUser(ctx: Ctx): Promise<Doc<'users'>> {
   return user
 }
 
-/** Whether `user` owns the given team. */
-export async function ownsTeam(ctx: Ctx, team: Id<'teams'>, user: Doc<'users'>): Promise<boolean> {
-  const doc = await ctx.db.get(team)
-  return doc !== null && doc.owner === user._id
-}
+/** One side's manager, as the schema persists it. */
+export type Manager = NonNullable<Doc<'games'>['homeManager']>
 
-export async function assertOwns(ctx: Ctx, team: Id<'teams'>, user: Doc<'users'>): Promise<void> {
-  if (!(await ownsTeam(ctx, team, user))) throw new Error('Not authorized for this team')
+/** Both sides' managers. */
+export interface GameManagers {
+  home: Manager
+  away: Manager
 }
 
 /**
- * Which of the two clubs the caller owns — both, for the one-account hotseat
- * (ADR-0028). Two named flags rather than a list, so a reader asks for the club
- * it means instead of searching.
+ * The managers of a game (SAN-76, ADR-0039) — the only door onto them. The schema
+ * fields are optional until the backfill has run everywhere, so a game without
+ * them is corrupt state: refuse rather than guess who plays it.
  */
-export interface ClubOwnership {
+export function managersOf(game: Doc<'games'>): GameManagers {
+  if (!game.homeManager || !game.awayManager) {
+    throw new Error(`Game ${game._id} has no managers recorded; run seed:backfillGameManagers`)
+  }
+  return { home: game.homeManager, away: game.awayManager }
+}
+
+/** Whether `manager` is this user. The bot is nobody's account. */
+export function isManagedBy(manager: Manager, user: Doc<'users'>): boolean {
+  return manager.kind === 'user' && manager.user === user._id
+}
+
+/** Whether this side of the game is played by the bot. */
+export function isBotManaged(manager: Manager): boolean {
+  return manager.kind === 'bot'
+}
+
+/** The manager of the side `team` plays for in this game. */
+export function managerOfTeam(game: Doc<'games'>, team: Id<'teams'>): Manager {
+  const managers = managersOf(game)
+  return team === game.homeTeam ? managers.home : managers.away
+}
+
+/**
+ * Which of the game's two sides the caller manages — both, for the one-account
+ * hotseat (ADR-0028). Two named flags rather than a list, so a reader asks for the
+ * side it means instead of searching. Team ownership plays no part (ADR-0039).
+ */
+export interface ManagedSides {
   home: boolean
   away: boolean
 }
 
-/** Which of the game's two clubs `user` owns. The two lookups are independent,
- * so they go out together. */
-export async function ownershipOf(
-  ctx: Ctx,
-  game: Doc<'games'>,
-  user: Doc<'users'>,
-): Promise<ClubOwnership> {
-  const [home, away] = await Promise.all([
-    ownsTeam(ctx, game.homeTeam, user),
-    ownsTeam(ctx, game.awayTeam, user),
-  ])
-  return { home, away }
+/** Which of the game's sides `user` manages. */
+export function managedSides(game: Doc<'games'>, user: Doc<'users'>): ManagedSides {
+  const managers = managersOf(game)
+  return { home: isManagedBy(managers.home, user), away: isManagedBy(managers.away, user) }
 }
 
-/** Whether the owner of `owns` is a participant — owns either club. The one
- * definition every participant gate reads, read model and mutation alike. */
-export const isParticipant = (owns: ClubOwnership): boolean => owns.home || owns.away
+/** Whether the user manages either side — the one definition every participant
+ * gate reads, read model and mutation alike. */
+export const isParticipant = (sides: ManagedSides): boolean => sides.home || sides.away
 
 /**
  * In the top half the away team bats and the home team pitches; the bottom half
@@ -133,25 +152,18 @@ export function sideLocked(
   return batting ? locks.swingCommitted : locks.pitchCommitted
 }
 
-/**
- * Every game a club in `clubs` plays in, each once — an owner of both clubs of a
- * game finds it through both indexes.
- */
-export async function gamesOfClubs(
-  ctx: Ctx,
-  clubs: readonly Id<'teams'>[],
-): Promise<Doc<'games'>[]> {
-  const found = await Promise.all(
-    clubs.flatMap((club) => [
-      ctx.db
-        .query('games')
-        .withIndex('by_home_team', (q) => q.eq('homeTeam', club))
-        .collect(),
-      ctx.db
-        .query('games')
-        .withIndex('by_away_team', (q) => q.eq('awayTeam', club))
-        .collect(),
-    ]),
-  )
-  return [...new Map(found.flat().map((game) => [game._id, game])).values()]
+/** Every game `user` manages a side of, each once — one account managing both
+ * sides of a game finds it through both indexes. */
+export async function gamesManagedBy(ctx: Ctx, user: Doc<'users'>): Promise<Doc<'games'>[]> {
+  const [home, away] = await Promise.all([
+    ctx.db
+      .query('games')
+      .withIndex('by_home_manager', (q) => q.eq('homeManager.user', user._id))
+      .collect(),
+    ctx.db
+      .query('games')
+      .withIndex('by_away_manager', (q) => q.eq('awayManager.user', user._id))
+      .collect(),
+  ])
+  return [...new Map([...home, ...away].map((game) => [game._id, game])).values()]
 }

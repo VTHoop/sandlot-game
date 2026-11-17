@@ -1,23 +1,22 @@
-// Mint a fresh dev game with real accounts seated in it, and print its URL
-// (SAN-66, SAN-71). Run from workspace root:
-//   pnpm dev:game [--home NAME] [--away NAME] [--force]
+// Mint a fresh dev game with its two managers recorded, and print its URL
+// (SAN-66, SAN-71, SAN-76). Run from workspace root:
+//   pnpm dev:game [--home NAME | --home-bot] [--away NAME | --away-bot]
 //
-//   --home NAME    seat this account at home; may be left out when the deployment
-//                  has one real account
-//   --away NAME    seat this account away; left out, the bot plays away. Naming
-//                  the --home account gives it both clubs
-//   --force        re-seat an earlier game still in progress (otherwise refused)
+//   --home NAME    this account manages the home side; may be left out when the
+//                  deployment has one real account
+//   --away NAME    this account manages the away side; left out, the bot plays away.
+//                  Naming the --home account gives it both sides
+//   --home-bot / --away-bot
+//                  the bot manages that side instead of an account (not both)
 //
 // NAME is an account's display name, ignoring case: the whole name or its first
-// word ("sam" finds "Sam Hooper"). The two seed clubs are taken back from whoever
-// holds them, so earlier games of those clubs follow them to the new holders.
+// word ("sam" finds "Sam Hooper"). Only the new game's managers are written: team
+// ownership and every earlier game are left alone.
 //
-// A thin wrapper over `npx convex run seed:devGame` — the bootstrap and the club
-// assignment happen server-side in one transaction (convex/seed.ts). Needs
-// SANDLOT_DEV_SEED=true on the dev deployment, and each seated account signed in
-// to the app once.
+// A thin wrapper over `npx convex run seed:devGame`. Needs SANDLOT_DEV_SEED=true
+// on the dev deployment, and each named account signed in to the app once.
 import { spawnSync } from 'node:child_process'
-import { parseArgs, parseResult, reseatNote, seatingLine } from './dev-game-args'
+import { managersLine, parseArgs, parseResult } from './dev-game-args'
 
 // Where the app may be served locally, in the order they are tried: a plain
 // `pnpm dev` (Vite's default, and what Playwright uses), then the agent
@@ -51,11 +50,9 @@ async function main(): Promise<number> {
   if (run.status !== 0) return run.status ?? 1
 
   const result = parseResult(run.stdout)
-  const note = reseatNote(result)
-  if (note) console.log(note)
   const origin = await servingOrigin()
   console.log(
-    `New game (${seatingLine(result)}):\n  ${origin ?? APP_ORIGINS[0]}/game/${result.game}`,
+    `New game (${managersLine(result)}):\n  ${origin ?? APP_ORIGINS[0]}/game/${result.game}`,
   )
   if (!origin) {
     console.log('No dev server is answering; start one with `pnpm dev` (and `npx convex dev`).')

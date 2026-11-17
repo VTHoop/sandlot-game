@@ -3,7 +3,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { internalMutation, internalQuery, mutation } from './_generated/server'
 import { duelLocks } from './atBat'
 import { ClubSide } from './clubSide'
-import { authedUser, sideLocked } from './participants'
+import { authedUser, managersOf, sideLocked } from './participants'
 import { clubSide, pushDevice } from './validators'
 
 /**
@@ -142,10 +142,16 @@ export const turnFor = internalQuery({
     if (!home || !away) throw new Error(`Game ${game._id} has a club that no longer exists`)
     if (sideLocked(game, locks, seat)) return null
 
-    const rows = await ctx.db
-      .query('pushSubscriptions')
-      .withIndex('by_user', (q) => q.eq('user', (seat === ClubSide.Home ? home : away).owner))
-      .collect()
+    const managers = managersOf(game)
+    const manager = seat === ClubSide.Home ? managers.home : managers.away
+    // The bot has no devices; an empty list keeps the reminder a quiet no-op.
+    const rows =
+      manager.kind === 'bot'
+        ? []
+        : await ctx.db
+            .query('pushSubscriptions')
+            .withIndex('by_user', (q) => q.eq('user', manager.user))
+            .collect()
     return {
       payload: JSON.stringify(turnPayload(game, home, away, seat)),
       subscriptions: rows.map(({ endpoint, p256dh, auth }) => ({ endpoint, p256dh, auth })),

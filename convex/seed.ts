@@ -1,10 +1,11 @@
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { internalMutation, type MutationCtx } from './_generated/server'
-import { isBotSeat } from './bot'
-import { gamesOfClubs, userBySubject } from './participants'
+import { ClubSide } from './clubSide'
+import type { GameManagers, Manager } from './participants'
 import { AWAY_TEAM, HOME_TEAM, type PitcherSpec, type TeamSpec } from './seedRoster'
 import { upsertUserBySubject } from './users'
+import { manager } from './validators'
 
 /**
  * Dev-only fixture seed (SAN-54, split in SAN-61).
@@ -14,19 +15,18 @@ import { upsertUserBySubject } from './users'
  * cap, and MLB ingest that eventually will are their own projects. This mints
  * that game so local development and manual QA have something to play.
  *
- * Three mutations, because the work has three lifecycles:
+ * Four mutations: three lifecycles, and a one-time backfill:
  *
  * - {@link bootstrapDevLeague} stands the league up — the owner, both clubs,
  *   their twenty players, and a scheduled game. Run once on a fresh deployment.
  * - {@link mintDevGame} takes two club ids and appends another scheduled game
  *   between them. Run whenever you want a fresh game.
- * - {@link assignClubToUser} hands one club to a real signed-in account, which
- *   is what turns it into a game participant. Run once per club a human should
- *   hold (SAN-62).
- *
- * {@link devGame} composes the three for the everyday case — a fresh game with
- * real accounts seated, chosen by display name — and is what `pnpm dev:game`
- * runs (SAN-66, SAN-71).
+ * - {@link devGame} writes a fresh game's managers — real accounts chosen by
+ *   display name, or the bot — and is what `pnpm dev:game` runs (SAN-66, SAN-71,
+ *   SAN-76). Who plays a game is its managers, never `teams.owner` (ADR-0039), so
+ *   no mutation here changes team ownership.
+ * - {@link backfillGameManagers} records the managers of games created before
+ *   SAN-76 from their teams' current owners.
  *
  * Bootstrap cannot stop short of that first game. A player row carries no team
  * column, so the *only* link from a club to its players is a `lineups` row, and
@@ -34,10 +34,12 @@ import { upsertUserBySubject } from './users'
  * game exists. Standing rosters are the draft/salary-cap project's to invent;
  * a dev fixture does not get to reshape the schema for its own tidiness.
  *
- * All three are fenced twice: each is an `internalMutation` (no browser client
- * can name it in any deployment) **and** none runs unless {@link SEED_ENV_FLAG}
- * is explicitly set to `true` on the deployment. Absence blocks — a fresh
- * deployment is safe before anyone thinks about it.
+ * The first three are fenced twice: each is an `internalMutation` (no browser
+ * client can name it in any deployment) **and** none runs unless
+ * {@link SEED_ENV_FLAG} is explicitly set to `true` on the deployment. Absence
+ * blocks — a fresh deployment is safe before anyone thinks about it. The backfill
+ * is internal-only and not gated on the flag: it must run on deployments that
+ * never enabled the seed.
  *
  * Re-running either game-creating mutation is a supported, additive operation,
  * not an idempotent one.
@@ -51,11 +53,9 @@ import { upsertUserBySubject } from './users'
  * both — so {@link assertClubsIntact} re-checks that assumption on every run and
  * refuses when a club has moved. Minting deliberately asks no such question: it
  * is handed two ids, and never looks up, infers, or asserts anything about who
- * owns them. That is what keeps the fixture working after a seeded club is
- * assigned to a real user ({@link assignClubToUser}) — the assignment breaks
- * *bootstrap* by design, and minting is the path that survives it.
- * {@link devGame} survives it differently: it finds the seed clubs by name,
- * whoever holds them, and hands them back to the owner before bootstrapping.
+ * owns them. That is what keeps the fixture working after a seeded club's owner
+ * has changed — the change breaks *bootstrap* by design, and minting is the path
+ * that survives it.
  *
  * Every reuse lookup here is read-then-insert *into the range it just read*,
  * which is what makes them safe without a unique constraint (none of these
@@ -133,12 +133,10 @@ function ownedClubs(ctx: MutationCtx, owner: Id<'users'>): Promise<Doc<'teams'>[
  * verifies its assumption every run instead of trusting it.
  *
  * Anything other than "no clubs yet" or "exactly my two" means a club left.
- * Bootstrap refuses rather than minting a replacement ({@link devGame} avoids
- * the question by handing the clubs back first): a replacement would carry no
- * prior lineup, so it would silently fork ten more players off the roster and
- * split the club's history in half. Handing a club to a real user is
- * {@link assignClubToUser}'s job (SAN-62) — not bootstrap's. Provisioning
- * (SAN-55) only mints the user; it assigns no club.
+ * Bootstrap refuses rather than minting a replacement: a replacement would carry
+ * no prior lineup, so it would silently fork ten more players off the roster and
+ * split the club's history in half. Provisioning (SAN-55) only mints the user; it
+ * assigns no club.
  */
 function assertClubsIntact(clubs: Doc<'teams'>[]): void {
   const names = clubs.map((club) => club.name)
@@ -250,11 +248,19 @@ async function requireRoster(ctx: MutationCtx, team: Id<'teams'>): Promise<Roste
   )
 }
 
-/** The scheduled game plus a lineup a side, returning the new game's id. */
-async function mintScheduledGame(ctx: MutationCtx, home: Side, away: Side): Promise<Id<'games'>> {
+/** The scheduled game, its managers, and a lineup a side; returns the new game's id. */
+async function mintScheduledGame(
+  ctx: MutationCtx,
+  home: Side,
+  away: Side,
+  managers: GameManagers,
+): Promise<Id<'games'>> {
   const game = await ctx.db.insert('games', {
     homeTeam: home.team,
     awayTeam: away.team,
+    // Written here, once, and never patched (SAN-76, ADR-0039).
+    homeManager: managers.home,
+    awayManager: managers.away,
     ...SCHEDULED_GAME,
   })
   await ctx.db.insert('lineups', { game, team: home.team, ...home.roster })
@@ -275,9 +281,15 @@ export const bootstrapDevLeague = internalMutation({
   handler: async (ctx): Promise<Id<'games'>> => {
     assertSeedEnabled()
     const owner = await seedOwner(ctx)
-    return (await bootstrap(ctx, owner)).game
+    const seedAccount: Manager = { kind: 'user', user: owner }
+    return (await bootstrap(ctx, owner, { home: seedAccount, away: seedAccount })).game
   },
 })
+
+/** The seed account as a user manager — what a game it mints defaults to. */
+async function seedManager(ctx: MutationCtx): Promise<Manager> {
+  return { kind: 'user', user: await seedOwner(ctx) }
+}
 
 /** The seed's synthetic owner row — the bot's account (SAN-58). */
 function seedOwner(ctx: MutationCtx): Promise<Id<'users'>> {
@@ -292,7 +304,11 @@ interface BootstrappedGame {
 }
 
 /** Bootstrap's body, for {@link bootstrapDevLeague} and {@link devGame} alike. */
-async function bootstrap(ctx: MutationCtx, owner: Id<'users'>): Promise<BootstrappedGame> {
+async function bootstrap(
+  ctx: MutationCtx,
+  owner: Id<'users'>,
+  managers: GameManagers,
+): Promise<BootstrappedGame> {
   const clubs = await ownedClubs(ctx, owner)
   assertClubsIntact(clubs)
 
@@ -303,6 +319,7 @@ async function bootstrap(ctx: MutationCtx, owner: Id<'users'>): Promise<Bootstra
     ctx,
     { team: homeTeam, roster: await clubRoster(ctx, homeTeam, HOME_TEAM) },
     { team: awayTeam, roster: await clubRoster(ctx, awayTeam, AWAY_TEAM) },
+    managers,
   )
   return { game, homeTeam, awayTeam }
 }
@@ -311,76 +328,21 @@ async function bootstrap(ctx: MutationCtx, owner: Id<'users'>): Promise<Bootstra
  * Append another scheduled game between two already-bootstrapped clubs,
  * returning its id.
  *
- * Two ids in, a game out: this asks nothing about who owns the clubs, so it
- * behaves identically before and after one is assigned to a real user (SAN-62).
- * That is the whole reason it is separate from {@link bootstrapDevLeague}, whose
- * owner + name lookup an assignment breaks by design.
- *
- * It does check that the two ids are *usable* — distinct, and each carrying a
- * roster — which is a question about the arguments, not about ownership. Both
- * refusals catch the same caller mistake: the wrong id. Writing the game anyway
- * would leave a club playing itself, or a fork of its roster.
+ * Two ids in, a game out: it asks nothing about who owns the clubs, and the game's
+ * managers default to the seed account on both sides unless the caller names them
+ * (SAN-76). It does check that the two ids are *usable* — distinct, and each
+ * carrying a roster — which is a question about the arguments, not about
+ * ownership. Both refusals catch the same caller mistake: the wrong id. Writing the
+ * game anyway would leave a club playing itself, or a fork of its roster.
  */
-/**
- * Re-point one club at the user behind a Clerk subject (SAN-62). Run from the
- * CLI to turn a real account into a game participant. This is the only way a
- * real user gets a club until the draft/salary-cap work lands — there is no
- * self-serve claiming in the app (SAN-65, ADR-0028), because seed clubs are test
- * fixtures and no public surface should hand them out:
- *
- * ```bash
- * npx convex run seed:assignClubToUser '{"team":"…","clerkSubject":"user_…"}'
- * ```
- *
- * The subject must already resolve to a `users` row — this refuses rather than
- * provisioning one, which keeps `upsertUserBySubject` (SAN-55) the single writer
- * of `users`. `by_clerk_subject` carries no unique constraint, so the `.unique()`
- * read every gate depends on is safe only while one function does the inserting.
- *
- * That row is minted by `users.provision`, which the client calls at sign-in
- * (SAN-38): the account has to sign in to the app once before it can be handed a
- * club. There is no CLI path to mint one — `provision` reads `ctx.auth`, and
- * `npx convex run` carries no identity.
- *
- * Two things it deliberately does NOT check:
- *
- * - **Who holds the club.** Taking one back from a real user is a normal dev
- *   move — resetting the fixture, handing it to a second test account, or
- *   returning it to the bot by passing `SEED_CLERK_SUBJECT` (a seat is the bot's
- *   exactly when the seed owner holds its club — SAN-58, ADR-0027).
- * - **How many clubs the user ends up with.** A solo developer holding both
- *   clubs can play both sides of a duel. Whether real users are limited to one
- *   club is the draft's question to answer, not this tool's.
- *
- * Re-running with the club's current holder is a no-op that succeeds, so the
- * command is safe to repeat.
- */
-export const assignClubToUser = internalMutation({
-  args: { team: v.id('teams'), clerkSubject: v.string() },
-  handler: async (ctx, { team, clerkSubject }): Promise<void> => {
-    assertSeedEnabled()
-
-    const user = await userBySubject(ctx, clerkSubject)
-    if (!user) {
-      throw new Error(
-        `Dev seed cannot assign a club to Clerk subject "${clerkSubject}": no users row for it. ` +
-          `Only users:provision creates one — sign in as that account once, then re-run.`,
-      )
-    }
-
-    const club = await ctx.db.get(team)
-    if (!club) {
-      throw new Error(`Dev seed cannot assign team ${team}: no club by that id.`)
-    }
-
-    if (club.owner === user._id) return
-    await ctx.db.patch(team, { owner: user._id })
-  },
-})
-
 export const mintDevGame = internalMutation({
-  args: { homeTeam: v.id('teams'), awayTeam: v.id('teams') },
-  handler: async (ctx, { homeTeam, awayTeam }): Promise<Id<'games'>> => {
+  args: {
+    homeTeam: v.id('teams'),
+    awayTeam: v.id('teams'),
+    homeManager: v.optional(manager),
+    awayManager: v.optional(manager),
+  },
+  handler: async (ctx, { homeTeam, awayTeam, homeManager, awayManager }): Promise<Id<'games'>> => {
     assertSeedEnabled()
     if (homeTeam === awayTeam) {
       throw new Error(
@@ -389,80 +351,96 @@ export const mintDevGame = internalMutation({
       )
     }
 
+    const seed = await seedManager(ctx)
     return mintScheduledGame(
       ctx,
       { team: homeTeam, roster: await requireRoster(ctx, homeTeam) },
       { team: awayTeam, roster: await requireRoster(ctx, awayTeam) },
+      { home: homeManager ?? seed, away: awayManager ?? seed },
     )
   },
 })
 
-/** The bot's name in a seating line: a seat the seed owner holds. */
+/** The bot's name in a managers line. */
 const BOT_NAME = 'bot'
 
-/** What {@link devGame} set up: the new game, who sits where, and what it re-seated. */
+/** What {@link devGame} set up: the new game and who manages each side. */
 export interface DevGameResult {
   game: Id<'games'>
-  /** Full display name of the home club's holder, or `bot`. */
+  /** Full display name of the home side's manager, or `bot`. */
   home: string
-  /** Full display name of the away club's holder, or `bot`. */
+  /** Full display name of the away side's manager, or `bot`. */
   away: string
-  /** Earlier not-yet-started games of the seed clubs whose seating just changed. */
-  reseated: number
-  /** Earlier games in progress that moved with the clubs — only ever with `force`. */
-  inProgress: number
+}
+
+/** One side of a {@link devGame} request: an account by name, the bot, or unsaid. */
+interface SideRequest {
+  name: string | undefined
+  bot: boolean | undefined
 }
 
 /**
  * One step from "signed in" to "a game I'm in" (SAN-66, `pnpm dev:game`): mint a
- * fresh scheduled game with real accounts holding the seed clubs, chosen by
- * display name (SAN-71). `home` seats the home club; `away` seats the away club,
- * or leaves it with the seed owner for the bot to play (SAN-58). Naming the same
- * account for both hands it both clubs.
- *
- * It composes the other three rather than adding a fourth way to do anything:
- * the seed clubs go back to the seed owner from *whoever* holds them, a bootstrap
- * run mints the game against the reassembled league, and the clubs are handed
- * out again. The hand-back happens on every run — bootstrap finds the clubs only
- * through the seed owner — including one that keeps the current seating. All in
- * one transaction, so nothing observes the intermediate ownership.
- *
- * Ownership is per club, so every earlier game of those clubs follows them to
- * their new holders: games not yet started and finished games quietly, a game in
- * progress only with `force` (without it, the run refuses, naming the game and who
- * plays it). A run that keeps the current seating moves nothing, so it is never
- * refused and reports nothing re-seated.
- *
- * With one real account, `home` defaults to it. With several, `home` is required.
+ * fresh scheduled game and write the accounts named by display name (SAN-71) as its
+ * managers (SAN-76, ADR-0039). Team ownership is left alone, and so is every
+ * earlier game. `home` defaults to the deployment's only real account; `away`
+ * defaults to the bot. Either side can name the bot with `homeBot` / `awayBot`
+ * instead of an account; both sides bot-managed is refused (ADR-0027). Naming the
+ * same account for both sides gives it both.
  */
 export const devGame = internalMutation({
   args: {
     home: v.optional(v.string()),
     away: v.optional(v.string()),
-    force: v.optional(v.boolean()),
+    homeBot: v.optional(v.boolean()),
+    awayBot: v.optional(v.boolean()),
   },
-  handler: async (ctx, { home, away, force = false }): Promise<DevGameResult> => {
+  handler: async (ctx, args): Promise<DevGameResult> => {
     assertSeedEnabled()
 
     const accounts = await realAccounts(ctx)
-    const homeUser = resolveHome(accounts, home)
-    const awayUser = away === undefined ? null : resolveByName(accounts, away)
+    const homeUser = resolveSide(accounts, { name: args.home, bot: args.homeBot }, ClubSide.Home)
+    const awayUser = resolveSide(accounts, { name: args.away, bot: args.awayBot }, ClubSide.Away)
+    if (homeUser === null && awayUser === null) {
+      throw new Error('Dev seed cannot make both sides bot-managed (ADR-0027).')
+    }
     const owner = await seedOwner(ctx)
-    const awayId = awayUser?._id ?? owner
-
-    const moved = await returnSeedClubs(ctx, owner, { home: homeUser._id, away: awayId }, force)
-    const { game, homeTeam, awayTeam } = await bootstrap(ctx, owner)
-    await ctx.db.patch(homeTeam, { owner: homeUser._id })
-    await ctx.db.patch(awayTeam, { owner: awayId })
+    const { game } = await bootstrap(ctx, owner, {
+      home: managerFor(homeUser),
+      away: managerFor(awayUser),
+    })
 
     return {
       game,
-      home: homeUser.displayName,
+      home: homeUser?.displayName ?? BOT_NAME,
       away: awayUser?.displayName ?? BOT_NAME,
-      ...moved,
     }
   },
 })
+
+function managerFor(account: Doc<'users'> | null): Manager {
+  return account ? { kind: 'user', user: account._id } : { kind: 'bot' }
+}
+
+/**
+ * The account a side names, or null when the bot plays it. Naming an account and
+ * asking for the bot on one side contradict each other. Left unsaid, away is the
+ * bot and home is the deployment's only account.
+ */
+function resolveSide(
+  accounts: readonly Doc<'users'>[],
+  { name, bot }: SideRequest,
+  side: ClubSide,
+): Doc<'users'> | null {
+  if (bot && name !== undefined) {
+    throw new Error(
+      `Dev seed was told both to name "${name}" manager and to use the bot at ${side}.`,
+    )
+  }
+  if (bot) return null
+  if (name !== undefined) return resolveByName(accounts, name)
+  return side === ClubSide.Home ? resolveHome(accounts, undefined) : null
+}
 
 /** Every signed-in account but the bot's — the only ones a name can match. */
 async function realAccounts(ctx: MutationCtx): Promise<Doc<'users'>[]> {
@@ -499,7 +477,7 @@ function resolveByName(accounts: readonly Doc<'users'>[], name: string): Doc<'us
   }
   throw new Error(
     `Dev seed found several accounts named "${name}": ${describeAccounts(matches)}. ` +
-      `Two accounts with the same display name cannot be seated until one is renamed.`,
+      `Two accounts with the same display name cannot be named managers until one is renamed.`,
   )
 }
 
@@ -517,90 +495,38 @@ function resolveHome(accounts: readonly Doc<'users'>[], home: string | undefined
   )
 }
 
-/** Both seed clubs, whoever holds them. Dev data is small enough to read whole. */
-async function seedClubs(ctx: MutationCtx): Promise<Doc<'teams'>[]> {
-  const seedNames = new Set([HOME_TEAM.name, AWAY_TEAM.name])
-  const teams = await ctx.db.query('teams').collect()
-  return teams.filter((club) => seedNames.has(club.name))
-}
-
 /**
- * Who holds a club, by display name, for a refusal to quote: `bot` for a seat the
- * seed owner holds (ADR-0027), else the holder's name. A club or holder that does
- * not exist is corrupt data, so this throws rather than calling it the bot.
+ * Fill in the managers of games created before SAN-76 (ADR-0039), from their
+ * teams' *current* owners — the last time ownership decides anything about a game.
+ * A side whose team the seed account holds is bot-managed while the seed is
+ * enabled, else the seed account is its user manager. A team or owner that no
+ * longer exists fails the whole run; a game is never skipped. Sides that already
+ * have a manager are left alone, so re-running is safe. Returns how many games
+ * were filled in.
  */
-async function holderName(ctx: MutationCtx, team: Id<'teams'>): Promise<string> {
-  if (await isBotSeat(ctx, team)) return BOT_NAME
+export const backfillGameManagers = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<number> => {
+    const games = await ctx.db.query('games').collect()
+    const missing = games.filter((game) => !game.homeManager || !game.awayManager)
+    for (const game of missing) {
+      const [home, away] = await Promise.all([
+        game.homeManager ?? backfilledManager(ctx, game.homeTeam),
+        game.awayManager ?? backfilledManager(ctx, game.awayTeam),
+      ])
+      await ctx.db.patch(game._id, { homeManager: home, awayManager: away })
+    }
+    return missing.length
+  },
+})
+
+async function backfilledManager(ctx: MutationCtx, team: Id<'teams'>): Promise<Manager> {
   const club = await ctx.db.get(team)
-  if (!club) throw new Error(`Dev seed cannot name the holder of team ${team}: no club by that id.`)
-  const holder = await ctx.db.get(club.owner)
-  if (!holder) {
-    throw new Error(
-      `Dev seed cannot name the holder of club "${club.name}": no users row for its owner.`,
-    )
+  if (!club) throw new Error(`Cannot backfill managers: team ${team} no longer exists`)
+  const owner = await ctx.db.get(club.owner)
+  if (!owner) {
+    throw new Error(`Cannot backfill managers: owner of team "${club.name}" no longer exists`)
   }
-  return holder.displayName
-}
-
-/** `Sam (home) vs. bot (away)` for a game as its clubs are held right now. */
-async function playersOf(ctx: MutationCtx, game: Doc<'games'>): Promise<string> {
-  const [home, away] = await Promise.all([
-    holderName(ctx, game.homeTeam),
-    holderName(ctx, game.awayTeam),
-  ])
-  return `${home} (home) vs. ${away} (away)`
-}
-
-/** What taking the clubs back moved: games not yet started, and games in progress. */
-type Moved = Pick<DevGameResult, 'reseated' | 'inProgress'>
-
-/**
- * The earlier games the clubs' move re-seats, or refusal when one is in progress
- * and `force` is off. A move that keeps the current seating re-seats nothing.
- */
-async function gamesMoved(
-  ctx: MutationCtx,
-  clubs: readonly Doc<'teams'>[],
-  seating: { home: Id<'users'>; away: Id<'users'> },
-  force: boolean,
-): Promise<Moved> {
-  const holder = (name: string) => clubs.find((club) => club.name === name)?.owner
-  if (holder(HOME_TEAM.name) === seating.home && holder(AWAY_TEAM.name) === seating.away) {
-    return { reseated: 0, inProgress: 0 }
-  }
-
-  const games = await gamesOfClubs(
-    ctx,
-    clubs.map((club) => club._id),
-  )
-  const live = games.filter((game) => game.status === 'live')
-  if (live.length > 0 && !force) {
-    const named = await Promise.all(
-      live.map(async (game) => `${game._id}: ${await playersOf(ctx, game)}`),
-    )
-    throw new Error(
-      `Dev seed would re-seat a game in progress — ${named.join('; ')}. ` +
-        `Pass --force to re-seat it anyway.`,
-    )
-  }
-  return {
-    reseated: games.filter((game) => game.status === 'scheduled').length,
-    inProgress: live.length,
-  }
-}
-
-/**
- * Hand the seed clubs back to the seed owner from whoever holds them, so
- * bootstrap finds its two — on every run, whether or not the seating changes.
- */
-async function returnSeedClubs(
-  ctx: MutationCtx,
-  owner: Id<'users'>,
-  seating: { home: Id<'users'>; away: Id<'users'> },
-  force: boolean,
-): Promise<Moved> {
-  const clubs = await seedClubs(ctx)
-  const moved = await gamesMoved(ctx, clubs, seating, force)
-  await Promise.all(clubs.map((club) => ctx.db.patch(club._id, { owner })))
-  return moved
+  if (isSeedEnabled() && owner.clerkSubject === SEED_CLERK_SUBJECT) return { kind: 'bot' }
+  return { kind: 'user', user: owner._id }
 }

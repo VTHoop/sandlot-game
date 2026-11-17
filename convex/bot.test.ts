@@ -72,9 +72,31 @@ function atBats(t: Harness, game: Id<'games'>): Promise<Doc<'atBats'>[]> {
   )
 }
 
-async function giveClub(t: Harness, team: Id<'teams'>, who: typeof HUMAN): Promise<void> {
+/** Make `who` the manager of the side `team` plays in its games (SAN-76). */
+async function manageSideOf(t: Harness, team: Id<'teams'>, who: typeof HUMAN): Promise<void> {
   await t.withIdentity(who).mutation(api.users.provision, {})
-  await t.mutation(internal.seed.assignClubToUser, { team, clerkSubject: who.subject })
+  await t.run(async (ctx) => {
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_clerk_subject', (q) => q.eq('clerkSubject', who.subject))
+      .unique()
+    if (!user) throw new Error('not provisioned')
+    const manager = { kind: 'user' as const, user: user._id }
+    const [home, away] = await Promise.all([
+      ctx.db
+        .query('games')
+        .withIndex('by_home_team', (q) => q.eq('homeTeam', team))
+        .collect(),
+      ctx.db
+        .query('games')
+        .withIndex('by_away_team', (q) => q.eq('awayTeam', team))
+        .collect(),
+    ])
+    await Promise.all([
+      ...home.map((game) => ctx.db.patch(game._id, { homeManager: manager })),
+      ...away.map((game) => ctx.db.patch(game._id, { awayManager: manager })),
+    ])
+  })
 }
 
 /**
@@ -87,7 +109,8 @@ async function seededBotGame() {
   vi.stubEnv(SEED_ENV_FLAG, 'true')
   const game = await t.mutation(internal.seed.bootstrapDevLeague, {})
   const { homeTeam, awayTeam } = await gameRow(t, game)
-  await giveClub(t, homeTeam, HUMAN)
+  await manageSideOf(t, homeTeam, HUMAN)
+  await t.run((ctx) => ctx.db.patch(game, { awayManager: { kind: 'bot' } }))
   return { t, game, homeTeam, awayTeam }
 }
 
@@ -181,9 +204,9 @@ describe('server-side bot — the rules a human commit obeys', () => {
     expect(await commitments(t, game)).toHaveLength(0)
   })
 
-  it('fails loudly when triggered for a seat whose club the bot no longer holds', async () => {
+  it('fails loudly when triggered for a seat the game does not name the bot for', async () => {
     const { t, game, awayTeam } = await startedBotGame()
-    await giveClub(t, awayTeam, OTHER)
+    await manageSideOf(t, awayTeam, OTHER)
 
     await expect(
       t.mutation(internal.atBat.commitBotSeat, { game, sequence: 0, role: 'batting' }),
@@ -193,18 +216,19 @@ describe('server-side bot — the rules a human commit obeys', () => {
 })
 
 describe('server-side bot — dev-only', () => {
-  it('never commits where the dev seed is not enabled', async () => {
+  it('plays a side the game names it for even where the dev seed is not enabled', async () => {
+    // Spec change (SAN-76, ADR-0039): the seed flag no longer gates the bot.
     const { t, game } = await seededBotGame()
     vi.stubEnv(SEED_ENV_FLAG, 'false')
     await t.withIdentity(HUMAN).mutation(api.game.startGame, { game })
     await runScheduled(t)
 
-    expect(await commitments(t, game)).toHaveLength(0)
+    expect(await commitments(t, game)).toHaveLength(1)
   })
 
-  it('never commits in a game where both clubs are held by humans', async () => {
+  it('never commits in a game where both sides are managed by humans', async () => {
     const { t, game, awayTeam } = await seededBotGame()
-    await giveClub(t, awayTeam, OTHER)
+    await manageSideOf(t, awayTeam, OTHER)
     await t.withIdentity(HUMAN).mutation(api.game.startGame, { game })
     await runScheduled(t)
 

@@ -4,7 +4,7 @@ import type { FunctionArgs } from 'convex/server'
 import type { internal } from '../convex/_generated/api'
 import type { DevGameResult as ServerResult } from '../convex/seed'
 
-export const USAGE = 'usage: pnpm dev:game [--home NAME] [--away NAME] [--force]'
+export const USAGE = 'usage: pnpm dev:game [--home NAME | --home-bot] [--away NAME | --away-bot]'
 
 export type DevGameArgs = FunctionArgs<typeof internal.seed.devGame>
 
@@ -30,8 +30,10 @@ export function parseArgs(argv: readonly string[]): DevGameArgs {
       args.home = nameAfter(flag, rest)
     } else if (flag === '--away') {
       args.away = nameAfter(flag, rest)
-    } else if (flag === '--force') {
-      args.force = true
+    } else if (flag === '--home-bot') {
+      args.homeBot = true
+    } else if (flag === '--away-bot') {
+      args.awayBot = true
     } else {
       throw new Error(`unknown argument: ${flag}\n${USAGE}`)
     }
@@ -39,22 +41,9 @@ export function parseArgs(argv: readonly string[]): DevGameArgs {
   return args
 }
 
-/** `Sam (home) vs. Max (away)`, by full display name; `bot` when it plays. */
-export function seatingLine(result: Pick<DevGameResult, 'home' | 'away'>): string {
+/** `Sam (home) vs. Max (away)`, by full display name; `bot` when it manages a side. */
+export function managersLine(result: Pick<DevGameResult, 'home' | 'away'>): string {
   return `${result.home} (home) vs. ${result.away} (away)`
-}
-
-/** The note for earlier games the run re-seated, or null when it moved none. */
-export function reseatNote(result: DevGameResult): string | null {
-  if (result.reseated === 0 && result.inProgress === 0) return null
-  const parts = []
-  if (result.reseated > 0) parts.push(countOf(result.reseated, 'earlier game'))
-  if (result.inProgress > 0) parts.push(`${countOf(result.inProgress, 'game')} in progress`)
-  return `Re-seated ${parts.join(' and ')}: ${seatingLine(result)}.`
-}
-
-function countOf(count: number, noun: string): string {
-  return count === 1 ? `1 ${noun}` : `${count} ${noun}s`
 }
 
 type Fields = ReadonlyMap<string, unknown>
@@ -66,12 +55,6 @@ function unexpected(stdout: string): Error {
 function requireText(fields: Fields, key: keyof DevGameResult, stdout: string): string {
   const value = fields.get(key)
   if (typeof value !== 'string') throw unexpected(stdout)
-  return value
-}
-
-function requireCount(fields: Fields, key: keyof DevGameResult, stdout: string): number {
-  const value = fields.get(key)
-  if (typeof value !== 'number') throw unexpected(stdout)
   return value
 }
 
@@ -91,7 +74,5 @@ export function parseResult(stdout: string): DevGameResult {
     game,
     home: requireText(fields, 'home', stdout),
     away: requireText(fields, 'away', stdout),
-    reseated: requireCount(fields, 'reseated', stdout),
-    inProgress: requireCount(fields, 'inProgress', stdout),
   }
 }

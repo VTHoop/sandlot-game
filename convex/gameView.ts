@@ -5,7 +5,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import { duelLocks } from './atBat'
 import { ClubSide } from './clubSide'
-import { type ClubOwnership, type Ctx, maybeUser, ownershipOf, teamsForHalf } from './participants'
+import { type Ctx, type ManagedSides, managedSides, maybeUser, teamsForHalf } from './participants'
 
 /**
  * The secret-safe live game read model (SAN-56) — the one query a client
@@ -28,7 +28,7 @@ import { type ClubOwnership, type Ctx, maybeUser, ownershipOf, teamsForHalf } fr
  * PERSPECTIVE — every number here is ABSOLUTE (home/away), never "you"/"them",
  * so the situation itself reads the same for both participants. Exactly three
  * fields are resolved per caller: `viewer` (the one side they read as),
- * `viewerOwns` (every club they own — both, for the hotseat) and, while live,
+ * `viewerOwns` (every side they manage — both, for the hotseat) and, while live,
  * `viewerSeat`. The duel's view-models stay absolute too (ADR-0030): the client
  * does not translate these totals into "you"/"them", and reads the per-caller
  * fields only to decide which seats it drives.
@@ -112,11 +112,11 @@ interface GameViewCommon {
   away: ClubView
   viewer: ClubSide
   /**
-   * Every club the caller owns. `viewer` names ONE side — home, for an owner of
-   * both — so it cannot tell a hotseat from a home-side player. This can, and it
+   * Every side the caller manages. `viewer` names ONE side — home, for a manager
+   * of both — so it cannot tell a hotseat from a home-side player. This can, and it
    * is what a client reads to decide which seats it drives.
    */
-  viewerOwns: ClubOwnership
+  viewerOwns: ManagedSides
 }
 
 /**
@@ -352,12 +352,12 @@ function winnerOf(game: Doc<'games'>): ClubSide | null {
 // ─── The gate ───────────────────────────────────────────────────────────────
 
 /**
- * The one side `viewer` names, or null when the caller owns neither club. Home
- * wins, so a caller who owns BOTH — the one-account hotseat — reads as the home
+ * The one side `viewer` names, or null when the caller manages neither side. Home
+ * wins, so a caller who manages BOTH — the one-account hotseat — reads as the home
  * side and their seat follows the half like anyone else's. `viewerOwns` is what
  * tells that caller apart.
  */
-function viewerSideOf(owns: ClubOwnership): ClubSide | null {
+function viewerSideOf(owns: ManagedSides): ClubSide | null {
   if (owns.home) return ClubSide.Home
   if (owns.away) return ClubSide.Away
   return null
@@ -435,7 +435,7 @@ export const getGame = query({
 
     const user = await maybeUser(ctx)
     if (!user) return null
-    const viewerOwns = await ownershipOf(ctx, game, user)
+    const viewerOwns = managedSides(game, user)
     const viewer = viewerSideOf(viewerOwns)
     if (!viewer) return null
 

@@ -9,6 +9,28 @@ import type { MutationCtx } from './_generated/server'
 import { ClubSide, type GameView, SeatRole } from './gameView'
 import schema from './schema'
 
+/** Make `user` the manager of the away side of every game `team` plays away in. */
+async function manageAwaySide(ctx: MutationCtx, team: Id<'teams'>, user: Id<'users'>) {
+  const games = await ctx.db
+    .query('games')
+    .withIndex('by_away_team', (q) => q.eq('awayTeam', team))
+    .collect()
+  await Promise.all(
+    games.map((game) => ctx.db.patch(game._id, { awayManager: { kind: 'user', user } })),
+  )
+}
+
+/** The game's managers as its teams' owners are today: these fixtures predate
+ * managers, and what they pin is who may act, not how that was decided (SAN-76). */
+async function ownerManagers(ctx: MutationCtx, homeTeam: Id<'teams'>, awayTeam: Id<'teams'>) {
+  const [home, away] = await Promise.all([ctx.db.get(homeTeam), ctx.db.get(awayTeam)])
+  if (!home || !away) throw new Error('fixture team missing')
+  return {
+    homeManager: { kind: 'user' as const, user: home.owner },
+    awayManager: { kind: 'user' as const, user: away.owner },
+  }
+}
+
 // convex-test discovers the function modules; exclude the test files themselves.
 const modules = import.meta.glob(['./**/*.ts', '!./**/*.test.ts'])
 
@@ -121,7 +143,10 @@ async function seedScheduledGame() {
     const awayTeam = await ctx.db.insert('teams', { owner: awayUser, name: 'Harbor Kingfishers' })
     const roster = await insertRoster(ctx)
 
-    const game = await ctx.db.insert('games', scheduledRow(homeTeam, awayTeam))
+    const game = await ctx.db.insert('games', {
+      ...scheduledRow(homeTeam, awayTeam),
+      ...(await ownerManagers(ctx, homeTeam, awayTeam)),
+    })
     await ctx.db.insert('lineups', {
       game,
       team: awayTeam,
@@ -206,7 +231,10 @@ describe('getGame — the participant gate', () => {
     // A well-formed id for a game that is not there — indistinguishable from the
     // two refusals above, so no caller can probe which games exist.
     const vanished = await t.run(async (ctx) => {
-      const id = await ctx.db.insert('games', scheduledRow(homeTeam, awayTeam))
+      const id = await ctx.db.insert('games', {
+        ...scheduledRow(homeTeam, awayTeam),
+        ...(await ownerManagers(ctx, homeTeam, awayTeam)),
+      })
       await ctx.db.delete(id)
       return id
     })
@@ -307,7 +335,9 @@ describe('getGame — live', () => {
         .query('users')
         .withIndex('by_clerk_subject', (q) => q.eq('clerkSubject', HOME.subject))
         .unique()
-      if (home) await ctx.db.patch(awayTeam, { owner: home._id })
+      if (!home) return
+      await ctx.db.patch(awayTeam, { owner: home._id })
+      await manageAwaySide(ctx, awayTeam, home._id)
     })
 
     const view = live(await read(t, HOME, game))
@@ -446,6 +476,7 @@ async function giveAwayClubToHome(t: Harness, awayTeam: Id<'teams'>) {
       .unique()
     if (!home) throw new Error('seed has no home owner')
     await ctx.db.patch(awayTeam, { owner: home._id })
+    await manageAwaySide(ctx, awayTeam, home._id)
   })
 }
 

@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import type { Doc, Id } from './_generated/dataModel'
 import { type MutationCtx, mutation, query } from './_generated/server'
-import { authedUser, type Ctx, isParticipant, maybeUser, ownershipOf } from './participants'
+import { authedUser, type Ctx, isParticipant, managedSides, maybeUser } from './participants'
 
 /**
  * Which reveal each participant has dismissed (SAN-22, ADR-0034).
@@ -18,11 +18,11 @@ import { authedUser, type Ctx, isParticipant, maybeUser, ownershipOf } from './p
  * never a duel number — a sequence is only ever one the log already shows.
  */
 
-/** One refusal for a game that is not there and a game the caller has no club
- * in, so the mutation cannot say which games exist (ADR-0025). */
+/** One refusal for a game that is not there and a game the caller does not
+ * manage a side of, so the mutation cannot say which games exist (ADR-0025). */
 const NOT_A_PARTICIPANT = 'Not a participant in this game'
 
-/** The game, if `user` owns either of its clubs; otherwise null, whether or not
+/** The game, if `user` manages either of its sides; otherwise null, whether or not
  * the game exists. */
 async function participantGame(
   ctx: Ctx,
@@ -31,7 +31,7 @@ async function participantGame(
 ): Promise<Doc<'games'> | null> {
   const game = await ctx.db.get(id)
   if (!game) return null
-  return isParticipant(await ownershipOf(ctx, game, user)) ? game : null
+  return isParticipant(managedSides(game, user)) ? game : null
 }
 
 /** The user's dismissal row for a game. `.unique()` throws on a duplicate rather

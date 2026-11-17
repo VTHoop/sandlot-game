@@ -30,6 +30,8 @@ const EXPECTED_INDEXES: Record<string, Record<string, string[]>> = {
     by_status: ['status'],
     by_home_team: ['homeTeam'],
     by_away_team: ['awayTeam'],
+    by_home_manager: ['homeManager.user'],
+    by_away_manager: ['awayManager.user'],
   },
   lineups: { by_game: ['game'], by_team: ['team'] },
   duelCommitments: { by_game: ['game', 'sequence', 'role'] },

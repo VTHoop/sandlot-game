@@ -4,7 +4,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { query } from './_generated/server'
 import type { ResolvedAtBatView } from './duelContract'
 import { atBatLog, type ClubTotals, creditBatting, halfOf, hitsOf, rowsInHalf } from './gameView'
-import { type Ctx, isParticipant, maybeUser, ownershipOf } from './participants'
+import { type Ctx, isParticipant, managedSides, maybeUser } from './participants'
 
 /**
  * The resolved at-bat read model (SAN-39): the last at-bat a game resolved,
@@ -71,7 +71,7 @@ async function namedPlayer(
  * The most recently resolved at-bat of a game, for a participant — or `null`.
  *
  * `null` covers four cases identically: no at-bat has resolved yet, the caller
- * owns neither club, there is no caller (or no `users` row), and the game does
+ * manages neither side, there is no caller (or no `users` row), and the game does
  * not exist — or the id names no game at all. Those refusals are `getGame`'s
  * refusal to be an oracle for which games exist (ADR-0025), made the same way;
  * the first is simply nothing to show.
@@ -90,7 +90,7 @@ export const getLastAtBat = query({
     const game = await ctx.db.get(id)
     if (!game) return null
     const user = await maybeUser(ctx)
-    if (!user || !isParticipant(await ownershipOf(ctx, game, user))) return null
+    if (!user || !isParticipant(managedSides(game, user))) return null
 
     const log = await atBatLog(ctx, game._id)
     // The last row, destructured off a slice rather than indexed — no computed
