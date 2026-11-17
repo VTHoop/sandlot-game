@@ -46,7 +46,7 @@ that no longer exists fails the run; no game is skipped.
 **Rollout.** The two schema fields are optional until the backfill has run on
 every deployment. Every reader goes through `managersOf`, which throws on a
 missing manager rather than guess. Making the fields required, and deleting the
-backfill, is a follow-up the owner schedules once the backfill has run everywhere.
+backfill, is a follow-up (SAN-83) to do once the backfill has run everywhere.
 Until then a `games` insert that omits the managers typechecks and fails only when
 the game is first read.
 
