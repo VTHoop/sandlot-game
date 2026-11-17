@@ -16,7 +16,7 @@
 // A thin wrapper over `npx convex run seed:devGame`. Needs SANDLOT_DEV_SEED=true
 // on the dev deployment, and each named account signed in to the app once.
 import { spawnSync } from 'node:child_process'
-import { parseArgs, parseResult, seatingLine } from './dev-game-args'
+import { managersLine, parseArgs, parseResult } from './dev-game-args'
 
 // Where the app may be served locally, in the order they are tried: a plain
 // `pnpm dev` (Vite's default, and what Playwright uses), then the agent
@@ -52,7 +52,7 @@ async function main(): Promise<number> {
   const result = parseResult(run.stdout)
   const origin = await servingOrigin()
   console.log(
-    `New game (${seatingLine(result)}):\n  ${origin ?? APP_ORIGINS[0]}/game/${result.game}`,
+    `New game (${managersLine(result)}):\n  ${origin ?? APP_ORIGINS[0]}/game/${result.game}`,
   )
   if (!origin) {
     console.log('No dev server is answering; start one with `pnpm dev` (and `npx convex dev`).')

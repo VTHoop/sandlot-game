@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseArgs, parseResult, seatingLine, USAGE } from './dev-game-args'
+import { managersLine, parseArgs, parseResult, USAGE } from './dev-game-args'
 
 describe('dev:game — the command line', () => {
   it('takes --home and --away', () => {
@@ -49,19 +49,19 @@ describe('dev:game — the command line', () => {
 
 describe('dev:game — the printed link', () => {
   it('names two accounts by full display name', () => {
-    expect(seatingLine({ home: 'Sam Hooper', away: 'Max Rivera' })).toBe(
+    expect(managersLine({ home: 'Sam Hooper', away: 'Max Rivera' })).toBe(
       'Sam Hooper (home) vs. Max Rivera (away)',
     )
   })
 
   it('names the bot when it plays', () => {
-    expect(seatingLine({ home: 'Sam Hooper', away: 'bot' })).toBe(
+    expect(managersLine({ home: 'Sam Hooper', away: 'bot' })).toBe(
       'Sam Hooper (home) vs. bot (away)',
     )
   })
 
   it('names one account twice when it manages both sides', () => {
-    expect(seatingLine({ home: 'Sam Hooper', away: 'Sam Hooper' })).toBe(
+    expect(managersLine({ home: 'Sam Hooper', away: 'Sam Hooper' })).toBe(
       'Sam Hooper (home) vs. Sam Hooper (away)',
     )
   })

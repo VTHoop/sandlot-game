@@ -42,7 +42,7 @@ export function parseArgs(argv: readonly string[]): DevGameArgs {
 }
 
 /** `Sam (home) vs. Max (away)`, by full display name; `bot` when it manages a side. */
-export function seatingLine(result: Pick<DevGameResult, 'home' | 'away'>): string {
+export function managersLine(result: Pick<DevGameResult, 'home' | 'away'>): string {
   return `${result.home} (home) vs. ${result.away} (away)`
 }
 
