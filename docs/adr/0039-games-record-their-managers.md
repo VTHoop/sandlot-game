@@ -22,7 +22,7 @@ needed workarounds:
 **A game records a manager for each side, home and away.** A manager is a user
 or the bot (`games.homeManager`, `games.awayManager`; `manager` in
 `convex/validators.ts`). They are written when the game is created and never
-patched: no function changes them.
+patched: no function changes them, apart from the one-time backfill below.
 
 **The server decides who may act from those two managers, never from team
 ownership.** Participation and commit checks, the game and last-at-bat reads, the
@@ -45,7 +45,10 @@ that no longer exists fails the run; no game is skipped.
 
 **Rollout.** The two schema fields are optional until the backfill has run on
 every deployment. Every reader goes through `managersOf`, which throws on a
-missing manager rather than guess. Making the fields required is a follow-up.
+missing manager rather than guess. Making the fields required, and deleting the
+backfill, is a follow-up the owner schedules once the backfill has run everywhere.
+Until then a `games` insert that omits the managers typechecks and fails only when
+the game is first read.
 
 **Vocabulary** (`docs/CONTEXT.md`): an *owner* holds a team; a *manager* runs a
 side of one game; a *seat* is only the pitcher or batter role in the open at-bat.
@@ -60,6 +63,9 @@ side of one game; a *seat* is only the pitcher or batter role in the open at-bat
 - What ownership means for leagues, and how a league game's managers are chosen,
   belongs to the schedule work (SAN-34). Where ownership lives, and whether
   `teams.owner` stays required, is left to SAN-34 and SAN-78.
+- The `viewerOwns` wire field (`gameView`, `myGames`) now carries the sides the
+  caller *manages*. Renaming it is left to SAN-82, which retires the club
+  vocabulary in code; until then the name is a known misnomer.
 - Both sides bot-managed is still out of scope (ADR-0027 § Consequences) and
   `dev:game` refuses it.
 - `games` gains `by_home_manager` / `by_away_manager` indexes, which "My games"

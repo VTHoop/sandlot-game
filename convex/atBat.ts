@@ -76,22 +76,22 @@ function roleOf(game: Doc<'games'>, user: Doc<'users'>): DuelRole | null {
 // ─── At-bat identity & lookups ──────────────────────────────────────────────
 
 /** The club whose seat this role commits for — top half, the away club bats
- * (SAN-21), which is the same rule ownership is gated on. */
+ * (SAN-21), which is the same rule the managers are gated on. */
 function seatTeamOf(game: Doc<'games'>, role: DuelRole): Id<'teams'> {
   const { battingTeam, pitchingTeam } = teamsForHalf(game)
   return role === DuelRole.Pitching ? pitchingTeam : battingTeam
 }
 
 /**
- * The game this caller may commit for, or refuse. **Club before status**, on
+ * The game this caller may commit for, or refuse. **Manager before status**, on
  * purpose: a caller who is not in this game hears the same thing whether the id
- * is unknown, the clubs are someone else's, or the game has not started — the
+ * is unknown, the sides are managed by someone else, or the game has not started — the
  * same refusal to be an oracle for which games exist that `getGame` makes
  * (ADR-0025), now on the write path too. Only a confirmed participant learns a
  * game's status.
  *
- * Checked here rather than through the shared `assertOwns` so the duel's own
- * rejection taxonomy stays the duel's — `game.ts` keeps its own.
+ * Checked here rather than through a shared participant assertion so the duel's
+ * own rejection taxonomy stays the duel's — `game.ts` keeps its own.
  */
 async function requireCommittableGame(
   ctx: MutationCtx,

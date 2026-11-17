@@ -48,7 +48,7 @@ interface GameListCommon {
   id: Id<'games'>
   home: ListClubView
   away: ListClubView
-  /** Which clubs the caller holds — both, for the hotseat. Names the opponent. */
+  /** Which sides the caller manages — both, for the hotseat. Names the opponent. */
   viewerOwns: ManagedSides
 }
 

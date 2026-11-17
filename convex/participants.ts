@@ -8,9 +8,9 @@ import { ClubSide } from './clubSide'
  * secret at-bat round-trip (`atBat.ts`), the authoritative game-state mutations
  * (`game.ts`), and account provisioning (`users.ts`) so the auth rules live in
  * exactly one place. {@link gamesManagedBy}, the one non-gating helper, is the
- * "My games" read model's lookup (`myGames.ts`). The Clerk subject — `subject` on the `UserIdentity` that
- * `ctx.auth.getUserIdentity()` returns — maps to a `users` row via
- * `by_clerk_subject` (docs/ABSTRACTIONS.md → ConvexProviderWithClerk).
+ * "My games" read model's lookup (`myGames.ts`). The Clerk subject — `subject` on
+ * the `UserIdentity` that `ctx.auth.getUserIdentity()` returns — maps to a `users`
+ * row via `by_clerk_subject` (docs/ABSTRACTIONS.md → ConvexProviderWithClerk).
  *
  * `ctx.auth.getUserIdentity()` and the `Not authenticated` message are spelled
  * only here. A caller that needs the raw identity — provisioning, which resolves

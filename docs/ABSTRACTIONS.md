@@ -51,9 +51,9 @@ cannot be reverted by the next sign-in. Never empty.
 
 `upsertUserBySubject` is the single place a `users` row is created; the dev seed
 (below) is just another caller, holding a subject Clerk cannot issue. Provisioning
-grants no team ownership — a provisioned user is a spectator until a club is
-theirs through the dev-only assignment (SAN-62, below). There is no self-serve
-claiming (SAN-65, ADR-0028).
+grants no team ownership — a provisioned user is a spectator until a game names
+them as a manager (the dev seed writes that, SAN-76, below). There is no
+self-serve claiming (SAN-65, ADR-0028).
 
 Auth itself still lives entirely in `convex/participants.ts`: `provision` takes the
 raw identity from `authedIdentity` and the row lookup from `userBySubject` rather
@@ -279,7 +279,7 @@ defense at each score / pointer / seating step.
 
 `convex/game.ts` is the thin Convex boundary — it computes none of the rules:
 
-- **`startGame`** — a participant-gated mutation (home/away owner, `scheduled`
+- **`startGame`** — a participant-gated mutation (home/away manager, `scheduled`
   only) that maps the engine's seed state onto the `games` row.
 - **`applyResolvedAtBat`** — *not* client-callable; called from the secret
   round-trip's resolution (`atBat.ts`) within the **same transaction** as the
@@ -369,7 +369,7 @@ once). Owning a team in a game does not list it.
 - **`yourMove`** — a seat the viewer drives has not locked for the current
   at-bat. Read from `atBat.duelLocks` (two booleans), the same rule as the game
   screen's `turnFor`: both participants owe a number at the start of an at-bat
-  (ADR-0014), and an owner of both clubs is always owed one while the game is
+  (ADR-0014), and a manager of both sides is always owed one while the game is
   live. A final reads `Final` whether or not its deciding play was dismissed —
   the list never reads `revealDismissals` (ADR-0034).
 - **Order is the server's**, so the times it is judged by never cross the wire:
@@ -405,8 +405,8 @@ unknown game (ADR-0025's refusal to be an existence oracle).
 ## Reveal dismissals (`convex/revealDismissals.ts`, SAN-22, ADR-0034)
 
 One row per (game, user) in `revealDismissals`: `dismissedThrough`, the last
-at-bat whose reveal that user dismissed. Keyed by user, so an owner of both
-clubs has one mark and every device of one account shares it.
+at-bat whose reveal that user dismissed. Keyed by user, so a manager of both
+sides has one mark and every device of one account shares it.
 
 - **`dismissReveal({ game, sequence })`** — auth, then participant, then
   `sequence ≤ lastResolvedSequence` (a non-integer or negative one is refused
@@ -451,14 +451,17 @@ cap, and MLB ingest that eventually will are their own projects. The seed
 (SAN-54) mints that game so local development and manual QA have something to
 play. It is a placeholder fixture, not the real roster-building flow.
 
-**Three mutations, because the work has three lifecycles** (SAN-61, SAN-62).
+**Three mutations, because the work has three lifecycles** (SAN-61, SAN-66,
+SAN-76), **and a one-time backfill.**
 `bootstrapDevLeague` stands the league up — the owner, both clubs, their twenty
 players, and a scheduled game — and is run once on a fresh deployment.
 `mintDevGame({ homeTeam, awayTeam })` appends another scheduled game between two
 already-bootstrapped clubs, and is run whenever you want a fresh one.
 `devGame` writes real accounts (or the bot) as a new game's managers.
+`backfillGameManagers` is the backfill, described under the managers paragraph
+below; it is internal-only but, unlike the three, not gated on the seed flag.
 
-**Double-fenced.** Each is an `internalMutation`, so none appears on the
+**Double-fenced.** Each of the three is an `internalMutation`, so none appears on the
 generated public `api` and no browser client can name them in any deployment;
 and none runs unless `SANDLOT_DEV_SEED` is exactly `"true"` on the
 deployment. The gate is **fail-closed** — an unset variable blocks it, so a
@@ -490,12 +493,12 @@ refusal as below. It likewise refuses two identical ids: both checks catch the
 same caller mistake (the wrong id), and are questions about the arguments rather
 than about ownership.
 
-Both clubs share the one owner, so a single mocked identity can act for both
-sides of a duel.
+Both clubs share the one owner, and bootstrap names that owner the manager of
+both sides, so a single mocked identity can act for both sides of a duel.
 
 **Known constraint — bootstrap cannot follow a club that moves.** It identifies a
 club by owner + name, and the product may legitimately change both: a club can be
-renamed, or re-pointed at a real signed-in user. There is no marker on the row to
+renamed, or re-pointed at another owner. There is no marker on the row to
 follow it by, and adding one would put a throwaway fixture's bookkeeping
 permanently into a production entity — so instead bootstrap re-checks its
 assumption on every run and **refuses** when a club has moved, naming the clubs it
@@ -504,10 +507,11 @@ prior lineup and would silently fork ten more players off the roster.
 
 **`mintDevGame` is the answer to that constraint**, not an exception to it. It is
 handed two ids and never looks up, infers, or asserts anything about who owns
-them, so it behaves identically before and after a seeded club is assigned to a
-real user. Once a club is assigned, re-running *bootstrap* refuses — permanently,
-by design — and minting is the supported path. Provisioning (SAN-55) mints the
-user and assigns no club.
+them, so it behaves identically before and after a seeded club changes owner.
+Nothing in the app re-points a club any more (`assignClubToUser` is gone,
+ADR-0039), but if one is ever moved by hand, re-running *bootstrap* refuses —
+permanently, by design — and minting is the supported path. Provisioning
+(SAN-55) mints the user and assigns no club.
 
 **Who plays a game is the game's managers, not team ownership** (SAN-76,
 ADR-0039). The seed writes the managers of the games it creates and never touches

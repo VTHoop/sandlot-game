@@ -85,7 +85,8 @@ export default defineSchema({
     awayTeam: v.id('teams'),
     // Who plays each side (SAN-76, ADR-0039). Optional only until the backfill has
     // run on every deployment; every reader goes through `managersOf`, which throws
-    // on a missing one. Written at creation, never patched.
+    // on a missing one. Written at creation, never patched — except by the
+    // one-time `seed.backfillGameManagers`.
     homeManager: v.optional(manager),
     awayManager: v.optional(manager),
     inning: v.float64(),

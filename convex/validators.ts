@@ -142,8 +142,8 @@ void _clubSideMatchesEnum
 
 /**
  * Who manages one side of a game (SAN-76, ADR-0039): a user, or the bot. Set when
- * the game is created and never patched. A game is read through its managers, never
- * through `teams.owner`.
+ * the game is created and never patched (bar the one-time `seed.backfillGameManagers`).
+ * A game is read through its managers, never through `teams.owner`.
  */
 export const manager = v.union(
   v.object({ kind: v.literal('user'), user: v.id('users') }),

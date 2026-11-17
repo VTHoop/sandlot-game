@@ -71,7 +71,7 @@ async function namedPlayer(
  * The most recently resolved at-bat of a game, for a participant — or `null`.
  *
  * `null` covers four cases identically: no at-bat has resolved yet, the caller
- * owns neither club, there is no caller (or no `users` row), and the game does
+ * manages neither side, there is no caller (or no `users` row), and the game does
  * not exist — or the id names no game at all. Those refusals are `getGame`'s
  * refusal to be an oracle for which games exist (ADR-0025), made the same way;
  * the first is simply nothing to show.

@@ -15,7 +15,7 @@ import { manager } from './validators'
  * cap, and MLB ingest that eventually will are their own projects. This mints
  * that game so local development and manual QA have something to play.
  *
- * Three mutations, because the work has three lifecycles (and a backfill, below):
+ * Four mutations: three lifecycles, and a one-time backfill:
  *
  * - {@link bootstrapDevLeague} stands the league up — the owner, both clubs,
  *   their twenty players, and a scheduled game. Run once on a fresh deployment.
@@ -34,10 +34,12 @@ import { manager } from './validators'
  * game exists. Standing rosters are the draft/salary-cap project's to invent;
  * a dev fixture does not get to reshape the schema for its own tidiness.
  *
- * All three are fenced twice: each is an `internalMutation` (no browser client
- * can name it in any deployment) **and** none runs unless {@link SEED_ENV_FLAG}
- * is explicitly set to `true` on the deployment. Absence blocks — a fresh
- * deployment is safe before anyone thinks about it.
+ * The first three are fenced twice: each is an `internalMutation` (no browser
+ * client can name it in any deployment) **and** none runs unless
+ * {@link SEED_ENV_FLAG} is explicitly set to `true` on the deployment. Absence
+ * blocks — a fresh deployment is safe before anyone thinks about it. The backfill
+ * is internal-only and not gated on the flag: it must run on deployments that
+ * never enabled the seed.
  *
  * Re-running either game-creating mutation is a supported, additive operation,
  * not an idempotent one.
@@ -279,8 +281,8 @@ export const bootstrapDevLeague = internalMutation({
   handler: async (ctx): Promise<Id<'games'>> => {
     assertSeedEnabled()
     const owner = await seedOwner(ctx)
-    const seat: Manager = { kind: 'user', user: owner }
-    return (await bootstrap(ctx, owner, { home: seat, away: seat })).game
+    const seedAccount: Manager = { kind: 'user', user: owner }
+    return (await bootstrap(ctx, owner, { home: seedAccount, away: seedAccount })).game
   },
 })
 
@@ -359,7 +361,7 @@ export const mintDevGame = internalMutation({
   },
 })
 
-/** The bot's name in a seating line. */
+/** The bot's name in a managers line. */
 const BOT_NAME = 'bot'
 
 /** What {@link devGame} set up: the new game and who manages each side. */
@@ -431,7 +433,9 @@ function resolveSide(
   side: ClubSide,
 ): Doc<'users'> | null {
   if (bot && name !== undefined) {
-    throw new Error(`Dev seed was told both to seat "${name}" and to use the bot at ${side}.`)
+    throw new Error(
+      `Dev seed was told both to name "${name}" manager and to use the bot at ${side}.`,
+    )
   }
   if (bot) return null
   if (name !== undefined) return resolveByName(accounts, name)
@@ -473,7 +477,7 @@ function resolveByName(accounts: readonly Doc<'users'>[], name: string): Doc<'us
   }
   throw new Error(
     `Dev seed found several accounts named "${name}": ${describeAccounts(matches)}. ` +
-      `Two accounts with the same display name cannot be seated until one is renamed.`,
+      `Two accounts with the same display name cannot be named managers until one is renamed.`,
   )
 }
 

@@ -28,7 +28,7 @@ import { type Ctx, type ManagedSides, managedSides, maybeUser, teamsForHalf } fr
  * PERSPECTIVE — every number here is ABSOLUTE (home/away), never "you"/"them",
  * so the situation itself reads the same for both participants. Exactly three
  * fields are resolved per caller: `viewer` (the one side they read as),
- * `viewerOwns` (every club they own — both, for the hotseat) and, while live,
+ * `viewerOwns` (every side they manage — both, for the hotseat) and, while live,
  * `viewerSeat`. The duel's view-models stay absolute too (ADR-0030): the client
  * does not translate these totals into "you"/"them", and reads the per-caller
  * fields only to decide which seats it drives.
@@ -112,8 +112,8 @@ interface GameViewCommon {
   away: ClubView
   viewer: ClubSide
   /**
-   * Every club the caller owns. `viewer` names ONE side — home, for an owner of
-   * both — so it cannot tell a hotseat from a home-side player. This can, and it
+   * Every side the caller manages. `viewer` names ONE side — home, for a manager
+   * of both — so it cannot tell a hotseat from a home-side player. This can, and it
    * is what a client reads to decide which seats it drives.
    */
   viewerOwns: ManagedSides

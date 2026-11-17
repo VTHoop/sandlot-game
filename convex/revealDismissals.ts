@@ -18,11 +18,11 @@ import { authedUser, type Ctx, isParticipant, managedSides, maybeUser } from './
  * never a duel number — a sequence is only ever one the log already shows.
  */
 
-/** One refusal for a game that is not there and a game the caller has no club
- * in, so the mutation cannot say which games exist (ADR-0025). */
+/** One refusal for a game that is not there and a game the caller does not
+ * manage a side of, so the mutation cannot say which games exist (ADR-0025). */
 const NOT_A_PARTICIPANT = 'Not a participant in this game'
 
-/** The game, if `user` owns either of its clubs; otherwise null, whether or not
+/** The game, if `user` manages either of its sides; otherwise null, whether or not
  * the game exists. */
 async function participantGame(
   ctx: Ctx,

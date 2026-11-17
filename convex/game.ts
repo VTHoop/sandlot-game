@@ -91,7 +91,7 @@ function toGamePatch(state: LiveGameState) {
 /**
  * Open a scheduled game (scheduled → live): seed inning 1 / top / 0 outs / empty
  * bases / 0–0 and seat the leadoff batter + designated pitcher from each lineup.
- * Only a participant (home or away team owner) may start it, and only while it is
+ * Only a participant (home or away manager) may start it, and only while it is
  * still 'scheduled'.
  */
 export const startGame = mutation({
