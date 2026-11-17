@@ -224,6 +224,30 @@ describe('the bot plays exactly the sides the game names it for', () => {
     expect(rows.map((row) => row.role)).toEqual(['batting'])
   })
 
+  it('refuses a human a commit on a bot-managed side and keeps the bot’s number secret', async () => {
+    const { t, game, ids } = await managedGame()
+    await setManagers(t, game, user(ids.home), BOT)
+    await t.withIdentity(HOME).mutation(api.game.startGame, { game })
+    await runScheduled(t) // top half: the bot, managing the away side, bats and commits
+
+    // The bot's seat is the batter's. Neither the other side's manager nor the away
+    // side's team owner can commit a swing into it.
+    await expect(
+      t.withIdentity(HOME).mutation(api.atBat.commitSwing, { game, number: 5 }),
+    ).rejects.toThrow()
+    await expect(
+      t.withIdentity(AWAY).mutation(api.atBat.commitSwing, { game, number: 5 }),
+    ).rejects.toThrow()
+    const rows = await t.run((ctx) => ctx.db.query('duelCommitments').collect())
+    expect(rows.map((row) => row.role)).toEqual(['batting'])
+
+    // The human pitcher sees only that the bot has locked, never its number.
+    const view = await t.withIdentity(HOME).query(api.atBat.getActiveDuel, { game })
+    expect(view?.status).toBe('awaiting_opponent')
+    expect(view?.swingCommitted).toBe(true)
+    expect(view).not.toHaveProperty('batterNumber')
+  })
+
   it('never plays a user-managed side whose team the seed account owns', async () => {
     const { t, game, ids } = await managedGame()
     await setManagers(t, game, user(ids.home), user(ids.away))
@@ -297,6 +321,26 @@ describe('backfilling the managers of existing games', () => {
     await t.mutation(internal.seed.backfillGameManagers, {})
 
     expect((await gameRow(t, game)).awayManager).toEqual(user(seedOwner))
+  })
+
+  it('leaves a side that already has a manager alone, and does nothing on a re-run', async () => {
+    const t = harness()
+    const home = await provision(t, HOME)
+    const away = await provision(t, AWAY)
+    const game = await legacyGame(t, home, away)
+    await t.run((ctx) => ctx.db.patch(game, { homeManager: BOT })) // set by hand, not the owner
+
+    expect(await t.mutation(internal.seed.backfillGameManagers, {})).toBe(1)
+    const filled = await gameRow(t, game)
+    expect(filled.homeManager).toEqual(BOT)
+    expect(filled.awayManager).toEqual(user(away))
+
+    // Re-pointing the team afterwards changes nothing: a second run finds no game to fill.
+    await t.run((ctx) => ctx.db.patch(filled.awayTeam, { owner: home }))
+    expect(await t.mutation(internal.seed.backfillGameManagers, {})).toBe(0)
+    const again = await gameRow(t, game)
+    expect(again.homeManager).toEqual(BOT)
+    expect(again.awayManager).toEqual(user(away))
   })
 
   it('fails, rather than skips, a game whose team owner no longer exists', async () => {
