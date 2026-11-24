@@ -839,6 +839,14 @@ caller as both managers and `pickup: true`, then returns its id; `startGame`
 opens it. Any refusal throws, so nothing is written. `games.pickup` means "never
 counts toward standings"; absent on every other game. `teams.owner` is optional.
 
+The creation core is `createGameBetween(ctx, { homeTeam, awayTeam, homeManager,
+awayManager })` (SAN-84, ADR-0044): each manager is a user or the bot, it does no
+sign-in, and it refuses the same team twice, a missing user manager, a team with no
+lineup and the bot on both sides, all before the first write. It is a plain function
+so a caller runs it in its own transaction, and not a public argument, because naming
+another account as a manager needs that person's consent. `createPickupGame` signs the
+caller in and passes them as both managers.
+
 ```bash
 pnpm ingest:mlb --season 2026      # raw rows first
 pnpm normalize:mlb --season 2026   # then players; prints created/updated/skipped and the 1–5 histograms
