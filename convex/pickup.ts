@@ -117,17 +117,29 @@ export const createPickupGame = mutation({
   args: { homeTeam: v.string(), awayTeam: v.string() },
   handler: async (ctx, { homeTeam, awayTeam }): Promise<Id<'games'>> => {
     const user = await authedUser(ctx)
-    const manager = { kind: 'user', user: user._id } as const
+    const caller = { kind: 'user', user: user._id } as const
     return createGameBetween(ctx, {
       homeTeam,
       awayTeam,
-      homeManager: manager,
-      awayManager: manager,
+      homeManager: caller,
+      awayManager: caller,
     })
   },
 })
 
-/** Stub (SAN-84): the runnable form of {@link createGameBetween}. */
+/**
+ * {@link createGameBetween}, runnable (SAN-84): start a pickup game between two
+ * accounts that already exist, e.g. from the CLI —
+ *
+ *   npx convex run pickup:createPickupGameFor '{"homeTeam": "…", "awayTeam": "…",
+ *     "homeManager": {"kind": "user", "user": "<users id>"},
+ *     "awayManager": {"kind": "user", "user": "<users id>"}}'
+ *
+ * **Internal on purpose** — no client can call it, so nobody can put a game in
+ * another account's list. It trusts its caller (the CLI, the dashboard, other
+ * server code) to have the named account's consent; it does no sign-in and is not
+ * gated on the dev seed. It returns the game's id; the path is `/game/<id>`.
+ */
 export const createPickupGameFor = internalMutation({
   args: {
     homeTeam: v.string(),
@@ -135,7 +147,5 @@ export const createPickupGameFor = internalMutation({
     homeManager: manager,
     awayManager: manager,
   },
-  handler: async (_ctx, _args): Promise<Id<'games'>> => {
-    throw new Error('createPickupGameFor is not implemented')
-  },
+  handler: (ctx, args): Promise<Id<'games'>> => createGameBetween(ctx, args),
 })

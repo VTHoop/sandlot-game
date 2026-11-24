@@ -13,6 +13,7 @@
 - **The creation core is `createGameBetween(ctx, { homeTeam, awayTeam, homeManager, awayManager })` in `convex/pickup.ts`.** Each manager is a user or the bot. `createPickupGame` stays public, signs the caller in, and passes them as both managers; its arguments and result do not change.
 - **It does no sign-in and is not exposed to clients.** A client that could name any account as the other manager could put games in someone else's list without their consent. The consent is the other person's join (SAN-80); the bot needs none.
 - **It is a plain function, not an `internalMutation`.** A caller runs it inside its own transaction, so a join that claims a challenge and creates the game commits or fails as one. An internal mutation reached through `runMutation` would be a second transaction.
+- **`pickup.createPickupGameFor` is its runnable form.** An `internalMutation` taking the same four arguments, so a game between two existing accounts can be made from `npx convex run pickup:createPickupGameFor`, the dashboard or other server code. It is internal, so no client can call it, and it is not gated on the dev seed.
 - **It refuses, before the first write:** the same team on both sides, a user manager with no `users` row, a team with no lineup, and the bot managing both sides. One user on both sides (hotseat) is accepted. The bot on both sides is refused because no one could start that game (ADR-0027, ADR-0039).
 
 ## Consequences

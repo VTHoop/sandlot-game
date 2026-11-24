@@ -845,7 +845,8 @@ sign-in, and it refuses the same team twice, a missing user manager, a team with
 lineup and the bot on both sides, all before the first write. It is a plain function
 so a caller runs it in its own transaction, and not a public argument, because naming
 another account as a manager needs that person's consent. `createPickupGame` signs the
-caller in and passes them as both managers.
+caller in and passes them as both managers. `createPickupGameFor` (internal mutation)
+is the same seam from `npx convex run`, taking both managers as arguments.
 
 ```bash
 pnpm ingest:mlb --season 2026      # raw rows first
