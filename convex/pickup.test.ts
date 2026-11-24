@@ -228,7 +228,7 @@ describe('createGameBetween', () => {
     })
     const [homeManager, awayManager] = pairing(user, gone)
     await expect(create(t, { homeManager, awayManager })).rejects.toThrow(
-      new RegExp(`The ${side} manager does not exist`),
+      `The ${side} manager does not exist`,
     )
     expect(await counts(t)).toEqual({ teams: 0, games: 0, lineups: 0 })
   })
