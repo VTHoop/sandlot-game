@@ -3,6 +3,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { internalMutation, type MutationCtx } from './_generated/server'
 import { ClubSide } from './clubSide'
 import type { GameManagers, Manager } from './participants'
+import { SCHEDULED_GAME } from './scheduledGame'
 import { AWAY_TEAM, HOME_TEAM, type PitcherSpec, type TeamSpec } from './seedRoster'
 import { upsertUserBySubject } from './users'
 import { manager } from './validators'
@@ -85,23 +86,6 @@ export const SEED_ENV_FLAG = 'SANDLOT_DEV_SEED'
 export const SEED_CLERK_SUBJECT = 'seed|sandlot-dev-owner'
 
 const SEED_DISPLAY_NAME = 'Sandlot Dev'
-
-/** The pre-start `games` envelope: nothing has happened yet. */
-const SCHEDULED_GAME = {
-  inning: 1,
-  half: 'top',
-  outs: 0,
-  bases: { first: null, second: null, third: null },
-  homeScore: 0,
-  awayScore: 0,
-  status: 'scheduled',
-  currentBatter: null,
-  currentPitcher: null,
-  homeBattingIndex: 0,
-  awayBattingIndex: 0,
-  // No at-bat has been folded in yet (schema.ts) — the engine seeds from -1.
-  lastResolvedSequence: -1,
-} as const
 
 /** Whether this deployment opted in. Fail closed: anything other than an explicit
  * `true` is off. Shared with the server-side bot (SAN-58), which plays only where

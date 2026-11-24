@@ -30,6 +30,7 @@ import type * as push from "../push.js";
 import type * as pushSend from "../pushSend.js";
 import type * as pushTrigger from "../pushTrigger.js";
 import type * as revealDismissals from "../revealDismissals.js";
+import type * as scheduledGame from "../scheduledGame.js";
 import type * as seasonPlayers from "../seasonPlayers.js";
 import type * as seed from "../seed.js";
 import type * as seedRoster from "../seedRoster.js";
@@ -66,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   pushSend: typeof pushSend;
   pushTrigger: typeof pushTrigger;
   revealDismissals: typeof revealDismissals;
+  scheduledGame: typeof scheduledGame;
   seasonPlayers: typeof seasonPlayers;
   seed: typeof seed;
   seedRoster: typeof seedRoster;

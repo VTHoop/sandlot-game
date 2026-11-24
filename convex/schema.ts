@@ -49,7 +49,9 @@ export default defineSchema({
   teams: defineTable({
     owner: v.optional(v.id('users')),
     name: v.string(),
-  }).index('by_owner', ['owner']),
+  })
+    .index('by_owner', ['owner'])
+    .index('by_name', ['name']),
 
   // Real (MLB-imported) or custom players. A player carries the attribute block
   // matching its role (hitter vs pitcher). `price` is nullable until derived by
