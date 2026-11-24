@@ -210,16 +210,26 @@ describe('createGameBetween', () => {
     })
   })
 
-  it('refuses a user manager that does not exist, and writes nothing', async () => {
+  it.each([
+    [
+      'home',
+      (user: Id<'users'>, gone: Id<'users'>): [Manager, Manager] => [asUser(gone), asUser(user)],
+    ],
+    [
+      'away',
+      (user: Id<'users'>, gone: Id<'users'>): [Manager, Manager] => [asUser(user), asUser(gone)],
+    ],
+  ])('refuses a %s user manager that does not exist, and writes nothing', async (side, pairing) => {
     const { t, user } = await seeded()
     const gone = await t.run(async (ctx) => {
       const id = await ctx.db.insert('users', { clerkSubject: 'gone', displayName: 'gone' })
       await ctx.db.delete(id)
       return id
     })
-    await expect(
-      create(t, { homeManager: asUser(user), awayManager: asUser(gone) }),
-    ).rejects.toThrow(/manager.*does not exist/i)
+    const [homeManager, awayManager] = pairing(user, gone)
+    await expect(create(t, { homeManager, awayManager })).rejects.toThrow(
+      new RegExp(`The ${side} manager does not exist`),
+    )
     expect(await counts(t)).toEqual({ teams: 0, games: 0, lineups: 0 })
   })
 
@@ -271,13 +281,18 @@ async function startedDuel() {
   return { ...setup, id }
 }
 
+/** The seat gate's refusal (`requireCommittableGame`), so an unrelated throw can't pass for it. */
+const NOT_YOUR_SIDE = 'Not authorized for this team'
+
 describe('a game between two different users keeps the pitch secret', () => {
   it('lets each user commit only for their own side', async () => {
     const { kid, siblingClient, id } = await startedDuel()
     await expect(
       siblingClient.mutation(api.atBat.commitPitch, { game: id, number: 5 }),
-    ).rejects.toThrow()
-    await expect(kid.mutation(api.atBat.commitSwing, { game: id, number: 5 })).rejects.toThrow()
+    ).rejects.toThrow(NOT_YOUR_SIDE)
+    await expect(kid.mutation(api.atBat.commitSwing, { game: id, number: 5 })).rejects.toThrow(
+      NOT_YOUR_SIDE,
+    )
     await expect(
       kid.mutation(api.atBat.commitPitch, { game: id, number: 5 }),
     ).resolves.not.toThrow()
