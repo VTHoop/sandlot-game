@@ -1,10 +1,11 @@
 import { v } from 'convex/values'
 import type { Id } from './_generated/dataModel'
-import { type MutationCtx, mutation } from './_generated/server'
+import { internalMutation, type MutationCtx, mutation } from './_generated/server'
 import { ClubSide } from './clubSide'
 import { type BuiltLineup, buildLineup } from './lineup'
 import { authedUser, isBotManaged, type Manager } from './participants'
 import { SCHEDULED_GAME } from './scheduledGame'
+import { manager } from './validators'
 
 /**
  * The `teams` row of a real MLB team: the ownerless row of that name, created on
@@ -123,5 +124,18 @@ export const createPickupGame = mutation({
       homeManager: manager,
       awayManager: manager,
     })
+  },
+})
+
+/** Stub (SAN-84): the runnable form of {@link createGameBetween}. */
+export const createPickupGameFor = internalMutation({
+  args: {
+    homeTeam: v.string(),
+    awayTeam: v.string(),
+    homeManager: manager,
+    awayManager: manager,
+  },
+  handler: async (_ctx, _args): Promise<Id<'games'>> => {
+    throw new Error('createPickupGameFor is not implemented')
   },
 })

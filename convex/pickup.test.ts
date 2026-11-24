@@ -3,7 +3,7 @@
 
 import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
-import { api } from './_generated/api'
+import { api, internal } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
 import { createGameBetween } from './pickup'
 import schema from './schema'
@@ -326,5 +326,54 @@ describe('a game between two different users keeps the pitch secret', () => {
       await reader.query(api.myGames.listMyGames, {}),
     ]
     for (const read of reads) expect(holds(read, number)).toBe(false)
+  })
+})
+
+// ─── The runnable form: `npx convex run pickup:createPickupGameFor` (SAN-84) ─
+
+describe('pickup.createPickupGameFor', () => {
+  it('creates a game for two accounts, with no caller signed in', async () => {
+    const { t, user, sibling } = await twoManagers()
+    const id = await t.mutation(internal.pickup.createPickupGameFor, {
+      homeTeam: HOME,
+      awayTeam: AWAY,
+      homeManager: asUser(user),
+      awayManager: asUser(sibling),
+    })
+    expect(await t.run((ctx) => ctx.db.get(id))).toMatchObject({
+      status: 'scheduled',
+      pickup: true,
+      homeManager: asUser(user),
+      awayManager: asUser(sibling),
+    })
+  })
+
+  it('makes a game its home manager can start and both managers can see', async () => {
+    const { t, user, sibling, kid, siblingClient } = await twoManagers()
+    const id = await t.mutation(internal.pickup.createPickupGameFor, {
+      homeTeam: HOME,
+      awayTeam: AWAY,
+      homeManager: asUser(user),
+      awayManager: asUser(sibling),
+    })
+    await kid.mutation(api.game.startGame, { game: id })
+    for (const client of [kid, siblingClient]) {
+      expect((await client.query(api.myGames.listMyGames, {})).map((entry) => entry.id)).toEqual([
+        id,
+      ])
+    }
+  })
+
+  it('refuses what the shared function refuses, and writes nothing', async () => {
+    const { t } = await seeded()
+    await expect(
+      t.mutation(internal.pickup.createPickupGameFor, {
+        homeTeam: HOME,
+        awayTeam: AWAY,
+        homeManager: BOT,
+        awayManager: BOT,
+      }),
+    ).rejects.toThrow(/both sides/)
+    expect(await counts(t)).toEqual({ teams: 0, games: 0, lineups: 0 })
   })
 })
