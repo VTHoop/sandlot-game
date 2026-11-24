@@ -19,12 +19,17 @@ const TEAM = 'Harbor Gulls'
 let seq = 0
 const idOf = (label: string) => `${label}` as Doc<'players'>['_id']
 
+interface HitterOptions {
+  /** Left out, the hitter has no recorded playing time — a pre-ADR-0043 row. */
+  pa?: number
+  ratings?: Ratings
+  mlbTeam?: string
+}
+
 const hitter = (
   id: string,
   position: Slot,
-  plateAppearances: number | undefined,
-  ratings: Ratings = { power: 3, contact: 3 },
-  mlbTeam: string | undefined = TEAM,
+  { pa, ratings = { power: 3, contact: 3 }, mlbTeam = TEAM }: HitterOptions = {},
 ): Doc<'players'> => ({
   _id: idOf(id),
   _creationTime: seq++,
@@ -35,8 +40,8 @@ const hitter = (
   price: null,
   attributes: { speed: 3, eye: 3, ...ratings },
   mlbId: seq,
-  ...(mlbTeam === undefined ? {} : { mlbTeam }),
-  ...(plateAppearances === undefined ? {} : { plateAppearances }),
+  mlbTeam,
+  ...(pa === undefined ? {} : { plateAppearances: pa }),
 })
 
 const arm = (id: string, outs: number | undefined, mlbTeam: string = TEAM): Doc<'players'> => ({
@@ -55,7 +60,7 @@ const arm = (id: string, outs: number | undefined, mlbTeam: string = TEAM): Doc<
 
 /** One regular per slot (PA 500) and one starter (outs 400). */
 const regulars = (): Doc<'players'>[] => [
-  ...HITTER_SLOT_LIST.map((slot) => hitter(`reg-${slot}`, slot, 500)),
+  ...HITTER_SLOT_LIST.map((slot) => hitter(`reg-${slot}`, slot, { pa: 500 })),
   arm('ace', 400),
 ]
 
@@ -85,7 +90,11 @@ describe('buildLineup refuses what listMlbTeams would not offer', () => {
 
 describe('buildLineup picks regulars by playing time', () => {
   it('takes, at each position, the hitter with the most plate appearances', () => {
-    const players = [...regulars(), hitter('bench-SS', 'SS', 120), hitter('star-SS', 'SS', 640)]
+    const players = [
+      ...regulars(),
+      hitter('bench-SS', 'SS', { pa: 120 }),
+      hitter('star-SS', 'SS', { pa: 640 }),
+    ]
     const lineup = buildLineup(TEAM, players)
     expect(slotOf(lineup, 'star-SS')).toBe('SS')
     expect(slotOf(lineup, 'reg-SS')).toBeUndefined()
@@ -98,7 +107,11 @@ describe('buildLineup picks regulars by playing time', () => {
   })
 
   it('breaks a plate-appearance tie at a position by player id', () => {
-    const players = [...regulars(), hitter('aaa-C', 'C', 500), hitter('zzz-C', 'C', 500)]
+    const players = [
+      ...regulars(),
+      hitter('aaa-C', 'C', { pa: 500 }),
+      hitter('zzz-C', 'C', { pa: 500 }),
+    ]
     expect(slotOf(buildLineup(TEAM, players), 'aaa-C')).toBe('C')
   })
 
@@ -108,15 +121,12 @@ describe('buildLineup picks regulars by playing time', () => {
   })
 
   it('ignores another team’s players', () => {
-    const players = [...regulars(), hitter('rival-SS', 'SS', 700, undefined, 'Dune Foxes')]
+    const players = [...regulars(), hitter('rival-SS', 'SS', { pa: 700, mlbTeam: 'Dune Foxes' })]
     expect(slotOf(buildLineup(TEAM, players), 'rival-SS')).toBeUndefined()
   })
 
   it('refuses a chosen player with no recorded playing time rather than guess', () => {
-    const players = [
-      ...regulars().filter((p) => p._id !== 'reg-SS'),
-      hitter('reg-SS', 'SS', undefined),
-    ]
+    const players = [...regulars().filter((p) => p._id !== 'reg-SS'), hitter('reg-SS', 'SS')]
     expect(() => buildLineup(TEAM, players)).toThrow(/normalize/)
   })
 })
@@ -128,8 +138,8 @@ describe('buildLineup batting order', () => {
   it('puts the highest sum of the four hitter ratings first', () => {
     const players = [
       ...regulars().filter((p) => p.position !== 'RF' && p.position !== '1B'),
-      hitter('slugger', 'RF', 500, { power: 5, contact: 5, speed: 4, eye: 4 }),
-      hitter('slap', '1B', 500, { power: 1, contact: 2, speed: 1, eye: 1 }),
+      hitter('slugger', 'RF', { pa: 500, ratings: { power: 5, contact: 5, speed: 4, eye: 4 } }),
+      hitter('slap', '1B', { pa: 500, ratings: { power: 1, contact: 2, speed: 1, eye: 1 } }),
     ]
     const order = slotsByOrder(buildLineup(TEAM, players))
     expect(order[0]).toBe('slugger')
@@ -140,9 +150,9 @@ describe('buildLineup batting order', () => {
     const tied = { power: 5, contact: 5, speed: 5, eye: 5 } as const
     const players = [
       ...regulars().filter((p) => !['LF', 'CF', 'RF'].includes(p.position)),
-      hitter('zzz-LF', 'LF', 400, tied),
-      hitter('mmm-CF', 'CF', 600, tied),
-      hitter('bbb-RF', 'RF', 400, tied),
+      hitter('zzz-LF', 'LF', { pa: 400, ratings: tied }),
+      hitter('mmm-CF', 'CF', { pa: 600, ratings: tied }),
+      hitter('bbb-RF', 'RF', { pa: 400, ratings: tied }),
     ]
     expect(slotsByOrder(buildLineup(TEAM, players)).slice(0, 3)).toEqual([
       'mmm-CF',
@@ -164,7 +174,7 @@ describe('buildLineup returns the lineups shape', () => {
 
   it('never lists a player twice, even a two-way player who also pitches', () => {
     const twoWay = { ...arm('twp', 999), _id: idOf('twp-arm') }
-    const players = [...regulars(), hitter('twp', 'DH', 900), twoWay]
+    const players = [...regulars(), hitter('twp', 'DH', { pa: 900 }), twoWay]
     const lineup = buildLineup(TEAM, players)
     const ids = [...lineup.battingOrder.map((slot) => slot.player), lineup.pitcher]
     expect(new Set(ids).size).toBe(ids.length)
@@ -181,23 +191,19 @@ describe('buildLineup is deterministic whatever order the players arrive in', ()
     }
   }
   const shuffled = <T>(items: readonly T[], next: () => number): T[] => {
-    const out = [...items]
-    for (let i = out.length - 1; i > 0; i--) {
-      const j = Math.floor(next() * (i + 1))
-      const held = out[i] as T
-      out[i] = out[j] as T
-      out[j] = held
-    }
-    return out
+    return items
+      .map((item) => ({ item, key: next() }))
+      .sort((a, b) => a.key - b.key)
+      .map(({ item }) => item)
   }
 
   it('returns the same lineup for 200 shuffles of a field full of ties', () => {
     const tied = { power: 4, contact: 4, speed: 2, eye: 2 } as const
     const field = [
       ...HITTER_SLOT_LIST.flatMap((slot) => [
-        hitter(`a-${slot}`, slot, 500, tied),
-        hitter(`b-${slot}`, slot, 500, tied),
-        hitter(`c-${slot}`, slot, 350, tied),
+        hitter(`a-${slot}`, slot, { pa: 500, ratings: tied }),
+        hitter(`b-${slot}`, slot, { pa: 500, ratings: tied }),
+        hitter(`c-${slot}`, slot, { pa: 350, ratings: tied }),
       ]),
       arm('arm-a', 400),
       arm('arm-b', 400),
