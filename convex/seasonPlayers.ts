@@ -45,6 +45,7 @@ export interface ScoreHistograms {
 interface PlannedHitter {
   mlbId: number
   name: string
+  mlbTeam: string
   role: 'hitter'
   position: Position
   attributes: HitterAttributes
@@ -53,6 +54,7 @@ interface PlannedHitter {
 interface PlannedPitcher {
   mlbId: number
   name: string
+  mlbTeam: string
   role: 'pitcher'
   position: Position
   attributes: PitcherAttributes
@@ -103,11 +105,12 @@ function hitterPosition(reported: string): { position: Position } | { skip: stri
 function planHitter(row: MlbHitterRow, league: LeagueRates): Outcome<PlannedHitter> {
   const placed = hitterPosition(row.position)
   if (placed === null || 'skip' in placed) return placed
-  const { mlbId, name } = row
+  const { mlbId, name, team: mlbTeam } = row
   return {
     player: {
       mlbId,
       name,
+      mlbTeam,
       role: 'hitter',
       position: placed.position,
       attributes: hitterAttributes(row, league),
@@ -119,11 +122,12 @@ function planPitcher(row: MlbPitcherRow, league: LeagueRates): Outcome<PlannedPi
   if (row.position === UNKNOWN) return { skip: 'position unknown' }
   if (row.position !== PITCHER && row.position !== TWO_WAY) return null
   if (row.outs <= 0) return { skip: 'no outs recorded, so HR/9 is undefined' }
-  const { mlbId, name } = row
+  const { mlbId, name, team: mlbTeam } = row
   return {
     player: {
       mlbId,
       name,
+      mlbTeam,
       role: 'pitcher',
       position: PITCHER,
       attributes: pitcherAttributes(row, league),
