@@ -394,7 +394,7 @@ describe("normalize.run records each player's MLB team (SAN-77)", () => {
     await t.run(async (ctx) => {
       const row = await ctx.db
         .query('mlbSeasonStats')
-        .filter((q) => q.eq(q.field('mlbId'), ADA))
+        .withIndex('by_season', (q) => q.eq('season', SEASON).eq('role', 'hitter').eq('mlbId', ADA))
         .unique()
       if (!row) throw new Error('fixture row missing')
       await ctx.db.patch(row._id, { team: 'Dune Foxes' })
