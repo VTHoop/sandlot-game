@@ -14,9 +14,9 @@ import {
  * developer command (`pnpm normalize:mlb`) runs it; no client does.
  *
  * A player is keyed by MLB id + role. A re-run updates name, MLB team, position,
- * attributes and playing time (plate appearances or outs, SAN-78) on the existing row in place (price and everything else stay), and
- * creates rows only for new players; players the season no longer lists are not
- * touched.
+ * attributes and playing time (plate appearances or outs, SAN-78) on the existing
+ * row in place (price and everything else stay), and creates rows only for new
+ * players; players the season no longer lists are not touched.
  */
 
 export interface NormalizeReport {

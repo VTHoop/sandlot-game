@@ -10,8 +10,9 @@ import { SCHEDULED_GAME } from './scheduledGame'
  * manages both sides; the game is `scheduled`, so the existing `startGame` opens
  * it, and carries `pickup: true`, which keeps it out of standings.
  *
- * A mutation is one transaction: every refusal below throws before or after the
- * writes alike, and a throw leaves no game, lineup or `teams` row behind.
+ * A mutation is one transaction, so a throw leaves no game, lineup or `teams` row
+ * behind. Every refusal today comes from validation, which runs before the first
+ * write; the transaction is what would undo a write if a later one failed.
  */
 
 /**

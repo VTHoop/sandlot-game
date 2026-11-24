@@ -10,7 +10,7 @@ import { HITTER_SLOT_LIST } from './seasonPlayers'
  * Regulars are picked by playing time — most plate appearances at each position,
  * most outs for the starter — and every tie falls to the player `_id`, so the same
  * players always make the same lineup whatever order they arrive in. A player with
- * no recorded playing time is refused rather than ranked as if he had none: the
+ * no recorded playing time is refused rather than ranked as if they had none: the
  * season was normalized before `plateAppearances` / `outs` existed (ADR-0043).
  */
 
@@ -48,10 +48,15 @@ function playingTime(player: Player, recorded: number | undefined): number {
   return recorded
 }
 
-/** The regular among these players: the one who sorts first by playing time. */
+/**
+ * The regular among these players: the one who sorts first by playing time.
+ * `sort` never calls its comparator on a lone candidate, so the pick's own playing
+ * time is read explicitly — a lone player with none is refused like any other.
+ */
 function regular(candidates: readonly Player[], time: (player: Player) => number): Player {
   const [first] = [...candidates].sort(byPlayingTime(time))
   if (!first) throw new Error('No player to pick from')
+  time(first)
   return first
 }
 
