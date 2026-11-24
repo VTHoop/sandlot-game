@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import type { Id } from './_generated/dataModel'
 import { type MutationCtx, mutation } from './_generated/server'
 import { type BuiltLineup, buildLineup } from './lineup'
-import { authedUser } from './participants'
+import { authedUser, type Manager } from './participants'
 import { SCHEDULED_GAME } from './scheduledGame'
 
 /**
@@ -66,3 +66,19 @@ export const createPickupGame = mutation({
     return game
   },
 })
+
+/** Who plays a pickup game and where. */
+export interface PickupGameSides {
+  homeTeam: string
+  awayTeam: string
+  homeManager: Manager
+  awayManager: Manager
+}
+
+/** Stub (SAN-84): the shared creation core. Implemented once its tests are red. */
+export async function createGameBetween(
+  _ctx: MutationCtx,
+  _sides: PickupGameSides,
+): Promise<Id<'games'>> {
+  throw new Error('createGameBetween is not implemented')
+}

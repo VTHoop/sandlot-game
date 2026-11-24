@@ -4,7 +4,8 @@
 import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from './_generated/api'
-import type { Doc } from './_generated/dataModel'
+import type { Doc, Id } from './_generated/dataModel'
+import { createGameBetween } from './pickup'
 import schema from './schema'
 import { HITTER_SLOT_LIST } from './seasonPlayers'
 
@@ -149,5 +150,166 @@ describe('pickup.createPickupGame', () => {
         .withIdentity({ subject: 'stranger' })
         .mutation(api.pickup.createPickupGame, { homeTeam: HOME, awayTeam: AWAY }),
     ).rejects.toThrow(/Not authenticated/)
+  })
+})
+
+// ─── The shared creation core (SAN-84) ──────────────────────────────────────
+
+type Seeded = Awaited<ReturnType<typeof seeded>>
+type Manager = NonNullable<Doc<'games'>['homeManager']>
+
+const asUser = (user: Id<'users'>): Manager => ({ kind: 'user', user })
+const BOT: Manager = { kind: 'bot' }
+
+/** The helper, run the way a mutation would: no sign-in anywhere in sight. */
+function create(
+  t: Seeded['t'],
+  sides: { homeManager: Manager; awayManager: Manager; homeTeam?: string; awayTeam?: string },
+) {
+  return t.run((ctx) => createGameBetween(ctx, { homeTeam: HOME, awayTeam: AWAY, ...sides }))
+}
+
+const SECOND = { subject: 'sibling' }
+async function twoManagers() {
+  const base = await seeded()
+  const sibling = await base.t.run((ctx) =>
+    ctx.db.insert('users', { clerkSubject: SECOND.subject, displayName: 'sibling' }),
+  )
+  return { ...base, sibling, siblingClient: base.t.withIdentity(SECOND) }
+}
+
+describe('createGameBetween', () => {
+  const PAIRINGS: [string, (user: Id<'users'>, sibling: Id<'users'>) => [Manager, Manager]][] = [
+    ['two different users', (user, sibling) => [asUser(user), asUser(sibling)]],
+    ['a user at home and the bot away', (user) => [asUser(user), BOT]],
+    ['the bot at home and a user away', (user) => [BOT, asUser(user)]],
+  ]
+
+  it.each(PAIRINGS)('records the managers it is given: %s', async (_label, pairing) => {
+    const { t, user, sibling } = await twoManagers()
+    const [homeManager, awayManager] = pairing(user, sibling)
+    const id = await create(t, { homeManager, awayManager })
+    expect(await t.run((ctx) => ctx.db.get(id))).toMatchObject({ homeManager, awayManager })
+  })
+
+  it('accepts one user on both sides (hotseat)', async () => {
+    const { t, user } = await seeded()
+    const id = await create(t, { homeManager: asUser(user), awayManager: asUser(user) })
+    expect(await t.run((ctx) => ctx.db.get(id))).toMatchObject({
+      homeManager: asUser(user),
+      awayManager: asUser(user),
+    })
+  })
+
+  it('does no sign-in: it creates a scheduled game with no caller at all', async () => {
+    const { t, user } = await seeded()
+    const id = await create(t, { homeManager: asUser(user), awayManager: BOT })
+    expect(await t.run((ctx) => ctx.db.get(id))).toMatchObject({
+      status: 'scheduled',
+      pickup: true,
+    })
+  })
+
+  it('refuses a user manager that does not exist, and writes nothing', async () => {
+    const { t, user } = await seeded()
+    const gone = await t.run(async (ctx) => {
+      const id = await ctx.db.insert('users', { clerkSubject: 'gone', displayName: 'gone' })
+      await ctx.db.delete(id)
+      return id
+    })
+    await expect(
+      create(t, { homeManager: asUser(user), awayManager: asUser(gone) }),
+    ).rejects.toThrow(/manager.*does not exist/i)
+    expect(await counts(t)).toEqual({ teams: 0, games: 0, lineups: 0 })
+  })
+
+  it('refuses the same team on both sides, and writes nothing', async () => {
+    const { t, user } = await seeded()
+    await expect(
+      create(t, { homeManager: asUser(user), awayManager: asUser(user), awayTeam: HOME }),
+    ).rejects.toThrow(/same team/i)
+    expect(await counts(t)).toEqual({ teams: 0, games: 0, lineups: 0 })
+  })
+
+  it('refuses a team that cannot field a lineup, and writes nothing', async () => {
+    const { t, user } = await seeded()
+    await expect(
+      create(t, { homeManager: asUser(user), awayManager: BOT, awayTeam: 'Nowhere Nine' }),
+    ).rejects.toThrow(/Nowhere Nine/)
+    expect(await counts(t)).toEqual({ teams: 0, games: 0, lineups: 0 })
+  })
+
+  it('refuses the bot managing both sides, and writes nothing', async () => {
+    const { t } = await seeded()
+    await expect(create(t, { homeManager: BOT, awayManager: BOT })).rejects.toThrow(
+      /bot.*both sides/i,
+    )
+    expect(await counts(t)).toEqual({ teams: 0, games: 0, lineups: 0 })
+  })
+})
+
+// ─── The secret-pitch contract across two managers (SAN-84) ─────────────────
+
+/** Whether `number` appears as a value anywhere in a response. */
+function holds(value: unknown, number: number): boolean {
+  if (value === number) return true
+  if (Array.isArray(value)) return value.some((item) => holds(item, number))
+  if (value !== null && typeof value === 'object') {
+    return Object.values(value).some((item) => holds(item, number))
+  }
+  return false
+}
+
+/** A started game: the first user manages home (pitches, top half), the sibling away (bats). */
+async function startedDuel() {
+  const setup = await twoManagers()
+  const id = await create(setup.t, {
+    homeManager: asUser(setup.user),
+    awayManager: asUser(setup.sibling),
+  })
+  await setup.kid.mutation(api.game.startGame, { game: id })
+  return { ...setup, id }
+}
+
+describe('a game between two different users keeps the pitch secret', () => {
+  it('lets each user commit only for their own side', async () => {
+    const { kid, siblingClient, id } = await startedDuel()
+    await expect(
+      siblingClient.mutation(api.atBat.commitPitch, { game: id, number: 5 }),
+    ).rejects.toThrow()
+    await expect(kid.mutation(api.atBat.commitSwing, { game: id, number: 5 })).rejects.toThrow()
+    await expect(
+      kid.mutation(api.atBat.commitPitch, { game: id, number: 5 }),
+    ).resolves.not.toThrow()
+    await expect(
+      siblingClient.mutation(api.atBat.commitSwing, { game: id, number: 6 }),
+    ).resolves.not.toThrow()
+  })
+
+  it.each([
+    ['the pitcher locks first', 777, 'pitch'],
+    ['the batter locks first', 313, 'swing'],
+  ] as const)('shows the other user no number when %s', async (_label, number, seat) => {
+    const { kid, siblingClient, id } = await startedDuel()
+    const [committer, reader] = seat === 'pitch' ? [kid, siblingClient] : [siblingClient, kid]
+    await committer.mutation(seat === 'pitch' ? api.atBat.commitPitch : api.atBat.commitSwing, {
+      game: id,
+      number,
+    })
+
+    const duel = await reader.query(api.atBat.getActiveDuel, { game: id })
+    expect(duel).toEqual({
+      status: 'awaiting_opponent',
+      sequence: 0,
+      pitchCommitted: seat === 'pitch',
+      swingCommitted: seat === 'swing',
+    })
+    const reads = [
+      duel,
+      await reader.query(api.gameView.getGame, { game: id }),
+      await reader.query(api.atBatView.getLastAtBat, { game: id }),
+      await reader.query(api.myGames.listMyGames, {}),
+    ]
+    for (const read of reads) expect(holds(read, number)).toBe(false)
   })
 })
