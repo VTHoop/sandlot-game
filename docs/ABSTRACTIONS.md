@@ -807,10 +807,17 @@ Raw rows become `players` with 1–5 attributes. Three layers, each with one job
   each score 1–5 per attribute.
 - **`normalize.ts` — the writer.** `normalize.run({ season })` reads the
   season's `mlbSeasonStats`, throws if there are none, and upserts through
-  `by_mlb_id` (`[mlbId, role]`, `.unique()`). Update patches name, position and
-  attributes only, so a price survives; players the season lacks are untouched.
+  `by_mlb_id` (`[mlbId, role]`, `.unique()`). Update patches name, MLB team
+  (`players.mlbTeam`, SAN-77), position and attributes only, so a price survives;
+  players the season lacks are untouched.
   Internal (`internalMutation`), guarded by a compile-time check in
   `normalize.test.ts`.
+
+**MLB team eligibility (`convex/mlbTeams.ts`, SAN-77).** `eligibleMlbTeams(players)`
+is the single rule for which real teams can be picked: `source: 'mlb'` players
+with a `mlbTeam`, a hitter at each of C, 1B, 2B, 3B, SS, LF, CF, RF and DH, and a
+pitcher. The `listMlbTeams` query wraps it (`[]` unless signed in); the lineup
+builder must call the same function, not restate the rule.
 
 ```bash
 pnpm ingest:mlb --season 2026      # raw rows first

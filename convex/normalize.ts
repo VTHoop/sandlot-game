@@ -13,8 +13,8 @@ import {
  * `mlbSeasonStats` rows SAN-25 ingested into `players`. Internal on purpose — a
  * developer command (`pnpm normalize:mlb`) runs it; no client does.
  *
- * A player is keyed by MLB id + role. A re-run updates name, position and
- * attributes on the existing row in place (price and everything else stay), and
+ * A player is keyed by MLB id + role. A re-run updates name, MLB team, position
+ * and attributes on the existing row in place (price and everything else stay), and
  * creates rows only for new players; players the season no longer lists are not
  * touched.
  */
@@ -34,8 +34,8 @@ async function upsert(ctx: MutationCtx, player: PlannedPlayer): Promise<boolean>
     .withIndex('by_mlb_id', (q) => q.eq('mlbId', player.mlbId).eq('role', player.role))
     .unique()
   if (existing) {
-    const { name, position, attributes } = player
-    await ctx.db.patch(existing._id, { name, position, attributes })
+    const { name, mlbTeam, position, attributes } = player
+    await ctx.db.patch(existing._id, { name, mlbTeam, position, attributes })
     return false
   }
   await ctx.db.insert('players', { ...player, source: 'mlb', price: null })

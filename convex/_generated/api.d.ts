@@ -20,6 +20,7 @@ import type * as gameView from "../gameView.js";
 import type * as ingest from "../ingest.js";
 import type * as mlbFields from "../mlbFields.js";
 import type * as mlbStats from "../mlbStats.js";
+import type * as mlbTeams from "../mlbTeams.js";
 import type * as myGames from "../myGames.js";
 import type * as normalize from "../normalize.js";
 import type * as participants from "../participants.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   ingest: typeof ingest;
   mlbFields: typeof mlbFields;
   mlbStats: typeof mlbStats;
+  mlbTeams: typeof mlbTeams;
   myGames: typeof myGames;
   normalize: typeof normalize;
   participants: typeof participants;

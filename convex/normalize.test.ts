@@ -366,3 +366,69 @@ describe('normalize.run', () => {
     })
   })
 })
+
+describe("normalize.run records each player's MLB team (SAN-77)", () => {
+  const teamOf = (players: { mlbId?: number; mlbTeam?: string }[], mlbId: number) =>
+    players.find((p) => p.mlbId === mlbId)?.mlbTeam
+
+  it('records the team the raw row carries, on hitters and pitchers', async () => {
+    const { players } = await normalized([
+      hitter({ mlbId: ADA, team: 'Harbor Gulls' }),
+      pitcher({ mlbId: GUS, team: 'Prairie Owls' }),
+    ])
+    expect(teamOf(players, ADA)).toBe('Harbor Gulls')
+    expect(teamOf(players, GUS)).toBe('Prairie Owls')
+  })
+
+  it('records the reported team of a player who had more than one', async () => {
+    const { players } = await normalized(
+      league(hitter({ mlbId: BO, team: 'Dune Foxes', numTeams: 2 })),
+    )
+    expect(teamOf(players, BO)).toBe('Dune Foxes')
+  })
+
+  it('updates the team in place on a re-run', async () => {
+    const { t, seeded } = setup(league())
+    await seeded
+    await t.mutation(internal.normalize.run, { season: SEASON })
+    await t.run(async (ctx) => {
+      const row = await ctx.db
+        .query('mlbSeasonStats')
+        .withIndex('by_season', (q) => q.eq('season', SEASON).eq('role', 'hitter').eq('mlbId', ADA))
+        .unique()
+      if (!row) throw new Error('fixture row missing')
+      await ctx.db.patch(row._id, { team: 'Dune Foxes' })
+    })
+    const report = await t.mutation(internal.normalize.run, { season: SEASON })
+    const players = await t.run((ctx) => ctx.db.query('players').collect())
+    expect(report.created).toBe(0)
+    expect(players).toHaveLength(2)
+    expect(teamOf(players, ADA)).toBe('Dune Foxes')
+  })
+
+  it('leaves players the season does not list untouched, teamless ones teamless', async () => {
+    const { t, seeded } = setup(league())
+    await seeded
+    const attributes = { power: 3, contact: 3, speed: 3, eye: 3 } as const
+    await t.run(async (ctx) => {
+      const base = {
+        source: 'mlb',
+        role: 'hitter',
+        position: 'CF',
+        price: null,
+        attributes,
+      } as const
+      await ctx.db.insert('players', {
+        ...base,
+        name: 'Old Timer',
+        mlbId: 900,
+        mlbTeam: 'Lake Herons',
+      })
+      await ctx.db.insert('players', { ...base, name: 'Lost Soul', mlbId: 901 })
+    })
+    await t.mutation(internal.normalize.run, { season: SEASON })
+    const players = await t.run((ctx) => ctx.db.query('players').collect())
+    expect(teamOf(players, 900)).toBe('Lake Herons')
+    expect(players.find((p) => p.mlbId === 901)).not.toHaveProperty('mlbTeam')
+  })
+})
