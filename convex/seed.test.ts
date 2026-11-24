@@ -198,6 +198,11 @@ describe('dev seed — what one run creates', () => {
     })
   })
 
+  it('is not a pickup game: the marker is absent on a seeded game (SAN-78)', async () => {
+    const { row } = await seeded()
+    expect(row).not.toHaveProperty('pickup')
+  })
+
   it('gives each team ten players — nine distinct positions plus a pitcher', async () => {
     const { t, home, away } = await seeded()
     expect(await t.run((ctx) => ctx.db.query('players').collect())).toHaveLength(20)

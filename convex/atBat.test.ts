@@ -5,20 +5,9 @@ import { convexTest } from 'convex-test'
 import { describe, expect, it } from 'vitest'
 import { api } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
-import type { MutationCtx } from './_generated/server'
 import { DuelRejection, type DuelRejectionData, duelRejectionOf } from './duelContract'
 import schema from './schema'
-
-/** The game's managers as its teams' owners are today: these fixtures predate
- * managers, and what they pin is who may act, not how that was decided (SAN-76). */
-async function ownerManagers(ctx: MutationCtx, homeTeam: Id<'teams'>, awayTeam: Id<'teams'>) {
-  const [home, away] = await Promise.all([ctx.db.get(homeTeam), ctx.db.get(awayTeam)])
-  if (!home || !away) throw new Error('fixture team missing')
-  return {
-    homeManager: { kind: 'user' as const, user: home.owner },
-    awayManager: { kind: 'user' as const, user: away.owner },
-  }
-}
+import { ownerManagers } from './testFixtures'
 
 // convex-test discovers the function modules; exclude the test files themselves.
 const modules = import.meta.glob(['./**/*.ts', '!./**/*.test.ts'])
@@ -264,27 +253,31 @@ describe('secret at-bat round-trip', () => {
   })
 
   describe('secrecy contract', () => {
-    it('does not reveal the pitch to the batting-team owner before the swing locks', async () => {
+    it.each([
+      {
+        name: 'does not reveal the pitch to the batting-team owner before the swing locks',
+        lock: (t: Harness, game: Id<'games'>) =>
+          t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game, number: 742 }),
+        viewer: BATTER,
+        committed: { pitchCommitted: true, swingCommitted: false },
+        hidden: 'pitchNumber',
+      },
+      {
+        name: 'does not reveal the swing to the pitching-team owner before the pitch locks',
+        lock: (t: Harness, game: Id<'games'>) =>
+          t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game, number: 742 }),
+        viewer: PITCHER,
+        committed: { pitchCommitted: false, swingCommitted: true },
+        hidden: 'batterNumber',
+      },
+    ])('$name', async ({ lock, viewer, committed, hidden }) => {
       const { t, gameId } = await setupGame()
-      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 742 })
+      await lock(t, gameId)
 
-      const view = await t.withIdentity(BATTER).query(api.atBat.getActiveDuel, { game: gameId })
+      const view = await t.withIdentity(viewer).query(api.atBat.getActiveDuel, { game: gameId })
       expect(view?.status).toBe('awaiting_opponent')
-      expect(view?.pitchCommitted).toBe(true)
-      expect(view?.swingCommitted).toBe(false)
-      expect(view).not.toHaveProperty('pitchNumber')
-      expect(JSON.stringify(view)).not.toContain('742')
-    })
-
-    it('does not reveal the swing to the pitching-team owner before the pitch locks', async () => {
-      const { t, gameId } = await setupGame()
-      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 742 })
-
-      const view = await t.withIdentity(PITCHER).query(api.atBat.getActiveDuel, { game: gameId })
-      expect(view?.status).toBe('awaiting_opponent')
-      expect(view?.swingCommitted).toBe(true)
-      expect(view?.pitchCommitted).toBe(false)
-      expect(view).not.toHaveProperty('batterNumber')
+      expect(view).toMatchObject(committed)
+      expect(view).not.toHaveProperty(hidden)
       expect(JSON.stringify(view)).not.toContain('742')
     })
 
@@ -405,23 +398,21 @@ describe('secret at-bat round-trip', () => {
       expect(rows[0]).toMatchObject({ outcome: 'HR', pitchNumber: 500, batterNumber: 500 })
     })
 
-    it('rejects a second pitch for the same at-bat (locked on submit)', async () => {
+    it.each([
+      {
+        name: 'rejects a second pitch for the same at-bat (locked on submit)',
+        commit: (t: Harness, game: Id<'games'>, number: number) =>
+          t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game, number }),
+      },
+      {
+        name: 'rejects a second swing for the same at-bat (locked on submit)',
+        commit: (t: Harness, game: Id<'games'>, number: number) =>
+          t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game, number }),
+      },
+    ])('$name', async ({ commit }) => {
       const { t, gameId } = await setupGame()
-      await t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 500 })
-      await expect(
-        t.withIdentity(PITCHER).mutation(api.atBat.commitPitch, { game: gameId, number: 600 }),
-      ).rejects.toThrow()
-      const rows = await commitmentRows(t, gameId)
-      expect(rows).toHaveLength(1)
-      expect(rows[0].number).toBe(500)
-    })
-
-    it('rejects a second swing for the same at-bat (locked on submit)', async () => {
-      const { t, gameId } = await setupGame()
-      await t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 500 })
-      await expect(
-        t.withIdentity(BATTER).mutation(api.atBat.commitSwing, { game: gameId, number: 600 }),
-      ).rejects.toThrow()
+      await commit(t, gameId, 500)
+      await expect(commit(t, gameId, 600)).rejects.toThrow()
       const rows = await commitmentRows(t, gameId)
       expect(rows).toHaveLength(1)
       expect(rows[0].number).toBe(500)

@@ -44,10 +44,14 @@ export default defineSchema({
     displayName: v.string(),
   }).index('by_clerk_subject', ['clerkSubject']),
 
+  // `owner` is optional (SAN-78, ADR-0042): a real MLB team created on its first
+  // pick in a pickup game has no owner. Who plays a game is its managers (ADR-0039).
   teams: defineTable({
-    owner: v.id('users'),
+    owner: v.optional(v.id('users')),
     name: v.string(),
-  }).index('by_owner', ['owner']),
+  })
+    .index('by_owner', ['owner'])
+    .index('by_name', ['name']),
 
   // Real (MLB-imported) or custom players. A player carries the attribute block
   // matching its role (hitter vs pitcher). `price` is nullable until derived by
@@ -65,6 +69,11 @@ export default defineSchema({
     attributes,
     mlbId: v.optional(v.float64()),
     mlbTeam: v.optional(v.string()),
+    // Playing time (SAN-78, ADR-0043), carried from the raw row because that table
+    // is internal-only: `plateAppearances` on a hitter, `outs` on a pitcher. The
+    // lineup builder picks regulars by them. Optional like `mlbTeam`.
+    plateAppearances: v.optional(v.float64()),
+    outs: v.optional(v.float64()),
   })
     .index('by_source', ['source'])
     .index('by_role', ['role'])
@@ -92,6 +101,10 @@ export default defineSchema({
     // one-time `seed.backfillGameManagers`.
     homeManager: v.optional(manager),
     awayManager: v.optional(manager),
+    // Explicit pickup marker (SAN-78, ADR-0041): `true` on a game made by
+    // `pickup.createPickupGame`, which never counts toward standings. Absent on
+    // every other game, so existing games stay valid and are not pickup games.
+    pickup: v.optional(v.boolean()),
     inning: v.float64(),
     half,
     outs: v.float64(),
