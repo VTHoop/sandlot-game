@@ -129,6 +129,19 @@ describe('buildLineup picks regulars by playing time', () => {
     const players = [...regulars().filter((p) => p._id !== 'reg-SS'), hitter('reg-SS', 'SS')]
     expect(() => buildLineup(TEAM, players)).toThrow(/normalize/)
   })
+
+  it('refuses a lone hitter at a position with no playing time, whatever the ratings', () => {
+    const players = [
+      ...regulars().filter((p) => p.position !== 'SS'),
+      hitter('lone-SS', 'SS', { ratings: { power: 5, contact: 5 } }),
+    ]
+    expect(() => buildLineup(TEAM, players)).toThrow(/lone-SS.*normalize/)
+  })
+
+  it('refuses a lone pitcher with no outs recorded', () => {
+    const players = [...regulars().filter((p) => p.role !== 'pitcher'), arm('lone-arm', undefined)]
+    expect(() => buildLineup(TEAM, players)).toThrow(/lone-arm.*normalize/)
+  })
 })
 
 describe('buildLineup batting order', () => {

@@ -352,4 +352,19 @@ describe('backfilling the managers of existing games', () => {
 
     await expect(t.mutation(internal.seed.backfillGameManagers, {})).rejects.toThrow()
   })
+
+  it('refuses a manager-less game whose team is an ownerless real MLB team (SAN-78)', async () => {
+    const t = harness()
+    const home = await provision(t, HOME)
+    const away = await provision(t, AWAY)
+    const game = await legacyGame(t, home, away)
+    const { awayTeam } = await gameRow(t, game)
+    await t.run(async (ctx) => {
+      const team = await ctx.db.get(awayTeam)
+      if (!team) throw new Error('fixture team vanished')
+      await ctx.db.replace(awayTeam, { name: team.name }) // drops `owner`
+    })
+
+    await expect(t.mutation(internal.seed.backfillGameManagers, {})).rejects.toThrow(/has no owner/)
+  })
 })

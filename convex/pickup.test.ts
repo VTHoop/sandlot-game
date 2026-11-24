@@ -126,7 +126,7 @@ describe('pickup.createPickupGame', () => {
     expect(await counts(t)).toEqual({ teams: 0, games: 0, lineups: 0 })
   })
 
-  it('writes no teams row for a valid side when the other side fails', async () => {
+  it('validates both lineups before writing any teams row (bad home side, valid away side)', async () => {
     const { t, kid } = await seeded()
     await expect(
       kid.mutation(api.pickup.createPickupGame, { homeTeam: 'Nowhere Nine', awayTeam: HOME }),
