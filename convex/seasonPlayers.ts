@@ -75,7 +75,8 @@ const UNKNOWN = 'unknown'
 const TWO_WAY = 'TWP'
 const PITCHER = 'P'
 
-const HITTER_SLOT_LIST = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'] as const
+/** The lineup slots a hitter can take; `convex/mlbTeams.ts` reads the same list. */
+export const HITTER_SLOT_LIST = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'] as const
 
 /**
  * Compile-time guard: the lineup slots a hitter can take are exactly every position

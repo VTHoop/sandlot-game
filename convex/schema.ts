@@ -54,6 +54,8 @@ export default defineSchema({
   // the balance/salary-cap pipeline. `mlbId` is the real player's MLB id, set only
   // on `source: 'mlb'` rows (SAN-26): with `role` it is the key a re-run of
   // `normalize.run` finds its row by — a two-way player is one MLB id, two roles.
+  // `mlbTeam` (SAN-77) is the team the raw row reports — a traded player's latest —
+  // and is optional because custom players and rows normalized before SAN-77 have none.
   players: defineTable({
     name: v.string(),
     source: playerSource,

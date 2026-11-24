@@ -808,7 +808,8 @@ Raw rows become `players` with 1–5 attributes. Three layers, each with one job
 - **`normalize.ts` — the writer.** `normalize.run({ season })` reads the
   season's `mlbSeasonStats`, throws if there are none, and upserts through
   `by_mlb_id` (`[mlbId, role]`, `.unique()`). Update patches name, MLB team
-  (`players.mlbTeam`, SAN-77), position and attributes only, so a price survives; players the season lacks are untouched.
+  (`players.mlbTeam`, SAN-77), position and attributes only, so a price survives;
+  players the season lacks are untouched.
   Internal (`internalMutation`), guarded by a compile-time check in
   `normalize.test.ts`.
 

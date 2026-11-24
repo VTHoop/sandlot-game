@@ -7,6 +7,7 @@ import { api } from './_generated/api'
 import type { Doc } from './_generated/dataModel'
 import { eligibleMlbTeams } from './mlbTeams'
 import schema from './schema'
+import { HITTER_SLOT_LIST } from './seasonPlayers'
 
 /**
  * The real MLB teams a player can pick (SAN-77). Every team and player is
@@ -15,14 +16,13 @@ import schema from './schema'
 
 const modules = import.meta.glob(['./**/*.ts', '!./**/*.test.ts'])
 
-const HITTER_SLOTS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'] as const
 const HITTER_ATTRS = { power: 3, contact: 3, speed: 3, eye: 3 } as const
 const ARM_ATTRS = { velocity: 3, movement: 3, awareness: 3, command: 3 } as const
 
 type NewPlayer = Omit<Doc<'players'>, '_id' | '_creationTime'>
 
 let nextId = 1000
-const hitterAt = (position: (typeof HITTER_SLOTS)[number], mlbTeam?: string): NewPlayer => ({
+const hitterAt = (position: (typeof HITTER_SLOT_LIST)[number], mlbTeam?: string): NewPlayer => ({
   name: `Hitter ${nextId}`,
   source: 'mlb',
   role: 'hitter',
@@ -45,7 +45,7 @@ const arm = (mlbTeam?: string): NewPlayer => ({
 
 /** A team with every slot filled and one pitcher. */
 const fullTeam = (team: string): NewPlayer[] => [
-  ...HITTER_SLOTS.map((slot) => hitterAt(slot, team)),
+  ...HITTER_SLOT_LIST.map((slot) => hitterAt(slot, team)),
   arm(team),
 ]
 
@@ -61,7 +61,7 @@ describe('eligibleMlbTeams', () => {
     expect(names(fullTeam('Harbor Gulls'))).toEqual(['Harbor Gulls'])
   })
 
-  it.each(HITTER_SLOTS)('drops a team with nobody at %s', (missing) => {
+  it.each(HITTER_SLOT_LIST)('drops a team with nobody at %s', (missing) => {
     const players = fullTeam('Harbor Gulls').filter((p) => p.position !== missing)
     expect(names(players)).toEqual([])
   })
