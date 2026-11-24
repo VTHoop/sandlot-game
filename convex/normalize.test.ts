@@ -432,3 +432,37 @@ describe("normalize.run records each player's MLB team (SAN-77)", () => {
     expect(players.find((p) => p.mlbId === 901)).not.toHaveProperty('mlbTeam')
   })
 })
+
+describe('normalize.run carries playing time onto players (SAN-78)', () => {
+  const byId = (players: { mlbId?: number }[], mlbId: number) =>
+    players.find((p) => p.mlbId === mlbId)
+
+  it('records plate appearances on a hitter and outs on a pitcher, and not the other', async () => {
+    const { players } = await normalized([
+      hitter({ mlbId: ADA, plateAppearances: 612 }),
+      pitcher({ mlbId: GUS, outs: 540 }),
+    ])
+    const ada = byId(players, ADA)
+    const gus = byId(players, GUS)
+    expect(ada).toMatchObject({ plateAppearances: 612 })
+    expect(ada).not.toHaveProperty('outs')
+    expect(gus).toMatchObject({ outs: 540 })
+    expect(gus).not.toHaveProperty('plateAppearances')
+  })
+
+  it('updates playing time in place on a re-run', async () => {
+    const { t, seeded } = setup(league())
+    await seeded
+    await t.mutation(internal.normalize.run, { season: SEASON })
+    await t.run(async (ctx) => {
+      for (const row of await ctx.db.query('mlbSeasonStats').collect()) {
+        if (row.role === 'hitter') await ctx.db.patch(row._id, { plateAppearances: 650 })
+        else await ctx.db.patch(row._id, { outs: 600 })
+      }
+    })
+    await t.mutation(internal.normalize.run, { season: SEASON })
+    const players = await t.run((ctx) => ctx.db.query('players').collect())
+    expect(byId(players, ADA)).toMatchObject({ plateAppearances: 650 })
+    expect(byId(players, GUS)).toMatchObject({ outs: 600 })
+  })
+})
