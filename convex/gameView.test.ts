@@ -24,7 +24,7 @@ async function manageAwaySide(ctx: MutationCtx, team: Id<'teams'>, user: Id<'use
  * managers, and what they pin is who may act, not how that was decided (SAN-76). */
 async function ownerManagers(ctx: MutationCtx, homeTeam: Id<'teams'>, awayTeam: Id<'teams'>) {
   const [home, away] = await Promise.all([ctx.db.get(homeTeam), ctx.db.get(awayTeam)])
-  if (!home || !away) throw new Error('fixture team missing')
+  if (!home?.owner || !away?.owner) throw new Error('fixture team missing')
   return {
     homeManager: { kind: 'user' as const, user: home.owner },
     awayManager: { kind: 'user' as const, user: away.owner },

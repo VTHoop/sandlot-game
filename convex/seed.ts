@@ -523,6 +523,9 @@ export const backfillGameManagers = internalMutation({
 async function backfilledManager(ctx: MutationCtx, team: Id<'teams'>): Promise<Manager> {
   const club = await ctx.db.get(team)
   if (!club) throw new Error(`Cannot backfill managers: team ${team} no longer exists`)
+  // An ownerless team is a real MLB team (SAN-78); every game naming one is a pickup
+  // game, made after managers were recorded, so it never needs backfilling.
+  if (!club.owner) throw new Error(`Cannot backfill managers: team "${club.name}" has no owner`)
   const owner = await ctx.db.get(club.owner)
   if (!owner) {
     throw new Error(`Cannot backfill managers: owner of team "${club.name}" no longer exists`)
