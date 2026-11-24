@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import type { Id } from './_generated/dataModel'
 import { type MutationCtx, mutation } from './_generated/server'
+import { ClubSide } from './clubSide'
 import { type BuiltLineup, buildLineup } from './lineup'
 import { authedUser, isBotManaged, type Manager } from './participants'
 import { SCHEDULED_GAME } from './scheduledGame'
@@ -38,7 +39,7 @@ export interface PickupGameSides {
 /** A user manager must be a real account; the bot is nobody's row. */
 async function requireManagerExists(
   ctx: MutationCtx,
-  side: 'home' | 'away',
+  side: ClubSide,
   manager: Manager,
 ): Promise<void> {
   if (manager.kind === 'bot') return
@@ -46,10 +47,12 @@ async function requireManagerExists(
 }
 
 /**
- * Every refusal in one place, run before the first write. The bot on both sides
- * is refused because nobody could ever start that game (ADR-0027, ADR-0039).
+ * Every refusal in one place, run before the first write, and the lineups it
+ * builds along the way — a team with no lineup is one of the refusals, and the
+ * lineup is what proves it. The bot on both sides is refused because nobody could
+ * ever start that game (ADR-0027, ADR-0039).
  */
-async function validate(
+async function validateAndBuildLineups(
   ctx: MutationCtx,
   { homeTeam, awayTeam, homeManager, awayManager }: PickupGameSides,
 ): Promise<{ home: BuiltLineup; away: BuiltLineup }> {
@@ -57,8 +60,8 @@ async function validate(
   if (isBotManaged(homeManager) && isBotManaged(awayManager)) {
     throw new Error('The bot cannot manage both sides of a game')
   }
-  await requireManagerExists(ctx, 'home', homeManager)
-  await requireManagerExists(ctx, 'away', awayManager)
+  await requireManagerExists(ctx, ClubSide.Home, homeManager)
+  await requireManagerExists(ctx, ClubSide.Away, awayManager)
 
   const players = await ctx.db
     .query('players')
@@ -88,7 +91,7 @@ export async function createGameBetween(
   ctx: MutationCtx,
   sides: PickupGameSides,
 ): Promise<Id<'games'>> {
-  const lineups = await validate(ctx, sides)
+  const lineups = await validateAndBuildLineups(ctx, sides)
 
   const home = await realTeam(ctx, sides.homeTeam)
   const away = await realTeam(ctx, sides.awayTeam)
@@ -105,6 +108,10 @@ export async function createGameBetween(
   return game
 }
 
+/**
+ * Start a pickup game with the caller as both managers (SAN-78, ADR-0041); the
+ * existing `startGame` opens it. Signs the caller in, then {@link createGameBetween}.
+ */
 export const createPickupGame = mutation({
   args: { homeTeam: v.string(), awayTeam: v.string() },
   handler: async (ctx, { homeTeam, awayTeam }): Promise<Id<'games'>> => {
