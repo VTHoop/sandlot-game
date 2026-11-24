@@ -808,7 +808,8 @@ Raw rows become `players` with 1–5 attributes. Three layers, each with one job
 - **`normalize.ts` — the writer.** `normalize.run({ season })` reads the
   season's `mlbSeasonStats`, throws if there are none, and upserts through
   `by_mlb_id` (`[mlbId, role]`, `.unique()`). Update patches name, MLB team
-  (`players.mlbTeam`, SAN-77), position and attributes only, so a price survives;
+  (`players.mlbTeam`, SAN-77), position, attributes and playing time
+  (`plateAppearances` on a hitter, `outs` on a pitcher, SAN-78/ADR-0043) only, so a price survives;
   players the season lacks are untouched.
   Internal (`internalMutation`), guarded by a compile-time check in
   `normalize.test.ts`.
@@ -817,7 +818,26 @@ Raw rows become `players` with 1–5 attributes. Three layers, each with one job
 is the single rule for which real teams can be picked: `source: 'mlb'` players
 with a `mlbTeam`, a hitter at each of C, 1B, 2B, 3B, SS, LF, CF, RF and DH, and a
 pitcher. The `listMlbTeams` query wraps it (`[]` unless signed in); the lineup
-builder must call the same function, not restate the rule.
+builder calls the same function, not a restated rule.
+
+**Lineup builder (`convex/lineup.ts`, SAN-78).** `buildLineup(team, players)` is
+pure: it throws for a team `eligibleMlbTeams` does not offer, then returns the
+`lineups` shape (`{ battingOrder: { player, position }[], pitcher }`). At each of
+the nine positions it takes the team's hitter with the most `plateAppearances`;
+the starter is the pitcher with the most `outs`; every tie falls to the lower
+`_id`, so input order never matters. The batting order is the highest sum of the
+four hitter ratings first, then plate appearances, then `_id`. A chosen player
+with no recorded playing time is refused (re-run `normalize:mlb`) rather than
+ranked as zero. Autodraft (SAN-33) and the bot can reuse it.
+
+**Pickup games (`convex/pickup.ts`, SAN-78, ADR-0041/0042).**
+`createPickupGame({ homeTeam, awayTeam })` takes two team names from
+`listMlbTeams`. It requires a signed-in user, refuses the same team twice, builds
+both lineups, finds or creates each side's ownerless `teams` row (`by_name`), and
+inserts a `scheduled` game (`SCHEDULED_GAME`, `convex/scheduledGame.ts`) with the
+caller as both managers and `pickup: true`, then returns its id; `startGame`
+opens it. Any refusal throws, so nothing is written. `games.pickup` means "never
+counts toward standings"; absent on every other game. `teams.owner` is optional.
 
 ```bash
 pnpm ingest:mlb --season 2026      # raw rows first
