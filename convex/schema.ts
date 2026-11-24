@@ -62,6 +62,7 @@ export default defineSchema({
     price: v.union(v.float64(), v.null()),
     attributes,
     mlbId: v.optional(v.float64()),
+    mlbTeam: v.optional(v.string()),
   })
     .index('by_source', ['source'])
     .index('by_role', ['role'])
